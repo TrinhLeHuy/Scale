@@ -1,0 +1,159 @@
+﻿TTC â€” Ká»‹ch báº£n nháº­p mĂ­a trĂªn PostgreSQL tháº­t
+==============================================================================
+
+BÆ¯á»C 01  Náº¡p danh má»¥c ná»n vĂ  kiá»ƒm tra káº¿t ná»‘i cÆ¡ sá»Ÿ dá»¯ liá»‡u
+------------------------------------------------------------------------------
+   NhĂ  mĂ¡y TTC-01, cá»•ng vĂ  lĂ n Ä‘Ă£ cáº¥u hĂ¬nh, 2 bĂ n cĂ¢n, 6 thiáº¿t bá»‹.
+   Há»“ sÆ¡ CANE_IN vĂ  MATERIAL_OUT_BAGGED Ä‘Ă£ cĂ³, BOM SUGAR-50KG chá»‰ cĂ³ khá»‘i lÆ°á»£ng danh nghÄ©a.
+
+=== Pháº§n 1 â€” ÄÄƒng tĂ i vĂ  QR ===
+
+BÆ¯á»C 02  ÄÄƒng tĂ i khi chÆ°a cĂ³ chá»©ng tá»« nguá»“n: chá»‰ Ä‘Æ°á»£c phĂ¡t QR táº¡m (R-004)
+------------------------------------------------------------------------------
+   Chuyáº¿n táº¡m TTC-01-202609-000013, loáº¡i QR Temp.
+   Äáº T   Thiáº¿u chá»©ng tá»« nguá»“n thĂ¬ chá»‰ phĂ¡t QR táº¡m
+      LĂ½ do cháº·n: QR táº¡m chá»‰ dĂ¹ng tra cá»©u, khĂ´ng Ä‘á»§ Ä‘iá»u kiá»‡n cĂ¢n chĂ­nh thá»©c (R-004).
+   Äáº T   QR táº¡m khĂ´ng Ä‘á»§ Ä‘iá»u kiá»‡n cĂ¢n chĂ­nh thá»©c
+
+BÆ¯á»C 03  ÄÄƒng tĂ i chĂ­nh thá»©c vá»›i lá»‡nh Ä‘á»‘n tá»« FRM
+------------------------------------------------------------------------------
+   Chuyáº¿n TTC-01-202609-000014, loáº¡i QR Trip.
+   Äáº T   CĂ³ chá»©ng tá»« nguá»“n thĂ¬ phĂ¡t QR chuyáº¿n chĂ­nh thá»©c
+   Äáº T   QR chuyáº¿n Ä‘á»§ Ä‘iá»u kiá»‡n thao tĂ¡c cĂ¢n
+
+=== Pháº§n 2 â€” VĂ o cá»•ng ===
+
+BÆ¯á»C 04  Xin má»Ÿ barie khi chÆ°a xĂ¡c thá»±c danh tĂ­nh xe: pháº£i bá»‹ tá»« chá»‘i (R-039)
+------------------------------------------------------------------------------
+      LĂ½ do: [GATE.2] ÄĂºng danh tĂ­nh xe táº¡i lĂ n: ChÆ°a xĂ¡c thá»±c xe táº¡i lĂ n theo D-03. Khi chÆ°a cĂ³ ANPR nghiá»‡m thu, cáº§n xĂ¡c nháº­n cá»§a nhĂ¢n viĂªn táº¡i lĂ n trÆ°á»›c khi má»Ÿ tá»± Ä‘á»™ng.
+   Äáº T   QR há»£p lá»‡ nhÆ°ng chÆ°a xĂ¡c thá»±c xe thĂ¬ khĂ´ng má»Ÿ barie
+   Äáº T   KhĂ´ng phĂ¡t lá»‡nh má»Ÿ nĂ o khi bá»‹ tá»« chá»‘i
+
+BÆ¯á»C 05  NhĂ¢n viĂªn táº¡i lĂ n xĂ¡c nháº­n Ä‘Ăºng xe, xin má»Ÿ barie vĂ o
+------------------------------------------------------------------------------
+   Lá»‡nh má»Ÿ a2bd7028e58d40978b677bda4e41113f, háº¿t háº¡n 03:17:37.
+   Äáº T   Äá»§ Ä‘iá»u kiá»‡n thĂ¬ cho má»Ÿ barie
+   Äáº T   ÄĂ£ gá»­i Ä‘Ăºng má»™t lá»‡nh xuá»‘ng bá»™ Ä‘iá»u khiá»ƒn
+   Äáº T   Xe qua cá»•ng Ä‘Æ°á»£c xĂ¡c nháº­n báº±ng bÆ°á»›c riĂªng, khĂ´ng suy tá»« ACK má»Ÿ barie
+
+=== Pháº§n 3 â€” CĂ¢n láº§n 1 ===
+
+BÆ¯á»C 06  Má»Ÿ phiĂªn cĂ¢n trĂªn bĂ n cĂ¢n 1
+------------------------------------------------------------------------------
+   PhiĂªn fcb5b4b1-1dad-4426-92ce-2ec5eb940ee7, vai trĂ² Gross, cá»­a sá»• á»•n Ä‘á»‹nh 5.0s.
+   Äáº T   Má»Ÿ Ä‘Æ°á»£c phiĂªn cĂ¢n
+   Äáº T   Há»“ sÆ¡ nháº­p mĂ­a: lÆ°á»£t Ä‘áº§u lĂ  cĂ¢n cáº£ xe cĂ³ hĂ ng
+
+BÆ¯á»C 07  Chuyáº¿n KHĂC xin má»Ÿ phiĂªn trĂªn cĂ¹ng bĂ n cĂ¢n khi phiĂªn Ä‘ang má»Ÿ (B-003)
+------------------------------------------------------------------------------
+      LĂ½ do: BĂ n cĂ¢n Ä‘ang bá»‹ phiĂªn khĂ¡c chiáº¿m giá»¯ (chuyáº¿n 2e4a7352-d08d-45df-bb96-697d9797b30c).
+   Äáº T   Má»™t bĂ n cĂ¢n chá»‰ cĂ³ má»™t phiĂªn Ä‘ang sá»Ÿ há»¯u â€” chuyáº¿n khĂ¡c bá»‹ cháº·n
+
+BÆ¯á»C 08  Chá»‘t cĂ¢n khi xe vá»«a lĂªn bĂ n, tĂ­n hiá»‡u chÆ°a á»•n Ä‘á»‹nh Ä‘á»§ 5 giĂ¢y
+------------------------------------------------------------------------------
+      B-001.6  Trá»ng lÆ°á»£ng á»•n Ä‘á»‹nh liĂªn tá»¥c: Dao Ä‘á»™ng 3.5 kg vÆ°á»£t biĂªn 1 kg.
+   Äáº T   ChÆ°a Ä‘á»§ cá»­a sá»• á»•n Ä‘á»‹nh thĂ¬ khĂ´ng chá»‘t cĂ¢n
+   Äáº T   Äiá»u kiá»‡n bá»‹ cháº·n Ä‘Ăºng lĂ  nhĂ³m á»•n Ä‘á»‹nh trá»ng lÆ°á»£ng
+
+BÆ¯á»C 09  TĂ­n hiá»‡u á»•n Ä‘á»‹nh liĂªn tá»¥c, chá»‘t cĂ¢n cáº£ xe cĂ³ hĂ ng
+------------------------------------------------------------------------------
+   ÄĂ£ chá»‘t 30,050.000 kg.
+      Cáº£nh bĂ¡o: Chá»¯ Ä‘Æ°á»ng chÆ°a cĂ³ káº¿t quáº£ há»£p lá»‡ â€” cáº£nh bĂ¡o, khĂ´ng cháº·n cĂ¢n (R-014).
+   Äáº T   Äá»§ 8 nhĂ³m Ä‘iá»u kiá»‡n thĂ¬ chá»‘t Ä‘Æ°á»£c cĂ¢n
+   Äáº T   Sá»‘ cĂ¢n lÆ°u Ä‘Ăºng giĂ¡ trá»‹ Ä‘áº§u cĂ¢n
+
+=== Pháº§n 4 â€” Táº¡p cháº¥t vĂ  chá»¯ Ä‘Æ°á»ng ===
+
+BÆ¯á»C 10  CĂ¢n láº§n 2 khi chÆ°a Ä‘o táº¡p cháº¥t: pháº£i bá»‹ cháº·n (S02 tr.21)
+------------------------------------------------------------------------------
+      B-001.7  Äiá»u kiá»‡n nghiá»‡p vá»¥ trÆ°á»›c lÆ°á»£t cĂ¢n: MĂ­a chÆ°a Ä‘o táº¡p cháº¥t, cháº·n cĂ¢n láº§n 2 (S02 tr.21).
+   Äáº T   MĂ­a chÆ°a Ä‘o táº¡p cháº¥t thĂ¬ cháº·n cĂ¢n láº§n 2
+   Äáº T   Bá»‹ cháº·n á»Ÿ nhĂ³m Ä‘iá»u kiá»‡n nghiá»‡p vá»¥ trÆ°á»›c lÆ°á»£t cĂ¢n
+
+BÆ¯á»C 11  Ghi káº¿t quáº£ cĂ¢n táº¡p cháº¥t: máº«u 20 kg cĂ²n 17 kg
+------------------------------------------------------------------------------
+   Táº¡p cháº¥t 15.0000 %.
+   Äáº T   Ghi Ä‘Æ°á»£c káº¿t quáº£ táº¡p cháº¥t
+   Äáº T   CĂ´ng thá»©c (trÆ°á»›c - sau) / trÆ°á»›c Ă— 100 cho 15%
+   Äáº T   Máº«u 20 kg trĂªn ngÆ°á»¡ng cáº£nh bĂ¡o 10 kg
+
+BÆ¯á»C 12  Nguá»“n FRM bĂ¡o chá»¯ Ä‘Æ°á»ng Ä‘ang chá»: chá»‰ cáº£nh bĂ¡o, khĂ´ng cháº·n cĂ¢n (R-014)
+------------------------------------------------------------------------------
+   Äáº T   Chá»¯ Ä‘Æ°á»ng á»Ÿ tráº¡ng thĂ¡i Pending, khĂ´ng pháº£i lá»—i
+
+=== Pháº§n 5 â€” CĂ¢n láº§n 2 vĂ  Ä‘á»‘i soĂ¡t ===
+
+BÆ¯á»C 13  Chá»‘t cĂ¢n bĂ¬ xe sau khi Ä‘Ă£ Ä‘o táº¡p cháº¥t
+------------------------------------------------------------------------------
+   ÄĂ£ chá»‘t bĂ¬ xe 12,000.000 kg.
+      Cáº£nh bĂ¡o: Chá»¯ Ä‘Æ°á»ng chÆ°a cĂ³ káº¿t quáº£ há»£p lá»‡ â€” cáº£nh bĂ¡o, khĂ´ng cháº·n cĂ¢n (R-014).
+   Äáº T   ÄĂ£ Ä‘o táº¡p cháº¥t thĂ¬ cĂ¢n láº§n 2 Ä‘i qua
+   Äáº T   Váº«n cáº£nh bĂ¡o chá»¯ Ä‘Æ°á»ng chÆ°a cĂ³, nhÆ°ng khĂ´ng cháº·n
+   Äáº T   Äá»§ lÆ°á»£t cĂ¢n thĂ¬ chuyá»ƒn WEIGHING_COMPLETED, chÆ°a máº·c Ä‘á»‹nh Ä‘áº¡t Ä‘á»‘i soĂ¡t
+
+BÆ¯á»C 14  Xin ra cá»•ng trÆ°á»›c khi Ä‘á»‘i soĂ¡t: pháº£i bá»‹ tá»« chá»‘i (R-006)
+------------------------------------------------------------------------------
+      LĂ½ do: [GATE.3] ÄĂºng cá»•ng, hÆ°á»›ng vĂ  Ä‘á»§ checkpoint: ChÆ°a Ä‘á»§ checkpoint báº¯t buá»™c cá»§a giai Ä‘oáº¡n nĂ y.
+   Äáº T   ChÆ°a Ä‘á»§ checkpoint giai Ä‘oáº¡n ra thĂ¬ khĂ´ng má»Ÿ cá»•ng
+
+BÆ¯á»C 15  Cháº¡y Ä‘á»‘i soĂ¡t chuyáº¿n
+------------------------------------------------------------------------------
+   Net cĂ¢n xe 18,050.000 kg (chĂªnh lá»‡ch cĂ¢n xe, khĂ´ng pháº£i sáº£n pháº©m tinh).
+      VehicleNetVsIotMass          NotApplicable Profile khĂ´ng Ă¡p dá»¥ng nguá»“n Ä‘o IoT.
+      AiBagCountVsWarehouseCount   NotApplicable Profile khĂ´ng Ă¡p dá»¥ng Ä‘áº¿m bao.
+      VehicleNetVsNominalRange     NotApplicable Profile khĂ´ng yĂªu cáº§u Ä‘á»‘i chiáº¿u vá»›i quy cĂ¡ch kho.
+      TripActualVsSourcePlan       NotApplicable Nguá»“n khĂ´ng cung cáº¥p sá»‘ káº¿ hoáº¡ch cho dĂ²ng hĂ ng nĂ y.
+   Äáº T   Nháº­p mĂ­a: net = láº§n 1 trá»« láº§n 2
+   Äáº T   Há»“ sÆ¡ mĂ­a khĂ´ng Ă¡p dá»¥ng IoT vĂ  Ä‘áº¿m bao nĂªn cĂ¡c phĂ©p Ä‘Ă³ NotApplicable
+
+=== Pháº§n 6 â€” TĂ­ch há»£p vĂ  ra cá»•ng ===
+
+BÆ¯á»C 16  ÄÆ°a káº¿t quáº£ vĂ o sá»• thĂ´ng Ä‘iá»‡p khi há»£p Ä‘á»“ng API chÆ°a xĂ¡c minh (D-02)
+------------------------------------------------------------------------------
+   Business key: FRM:TTC-01-202609-000014:WEIGH_RESULT:1:-
+   Tráº¡ng thĂ¡i: Held. Há»£p Ä‘á»“ng API chÆ°a Ä‘Æ°á»£c xĂ¡c minh (D-02). ThĂ´ng Ä‘iá»‡p giá»¯ á»Ÿ HELD.
+   Äáº T   ChÆ°a cĂ³ há»£p Ä‘á»“ng Ä‘Ă£ kiá»ƒm chá»©ng thĂ¬ giá»¯ HELD, khĂ´ng gá»­i mĂ¹
+   Äáº T   ChÆ°a Ä‘Æ°á»£c há»‡ thá»‘ng Ä‘Ă­ch xĂ¡c nháº­n thĂ¬ chuyáº¿n khĂ´ng chuyá»ƒn POSTED
+
+BÆ¯á»C 17  Gá»­i láº¡i cĂ¹ng ná»™i dung: khĂ´ng Ä‘Æ°á»£c táº¡o thĂ´ng Ä‘iá»‡p trĂ¹ng (R-024)
+------------------------------------------------------------------------------
+      ThĂ´ng Ä‘iá»‡p Ä‘Ă£ tá»“n táº¡i á»Ÿ tráº¡ng thĂ¡i Held, khĂ´ng táº¡o báº£n trĂ¹ng.
+   Äáº T   CĂ¹ng business key chá»‰ cĂ³ má»™t báº£n ghi trong sá»• thĂ´ng Ä‘iá»‡p
+
+BÆ¯á»C 18  Xin ra cá»•ng sau khi Ä‘Ă£ Ä‘áº¡t Ä‘á»‘i soĂ¡t
+------------------------------------------------------------------------------
+   Äáº T   Äáº¡t Ä‘á»‘i soĂ¡t thĂ¬ Ä‘á»§ Ä‘iá»u kiá»‡n ra cá»•ng
+
+=== Pháº§n 7 â€” Kiá»ƒm chá»©ng dá»¯ liá»‡u Ä‘Ă£ ghi ===
+
+BÆ¯á»C 19  Äá»c láº¡i chuyáº¿n tá»« cÆ¡ sá»Ÿ dá»¯ liá»‡u qua read model
+------------------------------------------------------------------------------
+      Gross  rev1   30,050.000 kg  nguá»“n Auto  á»•n Ä‘á»‹nh 5.4s  báº±ng chá»©ng 1
+      Tare   rev1   12,000.000 kg  nguá»“n Auto  á»•n Ä‘á»‹nh 6.1s  báº±ng chá»©ng 1
+   Äáº T   ÄĂºng hai lÆ°á»£t cĂ¢n Ä‘Æ°á»£c ghi
+   Äáº T   KhĂ´ng cĂ³ lÆ°á»£t cĂ¢n nĂ o bá»‹ thay tháº¿
+   Äáº T   Má»—i lÆ°á»£t cĂ¢n cĂ³ báº±ng chá»©ng Ä‘Ă£ lÆ°u (B-001.8)
+   Äáº T   Cáº£ hai lÆ°á»£t lĂ  nguá»“n AUTO, khĂ´ng cĂ³ can thiá»‡p tay
+   Audit: TRIP_REGISTERED -> GATE_DENIED -> GATE_OPEN_REQUESTED -> GATE_PASSAGE_CONFIRMED -> WEIGH_SESSION_OPENED -> WEIGH_COMMIT_BLOCKED -> WEIGH_COMMITTED -> WEIGH_SESSION_OPENED -> WEIGH_COMMIT_BLOCKED -> IMPURITY_RECORDED -> CCS_RECEIVED -> WEIGH_COMMITTED -> GATE_DENIED -> TRIP_RECONCILED -> INTEGRATION_MESSAGE_QUEUED -> GATE_OPEN_REQUESTED
+   Äáº T   Láº§n chá»‘t cĂ¢n bá»‹ cháº·n cÅ©ng Ä‘Æ°á»£c ghi audit
+   Äáº T   Láº§n tá»« chá»‘i má»Ÿ barie Ä‘Æ°á»£c ghi audit
+   Äáº T   Hai láº§n chá»‘t cĂ¢n thĂ nh cĂ´ng Ä‘á»u cĂ³ audit
+   Äáº T   Hai lá»‡nh má»Ÿ barie: má»™t vĂ o, má»™t ra
+   Äáº T   Chá»‰ lÆ°á»£t vĂ o Ä‘Ă£ Ä‘Æ°á»£c xĂ¡c nháº­n xe qua cá»•ng
+   Äáº T   CĂ³ báº£n ghi táº¡p cháº¥t vĂ  báº£n ghi chá»¯ Ä‘Æ°á»ng
+   Äáº T   Chá»¯ Ä‘Æ°á»ng Ä‘ang chá» thĂ¬ khĂ´ng lÆ°u giĂ¡ trá»‹, khĂ´ng ghi 0
+   Äáº T   LÆ°u Ä‘á»§ bá»‘n phĂ©p so sĂ¡nh Ä‘á»™c láº­p
+   Äáº T   ChÆ°a cĂ³ chĂ­nh sĂ¡ch dung sai Ä‘Ă£ duyá»‡t nĂªn khĂ´ng gáº¯n mĂ£ chĂ­nh sĂ¡ch (D-06)
+
+BÆ¯á»C 20  Äá»c tá»•ng quan nhĂ  mĂ¡y qua read model cá»§a UI-01
+------------------------------------------------------------------------------
+   Chá» cĂ¢n 2  Â·  trong nhĂ  mĂ¡y 1  Â·  cĂ¢n 1 chÆ°a cĂ¢n 2 0  Â·  PAUSED 0
+   Tá»•ng net cĂ¢n xe 18,050 kg  Â·  tĂ­ch há»£p cáº§n xá»­ lĂ½ 1  Â·  can thiá»‡p tay 0
+      VĂ²ng Ä‘á»i: táº¡m 1, Ä‘Ă£ Ä‘Äƒng tĂ i 1, Ä‘ang trong nhĂ  mĂ¡y 0, Ä‘á»§ lÆ°á»£t cĂ¢n 0, Ä‘Ă£ Ä‘á»‘i soĂ¡t 1
+   Äáº T   ThĂ´ng Ä‘iá»‡p HELD Ä‘Æ°á»£c Ä‘áº¿m vĂ o má»¥c tĂ­ch há»£p cáº§n xá»­ lĂ½
+   Äáº T   Chuyáº¿n phiáº¿u táº¡m náº±m á»Ÿ cháº·ng Ä‘áº§u luá»“ng
+   Báº±ng chá»©ng vĂ  payload Ä‘Ă£ lÆ°u táº¡i: D:\Works\Scale\tools\TTC.Weighing.Scenario\bin\Debug\net8.0\scenario-artifacts
+
+==============================================================================
+Ká»CH Báº¢N Äáº T â€” 20 bÆ°á»›c, khĂ´ng cĂ³ kháº³ng Ä‘á»‹nh nĂ o sai.
+==============================================================================

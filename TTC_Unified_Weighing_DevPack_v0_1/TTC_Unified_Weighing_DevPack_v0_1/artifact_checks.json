@@ -1,0 +1,14 @@
+{
+  "artifact_checks_only": true,
+  "json_schema_definition_valid": true,
+  "valid_event_examples_checked": 5,
+  "invalid_schema_cases_rejected": 5,
+  "requirement_count": 40,
+  "gherkin_scenario_count": 60,
+  "all_requirement_ids_referenced_by_scenarios": true,
+  "feature_steps_implemented": false,
+  "feature_scenarios_executed": false,
+  "hardware_or_live_api_tested": false,
+  "source_pdf_count": 6,
+  "unique_source_pdf_count": 5
+}

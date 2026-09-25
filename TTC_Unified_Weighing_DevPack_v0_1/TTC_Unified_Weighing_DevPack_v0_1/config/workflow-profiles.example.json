@@ -1,0 +1,158 @@
+{
+  "package_status": "DRAFT_PROPOSAL_NOT_APPROVED_FOR_PRODUCTION",
+  "production_enabled": false,
+  "policy": {
+    "fault_handling": "PAUSE",
+    "offline_business_processing": false,
+    "automatic_resume": false,
+    "automatic_barrier_replay": false,
+    "raw_measurement_overwrite": false,
+    "source_api_contracts_verified": false
+  },
+  "undecided": {
+    "site_ids": null,
+    "device_mapping_version": null,
+    "identity_verification_mode": null,
+    "stability_delta_kg": null,
+    "sample_rate_hz": null,
+    "scale_signal_max_age_ms": null,
+    "ai_evidence_max_age_ms": null,
+    "position_confidence_threshold": null,
+    "bag_count_quality_threshold": null,
+    "concurrency_target": null,
+    "reconciliation_tolerance_policy": null,
+    "weight_basis_policy": null,
+    "rounding_policy": null,
+    "pause_scope_matrix": null,
+    "retention_policy": null,
+    "erp_operation_mapping": null,
+    "frm_policy_contract": null,
+    "shared_cane_sync_policy": null,
+    "approved_by": null
+  },
+  "legacy_reference_values": {
+    "truck_stable_window_ms": 5000,
+    "impurity_stable_window_ms_range": [
+      3000,
+      5000
+    ],
+    "impurity_sample_warning_min_kg": "10",
+    "legacy_bag_scale_margin_kg": "20",
+    "sources": [
+      "S02:p17-22",
+      "S03:p16"
+    ],
+    "note": "Reference values only. The 20 kg margin is not a universal tolerance."
+  },
+  "profiles": [
+    {
+      "id": "CANE_IN",
+      "status": "CORE_DRAFT",
+      "source": "FRM",
+      "direction": "INBOUND",
+      "weight_roles": [
+        "GROSS",
+        "TARE"
+      ],
+      "gate_checkpoints": true,
+      "impurity_required_before_second_weight": true,
+      "ccs_missing_at_second_weight": "WARN_ALLOW_WEIGH",
+      "required_device_classes": [
+        "SCALE",
+        "POSITION_AI",
+        "QR"
+      ],
+      "impurity_acquisition_mode": null,
+      "frm_policy_ref": null
+    },
+    {
+      "id": "MATERIAL_IN",
+      "status": "CORE_DRAFT",
+      "source": "ERP",
+      "direction": "INBOUND",
+      "weight_roles": [
+        "GROSS",
+        "TARE"
+      ],
+      "gate_checkpoints": true,
+      "required_device_classes": [
+        "SCALE",
+        "POSITION_AI",
+        "QR"
+      ],
+      "warehouse_confirmation_required": true,
+      "reconciliation_policy_ref": null
+    },
+    {
+      "id": "MATERIAL_OUT_BAGGED",
+      "status": "CORE_DRAFT",
+      "source": "ERP",
+      "direction": "OUTBOUND",
+      "weight_roles": [
+        "TARE",
+        "GROSS"
+      ],
+      "gate_checkpoints": true,
+      "required_device_classes": [
+        "SCALE",
+        "POSITION_AI",
+        "QR",
+        "IOT_MASS",
+        "BAG_AI"
+      ],
+      "warehouse_confirmation_required": true,
+      "bom_snapshot_required": true,
+      "reconciliation_policy_ref": null
+    },
+    {
+      "id": "MATERIAL_OUT_BULK",
+      "status": "CORE_DRAFT",
+      "source": "ERP",
+      "direction": "OUTBOUND",
+      "weight_roles": [
+        "TARE",
+        "GROSS"
+      ],
+      "gate_checkpoints": true,
+      "required_device_classes": [
+        "SCALE",
+        "POSITION_AI",
+        "QR",
+        "IOT_MASS"
+      ],
+      "bag_count_applicability": "NOT_APPLICABLE",
+      "reconciliation_policy_ref": null
+    },
+    {
+      "id": "INTERNAL_SITE_TRANSFER",
+      "status": "SCOPE_REVIEW_D01",
+      "source": "ERP",
+      "direction": "INTERNAL_TRANSFER",
+      "weight_roles": [
+        "GROSS",
+        "TARE"
+      ],
+      "gate_checkpoints": false,
+      "fixed_vehicle_qr": true,
+      "new_trip_per_cycle": true,
+      "workflow_order": [
+        "SOURCE_WAREHOUSE",
+        "FIRST_WEIGHT",
+        "DESTINATION_WAREHOUSE",
+        "SECOND_WEIGHT"
+      ],
+      "reconciliation_policy_ref": null
+    },
+    {
+      "id": "EXTENDED_PROFILES",
+      "status": "SCOPE_REVIEW_D01",
+      "catalog": [
+        "CROSS_SITE_TRANSFER",
+        "RETURN_OUT",
+        "NON_ERP",
+        "MULTI_WEIGH"
+      ],
+      "no_implicit_offline_fallback": true
+    }
+  ]
+}

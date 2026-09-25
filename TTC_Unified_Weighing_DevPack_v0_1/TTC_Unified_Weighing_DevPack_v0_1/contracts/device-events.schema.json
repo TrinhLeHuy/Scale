@@ -1,0 +1,421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Proposed normalized device event; not an existing vendor contract",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "0.1-proposal"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_type": {
+      "enum": [
+        "SCALE_READING",
+        "POSITION_EVIDENCE",
+        "BAG_PASSAGE",
+        "IOT_MASS_READING",
+        "BARRIER_FEEDBACK"
+      ]
+    },
+    "site_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lane_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "boot_session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trip_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "measurement_session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "site_id",
+    "lane_id",
+    "device_id",
+    "boot_session_id",
+    "sequence",
+    "occurred_at",
+    "received_at",
+    "correlation_id",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "SCALE_READING": {
+      "type": "object",
+      "properties": {
+        "raw_weight": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "raw_uom": {
+          "enum": [
+            "kg",
+            "g",
+            "t"
+          ]
+        },
+        "normalized_kg": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "stable_flag": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "device_status": {
+          "enum": [
+            "OK",
+            "FAULT",
+            "OVERLOAD",
+            "UNDERLOAD",
+            "UNKNOWN"
+          ]
+        }
+      },
+      "required": [
+        "raw_weight",
+        "raw_uom",
+        "normalized_kg",
+        "stable_flag",
+        "device_status"
+      ],
+      "additionalProperties": false
+    },
+    "POSITION_EVIDENCE": {
+      "type": "object",
+      "properties": {
+        "verdict": {
+          "enum": [
+            "VALID",
+            "INVALID",
+            "UNKNOWN"
+          ]
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "model_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "region_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "verdict",
+        "confidence",
+        "model_version",
+        "region_version",
+        "evidence_ref"
+      ],
+      "additionalProperties": false
+    },
+    "BAG_PASSAGE": {
+      "type": "object",
+      "properties": {
+        "passage_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "track_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "enum": [
+            "FORWARD",
+            "REVERSE"
+          ]
+        },
+        "quantity": {
+          "const": 1
+        },
+        "item_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "model_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "passage_id",
+        "track_id",
+        "direction",
+        "quantity",
+        "item_code",
+        "confidence",
+        "model_version",
+        "evidence_ref"
+      ],
+      "additionalProperties": false
+    },
+    "IOT_MASS_READING": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "DELTA",
+            "CUMULATIVE"
+          ]
+        },
+        "value_kg": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "counter_epoch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mass_origin": {
+          "enum": [
+            "MEASURED",
+            "DERIVED_FROM_COUNT"
+          ]
+        },
+        "mass_basis": {
+          "enum": [
+            "PRODUCT_NET",
+            "PACKAGED_GOODS",
+            "INCLUDING_PALLETS",
+            "UNKNOWN"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "value_kg",
+        "counter_epoch",
+        "mass_origin",
+        "mass_basis"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "CUMULATIVE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "counter_epoch": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "BARRIER_FEEDBACK": {
+      "type": "object",
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "ACKNOWLEDGED",
+            "OPEN",
+            "CLOSED",
+            "FAILED",
+            "UNKNOWN"
+          ]
+        },
+        "passage_event_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "command_id",
+        "state",
+        "passage_event_ref"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "SCALE_READING"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/SCALE_READING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "POSITION_EVIDENCE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/POSITION_EVIDENCE"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "BAG_PASSAGE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/BAG_PASSAGE"
+          },
+          "trip_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "measurement_session_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "trip_id",
+          "measurement_session_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "IOT_MASS_READING"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/IOT_MASS_READING"
+          },
+          "trip_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "measurement_session_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "trip_id",
+          "measurement_session_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "BARRIER_FEEDBACK"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/BARRIER_FEEDBACK"
+          }
+        }
+      }
+    }
+  ]
+}

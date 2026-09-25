@@ -1,0 +1,117 @@
+{
+  "status": "SYNTHETIC_TEST_DATA_ONLY",
+  "not_production_thresholds": true,
+  "events": [
+    {
+      "schema_version": "0.1-proposal",
+      "event_id": "TEST_EVENT_001",
+      "event_type": "SCALE_READING",
+      "site_id": "TEST_SITE",
+      "lane_id": "TEST_LANE_01",
+      "device_id": "TEST_DEVICE_001",
+      "boot_session_id": "TEST_BOOT_01",
+      "sequence": 1,
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "received_at": "2026-01-01T00:00:00.100Z",
+      "correlation_id": "TEST_CORRELATION_001",
+      "trip_id": "TEST_TRIP_001",
+      "measurement_session_id": null,
+      "payload": {
+        "raw_weight": "35000",
+        "raw_uom": "kg",
+        "normalized_kg": "35000",
+        "stable_flag": true,
+        "device_status": "OK"
+      }
+    },
+    {
+      "schema_version": "0.1-proposal",
+      "event_id": "TEST_EVENT_002",
+      "event_type": "POSITION_EVIDENCE",
+      "site_id": "TEST_SITE",
+      "lane_id": "TEST_LANE_01",
+      "device_id": "TEST_DEVICE_002",
+      "boot_session_id": "TEST_BOOT_01",
+      "sequence": 1,
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "received_at": "2026-01-01T00:00:00.100Z",
+      "correlation_id": "TEST_CORRELATION_001",
+      "trip_id": "TEST_TRIP_001",
+      "measurement_session_id": null,
+      "payload": {
+        "verdict": "VALID",
+        "confidence": 0.97,
+        "model_version": "TEST_MODEL_01",
+        "region_version": "TEST_REGION_01",
+        "evidence_ref": "test-evidence-position-001"
+      }
+    },
+    {
+      "schema_version": "0.1-proposal",
+      "event_id": "TEST_EVENT_003",
+      "event_type": "BAG_PASSAGE",
+      "site_id": "TEST_SITE",
+      "lane_id": "TEST_LANE_01",
+      "device_id": "TEST_DEVICE_003",
+      "boot_session_id": "TEST_BOOT_01",
+      "sequence": 1,
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "received_at": "2026-01-01T00:00:00.100Z",
+      "correlation_id": "TEST_CORRELATION_001",
+      "trip_id": "TEST_TRIP_001",
+      "measurement_session_id": "TEST_MEASUREMENT_001",
+      "payload": {
+        "passage_id": "PASSAGE_TEST_001",
+        "track_id": "TRACK_TEST_001",
+        "direction": "FORWARD",
+        "quantity": 1,
+        "item_code": "TEST_ITEM_50KG",
+        "confidence": 0.98,
+        "model_version": "TEST_MODEL_02",
+        "evidence_ref": "test-evidence-bag-001"
+      }
+    },
+    {
+      "schema_version": "0.1-proposal",
+      "event_id": "TEST_EVENT_004",
+      "event_type": "IOT_MASS_READING",
+      "site_id": "TEST_SITE",
+      "lane_id": "TEST_LANE_01",
+      "device_id": "TEST_DEVICE_004",
+      "boot_session_id": "TEST_BOOT_01",
+      "sequence": 1,
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "received_at": "2026-01-01T00:00:00.100Z",
+      "correlation_id": "TEST_CORRELATION_001",
+      "trip_id": "TEST_TRIP_001",
+      "measurement_session_id": "TEST_MEASUREMENT_001",
+      "payload": {
+        "mode": "CUMULATIVE",
+        "value_kg": "31000",
+        "counter_epoch": "TEST_EPOCH_01",
+        "mass_origin": "MEASURED",
+        "mass_basis": "PACKAGED_GOODS"
+      }
+    },
+    {
+      "schema_version": "0.1-proposal",
+      "event_id": "TEST_EVENT_005",
+      "event_type": "BARRIER_FEEDBACK",
+      "site_id": "TEST_SITE",
+      "lane_id": "TEST_LANE_01",
+      "device_id": "TEST_DEVICE_005",
+      "boot_session_id": "TEST_BOOT_01",
+      "sequence": 1,
+      "occurred_at": "2026-01-01T00:00:00Z",
+      "received_at": "2026-01-01T00:00:00.100Z",
+      "correlation_id": "TEST_CORRELATION_001",
+      "trip_id": "TEST_TRIP_001",
+      "measurement_session_id": null,
+      "payload": {
+        "command_id": "TEST_GATE_COMMAND_001",
+        "state": "ACKNOWLEDGED",
+        "passage_event_ref": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Postgres cho môi trường phát triển cục bộ.
+# Mật khẩu ở đây chỉ dùng cho máy dev. Môi trường vận hành phải lấy từ secret store,
+# không đặt trong tệp commit vào repository (R-035).
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: ttc-weighing-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ttc_weighing
+      POSTGRES_USER: ttc_dev
+      POSTGRES_PASSWORD: ttc_dev_local_only
+      # Chuẩn hóa collation để so sánh chuỗi mã chứng từ nhất quán.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ttc-weighing-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ttc_dev -d ttc_weighing"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ttc-weighing-pgdata:

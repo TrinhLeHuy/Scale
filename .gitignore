@@ -1,0 +1,26 @@
+## Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+.vs/
+
+## Cấu hình cục bộ — có thể chứa connection string/secret, không commit (R-035)
+appsettings.Development.json
+appsettings.Local.json
+.env
+*.pfx
+*.p12
+
+## Test/coverage
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+
+## Rider / VS Code
+.idea/
+.vscode/*
+!.vscode/extensions.json
