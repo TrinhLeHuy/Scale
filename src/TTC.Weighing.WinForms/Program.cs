@@ -198,6 +198,7 @@ internal static class Program
         services.AddTransient<ConfigurationForm>();
         services.AddTransient<ReportForm>();
         services.AddTransient<GuideForm>();
+        services.AddTransient<FrmSyncForm>();
     }
 
     /// <summary>

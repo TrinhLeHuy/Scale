@@ -338,6 +338,34 @@ public sealed class FrmMasterDataCache
         }
     }
 
+    /// <summary>Kiểm tra số lượng records cho 1 entity trên API (không cache).</summary>
+    public async Task<int> FetchEntityCountAsync(string entity, CancellationToken ct = default)
+        => await FetchEntityCountAsync(entity, null, ct);
+
+    public async Task<int> FetchEntityCountAsync(string entity, string? businessUnit, CancellationToken ct = default)
+    {
+        var bu = businessUnit ?? _configuration.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit") ?? "TTCS";
+        var requestBody = new Dictionary<string, object>
+        {
+            ["entities"] = entity,
+            ["busineesUnit"] = bu,
+            ["Date"] = "1900-01-01 00:00:00",
+            ["page"] = 1,
+            ["pageSize"] = 1
+        };
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, API_PATH);
+        httpRequest.Content = JsonContent.Create(requestBody);
+        SetBasicAuth(httpRequest);
+
+        var response = await _httpClient.SendAsync(httpRequest, ct);
+        if (!response.IsSuccessStatusCode) return -1;
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        var apiResponse = System.Text.Json.JsonSerializer.Deserialize<FrmApiResponse>(body);
+        return apiResponse?.TotalCount ?? 0;
+    }
+
     private static string NormalizePlate(string? plate)
         => plate is null
             ? string.Empty
