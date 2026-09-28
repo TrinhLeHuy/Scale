@@ -54,47 +54,40 @@ internal static class Program
         services.AddSingleton<ILocalizer>(localizer);
         ConfigureServices(services, configuration);
 
-        using var provider = services.BuildServiceProvider();
+        // Build DI sau — hiện LoginForm trước để không giật
+        ServiceProvider? provider = null;
 
-        // Kiểm tra nhanh cấu hình DI mà không mở cửa sổ, dùng cho CI và chẩn đoán.
+        // Kiểm tra nhanh cấu hình DI — chỉ khi có flag
         if (args.Contains("--smoke", StringComparer.OrdinalIgnoreCase))
+        {
+            provider = services.BuildServiceProvider();
             return RunSmokeCheck(provider);
+        }
 
-        // Kiểm tra bố cục: phát hiện control bị cắt hoặc chồng nhau.
         if (args.Contains("--layout", StringComparer.OrdinalIgnoreCase))
+        {
+            provider ??= services.BuildServiceProvider();
             return RunLayoutCheck(provider);
+        }
 
         WinFormsApp.ThreadException += (_, e) => ReportFatal(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => ReportFatal(e.ExceptionObject as Exception);
 
-        // ── Kéo dữ liệu FRM master data (xe, thẻ xe) về cache khi khởi động ──
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var cache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
-                await cache.RefreshAsync();
-            }
-            catch
-            {
-                // Cache load thất bại không chặn app khởi động — user sẽ thấy thông báo "đang tải" khi tra cứu
-            }
-        });
-
-        // ── Login trước khi mở MainForm — vòng lặp để hỗ trợ đăng xuất quay lại login ──
+        // ── Login trước — không cần DB, không cần DI ──
         while (true)
         {
             var apiBaseUrl = configuration.GetValue<string>("DigiScaleApi:BaseUrl");
             var requiredTenantId = configuration.GetValue<string>("DigiScaleApi:TenantId");
             using var loginForm = new LoginForm(apiBaseUrl, requiredTenantId);
             if (loginForm.ShowDialog() != DialogResult.OK)
-                return 0; // User hủy đăng nhập → thoát app
+            {
+                provider?.Dispose();
+                return 0;
+            }
 
-            // Đổi ngôn ngữ theo tài khoản: culture trong JWT (sau này web portal cấp API BU + ngôn ngữ).
             if (loginForm.LoginResult?.Culture is { Length: > 0 } culture)
                 localizer.SetLanguage(AppLanguageInfo.FromCode(culture));
 
-            // Giới hạn ngôn ngữ theo allowed_cultures từ API — chỉ hiển thị ngôn ngữ BU cho phép.
             if (loginForm.LoginResult?.AllowedCultures is { Length: > 0 } allowedCultures)
             {
                 var allowedLanguages = allowedCultures
@@ -104,8 +97,24 @@ internal static class Program
                 localizer.SetAllowedLanguages(allowedLanguages);
             }
 
-            var mainForm = provider.GetRequiredService<MainForm>();
-            mainForm.SetLoggedInUser(loginForm.AuthenticatedUser ?? "Admin");
+            // Build DI SAU login (chỉ 1 lần)
+            provider ??= services.BuildServiceProvider();
+
+            // FRM cache load background
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var cache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
+                    await cache.RefreshAsync();
+                }
+                catch { }
+            });
+
+            try
+            {
+                var mainForm = provider.GetRequiredService<MainForm>();
+                mainForm.SetLoggedInUser(loginForm.AuthenticatedUser ?? "Admin");
 
             // Hiển thị tên BU (công ty) trên brand bar nếu có.
             if (loginForm.LoginResult is { OrganizationUnitCode.Length: > 0 } lr)
@@ -126,6 +135,13 @@ internal static class Program
             // Nếu MainForm đóng do đăng xuất → quay lại login; ngược lại → thoát app.
             if (!mainForm.IsLogout)
                 return 0;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi khởi tạo ứng dụng:\n{ex.Message}", "Lỗi hệ thống",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                continue; // Quay lại login thay vì tắt app
+            }
 
             // Reset ngôn ngữ về mặc định trước khi hiện lại màn hình login.
             localizer.SetLanguage(defaultLanguage);

@@ -44,6 +44,7 @@ public sealed class LoginForm : Form
 
     // Cờ chặn vẽ + layout khi form đang maximize / chưa sẵn sàng.
     private bool _ready;
+    private Bitmap? _bgCache; // Cache background tránh vẽ lại mỗi repaint
 
     public string? AuthenticatedUser { get; private set; }
 
@@ -58,6 +59,7 @@ public sealed class LoginForm : Form
         FormBorderStyle = FormBorderStyle.None;
         DoubleBuffered = true;
         KeyPreview = true;
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
 
         // Không dùng WindowState = Maximized (gây chớp nháy do Windows resize 2 lần).
         // Thay vào đó set kích thước = toàn màn hình ngay từ constructor.
@@ -110,10 +112,12 @@ public sealed class LoginForm : Form
         var sp1 = Spacer(18);
         _lblU = FieldLabel("TÊN ĐĂNG NHẬP / USERNAME");
         _txtUser = Input("Nhập tên đăng nhập / Enter username");
+        _txtUser.TabIndex = 0;
         var sp2 = Spacer(12);
         _lblP = FieldLabel("MẬT KHẨU / PASSWORD");
         _txtPass = Input("••••••••");
         _txtPass.UseSystemPasswordChar = true;
+        _txtPass.TabIndex = 1;
         var sp3 = Spacer(20);
 
         _btnLogin = new Button
@@ -123,7 +127,8 @@ public sealed class LoginForm : Form
             FlatStyle = FlatStyle.Flat,
             BackColor = Teal, ForeColor = Color.White,
             Font = new Font("Segoe UI", 11F, FontStyle.Bold),
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            TabIndex = 2
         };
         _btnLogin.FlatAppearance.BorderSize = 0;
         _btnLogin.FlatAppearance.MouseOverBackColor = Green;
@@ -137,7 +142,8 @@ public sealed class LoginForm : Form
             Font = new Font("Segoe UI", 9.5F),
             ForeColor = AgrisTheme.Danger,
             TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            TabStop = false
         };
 
         formArea.Controls.Add(_lblError);
@@ -163,7 +169,8 @@ public sealed class LoginForm : Form
             BackColor = Color.Transparent, ForeColor = Color.FromArgb(200, 255, 255, 255),
             Font = new Font("Segoe UI", 14F), Cursor = Cursors.Hand,
             Anchor = AnchorStyles.Top | AnchorStyles.Right,
-            Visible = false
+            Visible = false,
+            TabStop = false
         };
         _btnClose.FlatAppearance.BorderSize = 0;
         _btnClose.FlatAppearance.MouseOverBackColor = AgrisTheme.Danger;
@@ -289,21 +296,26 @@ public sealed class LoginForm : Form
 
     private void PaintBg(object? sender, PaintEventArgs e)
     {
-        if (!_ready) return; // Chưa sẵn sàng → không vẽ, tránh flicker khi maximize.
+        if (!_ready) return;
 
-        var g = e.Graphics;
-        // Nền gradient sáng hơn: teal sáng → xanh lá sáng (chéo)
-        using var bg = new LinearGradientBrush(ClientRectangle,
-            Color.FromArgb(36, 88, 110),
-            Color.FromArgb(32, 82, 68),
-            LinearGradientMode.ForwardDiagonal);
-        g.FillRectangle(bg, ClientRectangle);
+        // Cache background bitmap — chỉ vẽ 1 lần
+        if (_bgCache is null || _bgCache.Width != ClientSize.Width || _bgCache.Height != ClientSize.Height)
+        {
+            _bgCache?.Dispose();
+            _bgCache = new Bitmap(ClientSize.Width, ClientSize.Height);
+            using var bg = Graphics.FromImage(_bgCache);
+            using var brush = new LinearGradientBrush(ClientRectangle,
+                Color.FromArgb(36, 88, 110),
+                Color.FromArgb(32, 82, 68),
+                LinearGradientMode.ForwardDiagonal);
+            bg.FillRectangle(brush, ClientRectangle);
+            using var glow1 = new SolidBrush(Color.FromArgb(10, 255, 255, 255));
+            bg.FillEllipse(glow1, -150, ClientSize.Height - 350, 500, 500);
+            using var glow2 = new SolidBrush(Color.FromArgb(8, 255, 255, 255));
+            bg.FillEllipse(glow2, ClientSize.Width - 250, -100, 450, 450);
+        }
 
-        // Glow mềm
-        using var glow1 = new SolidBrush(Color.FromArgb(10, 255, 255, 255));
-        g.FillEllipse(glow1, -150, ClientSize.Height - 350, 500, 500);
-        using var glow2 = new SolidBrush(Color.FromArgb(8, 255, 255, 255));
-        g.FillEllipse(glow2, ClientSize.Width - 250, -100, 450, 450);
+        e.Graphics.DrawImageUnscaled(_bgCache, 0, 0);
     }
 
     private static void PaintCard(object? sender, PaintEventArgs e)
@@ -315,15 +327,18 @@ public sealed class LoginForm : Form
         var rect = new Rectangle(0, 0, panel.Width - 1, panel.Height - 1);
         using var path = RoundedRect(rect, 16);
 
-        // Card nền trắng bán trong suốt (glassmorphism nhẹ)
         using var fill = new SolidBrush(Color.FromArgb(240, 255, 255, 255));
         g.FillPath(fill, path);
 
-        // Viền mờ
         using var border = new Pen(Color.FromArgb(60, 255, 255, 255), 1.5f);
         g.DrawPath(border, path);
 
-        panel.Region = new Region(RoundedRect(new Rectangle(0, 0, panel.Width, panel.Height), 16));
+        // Set Region 1 lần — không tạo lại mỗi paint
+        if (panel.Tag is not "region_set")
+        {
+            panel.Region = new Region(RoundedRect(new Rectangle(0, 0, panel.Width, panel.Height), 16));
+            panel.Tag = "region_set";
+        }
     }
 
     private static void PaintLogo(object? sender, PaintEventArgs e)
@@ -399,7 +414,8 @@ public sealed class LoginForm : Form
         Font = new Font(AgrisTheme.FontFamily, 8.5F, FontStyle.Bold),
         ForeColor = Color.FromArgb(100, 115, 120),
         Padding = new Padding(0, 4, 0, 0),
-        BackColor = Color.Transparent
+        BackColor = Color.Transparent,
+        TabStop = false
     };
 
     private static TextBox Input(string ph) => new()
@@ -409,5 +425,5 @@ public sealed class LoginForm : Form
         BackColor = Color.FromArgb(245, 248, 247)
     };
 
-    private static Panel Spacer(int h) => new() { Dock = DockStyle.Top, Height = h, BackColor = Color.Transparent };
+    private static Panel Spacer(int h) => new() { Dock = DockStyle.Top, Height = h, BackColor = Color.Transparent, TabStop = false };
 }

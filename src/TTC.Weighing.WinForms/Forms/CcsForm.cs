@@ -27,7 +27,7 @@ public sealed class CcsForm : Form
     {
         Dock = DockStyle.Fill,
         Font = AgrisTheme.Mono(12F),
-        PlaceholderText = "Quét QR hoặc nhập số đăng tài...",
+        PlaceholderText = "Nhập mã đăng tài hoặc biển số xe...",
         AccessibleName = "Barcode scan"
     };
 
@@ -56,7 +56,7 @@ public sealed class CcsForm : Form
     // ── Status ──
     private readonly Label _lblStatus = new()
     {
-        Text = "Quét QR để bắt đầu",
+        Text = "Nhập mã đăng tài hoặc biển số để bắt đầu",
         Font = AgrisTheme.Body(10F, FontStyle.Italic),
         ForeColor = AgrisTheme.BrandGreen,
         Dock = DockStyle.Fill,
@@ -184,7 +184,7 @@ public sealed class CcsForm : Form
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show("Quét QR trước khi ghi nhận CCS.", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show("Nhập mã đăng tài hoặc biển số trước.", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -252,7 +252,7 @@ public sealed class CcsForm : Form
         _txtOwner.Clear();
         _numCcs.Value = 0;
         _chkCcsPending.Checked = false;
-        _lblStatus.Text = "Quét QR để bắt đầu";
+        _lblStatus.Text = "Nhập mã đăng tài hoặc biển số để bắt đầu";
         _lblStatus.ForeColor = AgrisTheme.BrandGreen;
         _txtBarcode.Focus();
     }
