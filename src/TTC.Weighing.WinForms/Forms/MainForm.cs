@@ -338,10 +338,10 @@ public sealed class MainForm : Form
         opsMenu.DropDownItems.Add(Screen(Loc.T("menu.trip_registration"), Open<TripRegistrationForm>));
         opsMenu.DropDownItems.Add(Screen(Loc.T("menu.weighing"), Open<WeighOperationForm>));
         opsMenu.DropDownItems.Add(Screen(Loc.T("menu.quality"), Open<QualityForm>));
+        opsMenu.DropDownItems.Add(Screen("Đo chữ đường (CCS)", Open<CcsForm>));
 
         var mgmtMenu = new ToolStripMenuItem(Loc.T("menu.lookup"));
         mgmtMenu.DropDownItems.Add(Screen(Loc.T("menu.trip_detail"), Open<TripDetailForm>));
-        mgmtMenu.DropDownItems.Add(Screen(Loc.T("menu.exception_queue"), Open<ExceptionQueueForm>));
         mgmtMenu.DropDownItems.Add(Screen(Loc.T("menu.report"), Open<ReportForm>));
 
         var itMenu = new ToolStripMenuItem(Loc.T("menu.technical"));

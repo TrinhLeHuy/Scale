@@ -35,7 +35,8 @@ public sealed class WeighOperationPresenter(
     IWeighOperationQueries weighOperationQueries,
     IWeighSessionRepository weighSessionRepository,
     IWeighbridgeRepository weighbridgeRepository,
-    ISiteContext siteContext)
+    ISiteContext siteContext,
+    TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter digiScaleTickets)
 {
     /// <summary>Độ mới tối đa dùng riêng cho hiển thị. Không dùng làm điều kiện chốt cân.</summary>
     private static readonly TimeSpan DisplayStaleAfter = TimeSpan.FromSeconds(2);
@@ -141,4 +142,11 @@ public sealed class WeighOperationPresenter(
     public async Task<IReadOnlyList<WeighedTripRow>> LoadPendingTripsAsync(
         Guid siteId, CancellationToken ct = default)
         => await weighOperationQueries.ListPendingAsync(siteId, ct);
+
+    /// <summary>Push phiếu cân lên DigiScale (bước 8).</summary>
+    public Task<TTC.Weighing.Infrastructure.Adapters.TicketResult> PushPhieuCanAsync(
+        string loaiCan, string lanCan, string nvCan, string lenhDon,
+        string trongLuong, DateTime thoiGian, string soPhieuCan,
+        string tlThanhToan, string tcThanhToan, string ccsThanhToan, CancellationToken ct = default)
+        => digiScaleTickets.PushPhieuCanAsync(loaiCan, lanCan, nvCan, lenhDon, trongLuong, thoiGian, soPhieuCan, tlThanhToan, tcThanhToan, ccsThanhToan, ct);
 }

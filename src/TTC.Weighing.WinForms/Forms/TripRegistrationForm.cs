@@ -1127,6 +1127,24 @@ public sealed class TripRegistrationForm : Form
             // Hiện phiếu đăng tài (popup trên form hiện tại, không nhảy tab)
             if (result.TripId.HasValue)
                 ShowTripReceiptPreview(result.TripId.Value, isReprint: false);
+
+            // Push phiếu đăng tài lên DigiScale (bước 8)
+            try
+            {
+                var pushResult = await _presenter.PushDangTaiAsync(
+                    _txtShipment.Text.Trim(),
+                    DateTime.Now,
+                    _txtVehicleType.Text.Trim(),
+                    result.TripNo ?? "",
+                    FormToken);
+                AppendNotification(pushResult.IsSuccess
+                    ? "✅ Đã đẩy phiếu đăng tài lên DigiScale."
+                    : $"⚠ DigiScale: {pushResult.ErrorMessage}");
+            }
+            catch (Exception pushEx)
+            {
+                AppendNotification($"⚠ Push DigiScale lỗi: {pushEx.Message}");
+            }
         }
         catch (OperationCanceledException)
         {

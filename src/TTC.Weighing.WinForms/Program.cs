@@ -192,6 +192,7 @@ internal static class Program
         services.AddTransient<TripRegistrationForm>();
         services.AddTransient<WeighOperationForm>();
         services.AddTransient<QualityForm>();
+        services.AddTransient<CcsForm>();
         services.AddTransient<TripDetailForm>();
         services.AddTransient<ExceptionQueueForm>();
         services.AddTransient<IntegrationMonitorForm>();

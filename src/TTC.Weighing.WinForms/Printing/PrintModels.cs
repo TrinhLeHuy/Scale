@@ -126,3 +126,24 @@ public sealed record BaoCaoCanMiaData(
     decimal TongKlBaBun,
     decimal TongKlCat,
     List<BaoCaoCanMiaRow> Rows);
+
+
+/// <summary>Dòng báo cáo kiểm tra trọng tải xe vận chuyển.</summary>
+public sealed record BaoCaoTrongTaiRow(
+    string SoXe,
+    string? TenChuXe,
+    int SoChuyenDaVanChuyen,
+    decimal TrongLuongVaoMax,
+    decimal TrongLuongVaoMin,
+    decimal TrongLuongVaoLech,
+    decimal TrongLuongRaMax,
+    decimal TrongLuongRaMin,
+    decimal TrongLuongRaLech,
+    decimal TrongLuongBqChuyen);
+
+/// <summary>Data báo cáo kiểm tra trọng tải xe vận chuyển.</summary>
+public sealed record BaoCaoTrongTaiData(
+    FactoryInfo Factory,
+    string TuNgay,
+    string DenNgay,
+    List<BaoCaoTrongTaiRow> Rows);

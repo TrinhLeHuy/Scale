@@ -22,7 +22,8 @@ public sealed class TripRegistrationPresenter(
     ISiteContext siteContext,
     ICurrentUser currentUser,
     IWeighTicketPrintService printService,
-    TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache frmCache)
+    TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache frmCache,
+    TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter digiScaleTickets)
 {
     /// <summary>
     /// IWeighTicketPrintService cho PrintHelper dùng (Req 8.3).
@@ -216,4 +217,9 @@ public sealed class TripRegistrationPresenter(
 
         return (true, null);
     }
+
+    /// <summary>Push phiếu đăng tài lên DigiScale (bước 8).</summary>
+    public async Task<TTC.Weighing.Infrastructure.Adapters.TicketResult> PushDangTaiAsync(
+        string lenhDon, DateTime ngay, string loaiXe, string soDangTai, CancellationToken ct = default)
+        => await digiScaleTickets.PushDangTaiAsync(lenhDon, ngay, "1", loaiXe, soDangTai, ct);
 }

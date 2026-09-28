@@ -261,24 +261,22 @@ public sealed class QualityForm : Form
         ConfigureGrid();
         BuildManualEntryPanel();
 
-        // Layout 3 cột: Thông tin xe 35% | Cân tạp chất 40% | CCS & Lịch sử 25%
-        var top = new TableLayoutPanel
+        // Layout 2 cột: Thông tin xe 35% | Cân tạp chất + Lịch sử 65%
+        var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 2,
             RowCount = 1,
             BackColor = AgrisTheme.Canvas,
             Padding = new Padding(8)
         };
-        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
-        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
-        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        top.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        top.Controls.Add(BuildScanCard(), 0, 0);
-        top.Controls.Add(BuildImpurityCard(), 1, 0);
+        root.Controls.Add(BuildScanCard(), 0, 0);
 
-        // Cột phải: CCS trên + Lịch sử dưới
+        // Cột phải: Cân tạp chất trên + Lịch sử dưới
         var rightPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -286,14 +284,14 @@ public sealed class QualityForm : Form
             RowCount = 2
         };
         rightPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        rightPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        rightPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        rightPanel.Controls.Add(BuildCcsCard(), 0, 0);
+        rightPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
+        rightPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        rightPanel.Controls.Add(BuildImpurityCard(), 0, 0);
         rightPanel.Controls.Add(BuildHistoryCard(), 0, 1);
 
-        top.Controls.Add(rightPanel, 2, 0);
+        root.Controls.Add(rightPanel, 1, 0);
 
-        Controls.Add(top);
+        Controls.Add(root);
     }
 
     private void WireEvents()

@@ -144,9 +144,10 @@ public sealed class FrmSyncForm : Form
                     try
                     {
                         var count = await _cache.FetchEntityCountAsync(ent, bu);
-                        if (count > 0) AppendLog($"  ✅ {ent}: {count}");
+                        var icon = count > 0 ? "✅" : "❌";
+                        AppendLog($"  {icon} {ent}: {count}");
                     }
-                    catch { /* skip errors */ }
+                    catch (Exception ex) { AppendLog($"  ⚠ {ent}: lỗi — {ex.Message}"); }
                 }
             }
 

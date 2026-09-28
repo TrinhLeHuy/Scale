@@ -128,7 +128,8 @@ public class WeighOperationPresenterTests
             _weighOperationQueries,
             Substitute.For<IWeighSessionRepository>(),
             Substitute.For<IWeighbridgeRepository>(),
-            Substitute.For<ISiteContext>());
+            Substitute.For<ISiteContext>(),
+            Substitute.For<TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter>());
     }
 
     // ──────────────────────────────────────────────────────

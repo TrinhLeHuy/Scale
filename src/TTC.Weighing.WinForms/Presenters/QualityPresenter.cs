@@ -19,7 +19,8 @@ public sealed class QualityPresenter(
     ISampleScaleGateway sampleScaleGateway,
     RecordImpuritySampleHandler recordImpurity,
     ReceiveCcsResultHandler receiveCcs,
-    IClock clock)
+    IClock clock,
+    TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter digiScaleTickets)
 {
     /// <summary>Độ mới tối đa dùng riêng cho hiển thị cân mẫu. Không dùng làm điều kiện ghi kết quả.</summary>
     private static readonly TimeSpan DisplayStaleAfter = TimeSpan.FromSeconds(2);
@@ -67,4 +68,16 @@ public sealed class QualityPresenter(
     public Task<ReceiveCcsResultResult> RecordCcsAsync(
         ReceiveCcsResultCommand cmd, CancellationToken ct = default)
         => receiveCcs.HandleAsync(cmd, ct);
+
+    /// <summary>Push phiếu tạp chất lên DigiScale (bước 8).</summary>
+    public Task<TTC.Weighing.Infrastructure.Adapters.TicketResult> PushTapChatAsync(
+        string lenhDon, string sttCan, string lanDo, DateTime ngay,
+        string klBefore, string klAfter, string tapChatThucTe, CancellationToken ct = default)
+        => digiScaleTickets.PushTapChatAsync(lenhDon, sttCan, lanDo, ngay, klBefore, klAfter, tapChatThucTe, ct);
+
+    /// <summary>Push phiếu CCS lên DigiScale (bước 8).</summary>
+    public Task<TTC.Weighing.Infrastructure.Adapters.TicketResult> PushCcsAsync(
+        string lenhDon, string sttCan, string lanDo, DateTime ngay,
+        string brix, string ccsDo, string pol, string polDoc, string caLamViec, CancellationToken ct = default)
+        => digiScaleTickets.PushCcsAsync(lenhDon, sttCan, lanDo, ngay, brix, ccsDo, pol, polDoc, caLamViec, ct);
 }

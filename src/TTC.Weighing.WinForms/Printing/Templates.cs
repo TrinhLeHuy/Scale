@@ -200,3 +200,29 @@ public sealed class BaoCaoCanMiaTemplate(BaoCaoCanMiaData d) : IPrintTemplate
         PrintHelper.DrawTable(g, b.Left, y, b.Width, headers, colW, rows);
     }
 }
+
+
+// ════════════════════════════════════════════════════════════
+// 7. BÁO CÁO KIỂM TRA TRỌNG TẢI XE VẬN CHUYỂN
+// ════════════════════════════════════════════════════════════
+public sealed class BaoCaoTrongTaiTemplate(BaoCaoTrongTaiData d) : IPrintTemplate
+{
+    public void Render(Graphics g, Rectangle b)
+    {
+        var y = PrintHelper.DrawCompanyHeader(g, b, b.Top, d.Factory.CompanyName, d.Factory.Address);
+        PrintHelper.DrawDateRange(g, b, b.Top, d.TuNgay, d.DenNgay);
+        y = PrintHelper.DrawTitle(g, b, y + 4, "BÁO CÁO KIỂM TRA TRỌNG TẢI XE VẬN CHUYỂN");
+
+        var headers = new[] { "Số xe", "Tên chủ xe", "Số chuyến", "Vào Max", "Vào Min", "Vào Lệch", "Ra Max", "Ra Min", "Ra Lệch", "TL BQ/chuyến" };
+        var colW = new[] { 65, 80, 50, 55, 55, 50, 55, 55, 50, 65 };
+        var rows = d.Rows.Select(r => new[]
+        {
+            r.SoXe, r.TenChuXe ?? "", r.SoChuyenDaVanChuyen.ToString(),
+            $"{r.TrongLuongVaoMax:N0}", $"{r.TrongLuongVaoMin:N0}", $"{r.TrongLuongVaoLech:N0}",
+            $"{r.TrongLuongRaMax:N0}", $"{r.TrongLuongRaMin:N0}", $"{r.TrongLuongRaLech:N0}",
+            $"{r.TrongLuongBqChuyen:N0}"
+        }).ToList();
+
+        PrintHelper.DrawTable(g, b.Left, y, b.Width, headers, colW, rows);
+    }
+}

@@ -132,6 +132,18 @@ public static class DependencyInjection
                 client.BaseAddress = new Uri(baseUrl);
         });
 
+        // DigiScale ticket sync — đẩy phiếu cân/đăng tài/tạp chất/CCS lên DigiScale
+        services.AddHttpClient<DigiScaleTicketAdapter>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            var baseUrl = configuration?.GetValue<string>("FrmPlanLookup:BaseUrl");
+            if (!string.IsNullOrWhiteSpace(baseUrl))
+            {
+                if (!baseUrl.EndsWith('/')) baseUrl += '/';
+                client.BaseAddress = new Uri(baseUrl);
+            }
+        });
+
         return services;
     }
 }
