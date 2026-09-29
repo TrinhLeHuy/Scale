@@ -13,7 +13,8 @@ namespace TTC.Weighing.Infrastructure.Adapters;
 //  (nhan-vien → Forbidden cho account hiện tại)
 //
 //  Lưu ý: field "busineesUnit" có lỗi chính tả từ API gốc — giữ nguyên.
-//  Lưu ý: "LenhDon" chưa được server mirror — chưa dùng được.
+//  Lưu ý: "LenhDon" chưa được server DigiScale mirror — server trả 400 UNKNOWN_ENTITY.
+//         Cần yêu cầu team DigiScale thêm entity này. Xong thì thêm vào danh sách sync.
 // ══════════════════════════════════════════════════════════════
 
 /// <summary>Request body gửi đến FRM API.</summary>

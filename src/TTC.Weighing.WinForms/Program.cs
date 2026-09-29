@@ -73,14 +73,30 @@ internal static class Program
         WinFormsApp.ThreadException += (_, e) => ReportFatal(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => ReportFatal(e.ExceptionObject as Exception);
 
-        // ── Login trước — không cần DB, không cần DI ──
+        // ── Splash screen — hiện logo trong khi khởi động ──
+        using var splash = new SplashForm();
+        splash.Show();
+        WinFormsApp.DoEvents();
+
+        // ── Login ──
         while (true)
         {
             var apiBaseUrl = configuration.GetValue<string>("DigiScaleApi:BaseUrl");
             var requiredTenantId = configuration.GetValue<string>("DigiScaleApi:TenantId");
-            using var loginForm = new LoginForm(apiBaseUrl, requiredTenantId);
-            if (loginForm.ShowDialog() != DialogResult.OK)
+
+            var loginForm = new LoginForm(apiBaseUrl, requiredTenantId);
+
+            // Đóng splash SAU khi LoginForm đã hiện xong — không chớp
+            loginForm.Shown += (_, _) =>
             {
+                try { if (!splash.IsDisposed && splash.Visible) splash.Hide(); } catch { }
+            };
+
+            var loginResult = loginForm.ShowDialog();
+
+            if (loginResult != DialogResult.OK)
+            {
+                loginForm.Dispose();
                 provider?.Dispose();
                 return 0;
             }
@@ -146,6 +162,7 @@ internal static class Program
             // Reset ngôn ngữ về mặc định trước khi hiện lại màn hình login.
             localizer.SetLanguage(defaultLanguage);
             localizer.SetAllowedLanguages(null);
+            loginForm.Dispose();
         }
     }
 

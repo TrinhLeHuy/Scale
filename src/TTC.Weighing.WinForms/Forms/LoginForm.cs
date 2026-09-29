@@ -67,7 +67,8 @@ public sealed class LoginForm : Form
         StartPosition = FormStartPosition.Manual;
         Location = screen.Location;
         ClientSize = screen.Size;
-        BackColor = Color.FromArgb(42, 90, 100);
+        BackColor = Color.FromArgb(36, 88, 110);
+        Opacity = 0; // Ẩn hoàn toàn cho đến khi vẽ xong — tránh chớp trắng
 
         Paint += PaintBg;
 
@@ -203,7 +204,9 @@ public sealed class LoginForm : Form
             _card.Visible = true;
             _btnClose.Visible = true;
             _ready = true;
-            Invalidate(); // Vẽ gradient background lần đầu
+            Invalidate();
+            Update(); // Force synchronous repaint TRƯỚC khi hiện form
+            Opacity = 1; // Hiện form sau khi đã vẽ xong — không chớp trắng
             _txtUser.Focus();
         };
 

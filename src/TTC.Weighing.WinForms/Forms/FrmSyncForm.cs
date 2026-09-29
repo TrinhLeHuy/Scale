@@ -134,6 +134,8 @@ public sealed class FrmSyncForm : Form
 
             // Kiểm tra từng entity + từng BU
             var entities = new[] { "brix", "tram", "thua-dat", "xe-van-chuyen", "vu-dau-tu", "giong-mia", "vung-dia-ly", "hop-dong-van-chuyen", "the-xe" };
+            // TODO: Thêm "lenh-don" khi server DigiScale mirror entity LenhDon từ FRM.
+            //       Hiện tại server trả 400 UNKNOWN_ENTITY cho cả "lenh-don" lẫn "LenhDon".
             var bus = new[] { "TTCS", "ATN", "KSK", "NHS", "PRS", "TTCA", "TTCBH" };
 
             foreach (var bu in bus)
@@ -143,9 +145,16 @@ public sealed class FrmSyncForm : Form
                 {
                     try
                     {
-                        var count = await _cache.FetchEntityCountAsync(ent, bu);
-                        var icon = count > 0 ? "✅" : "❌";
-                        AppendLog($"  {icon} {ent}: {count}");
+                        var (count, errorDetail) = await _cache.FetchEntityCountDetailAsync(ent, bu);
+                        if (count >= 0)
+                        {
+                            var icon = count > 0 ? "✅" : "❌";
+                            AppendLog($"  {icon} {ent}: {count}");
+                        }
+                        else
+                        {
+                            AppendLog($"  ❌ {ent}: FAILED — {errorDetail}");
+                        }
                     }
                     catch (Exception ex) { AppendLog($"  ⚠ {ent}: lỗi — {ex.Message}"); }
                 }

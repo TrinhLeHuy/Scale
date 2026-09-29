@@ -338,11 +338,8 @@ public sealed class FrmMasterDataCache
         }
     }
 
-    /// <summary>Kiểm tra số lượng records cho 1 entity trên API (không cache).</summary>
-    public async Task<int> FetchEntityCountAsync(string entity, CancellationToken ct = default)
-        => await FetchEntityCountAsync(entity, null, ct);
-
-    public async Task<int> FetchEntityCountAsync(string entity, string? businessUnit, CancellationToken ct = default)
+    /// <summary>Kiểm tra số lượng records cho 1 entity trên API (không cache). Trả (count, errorDetail).</summary>
+    public async Task<(int Count, string? ErrorDetail)> FetchEntityCountDetailAsync(string entity, string? businessUnit, CancellationToken ct = default)
     {
         var bu = businessUnit ?? _configuration.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit") ?? "TTCS";
         var requestBody = new Dictionary<string, object>
@@ -359,12 +356,22 @@ public sealed class FrmMasterDataCache
         SetBasicAuth(httpRequest);
 
         var response = await _httpClient.SendAsync(httpRequest, ct);
-        if (!response.IsSuccessStatusCode) return -1;
-
         var body = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "FrmCache: FetchEntityCount HTTP {Status} for entity={Entity}, bu={Bu}. Body={Body}",
+                (int)response.StatusCode, entity, bu, body);
+            return (-1, $"HTTP {(int)response.StatusCode}: {TruncateBody(body)}");
+        }
+
         var apiResponse = System.Text.Json.JsonSerializer.Deserialize<FrmApiResponse>(body);
-        return apiResponse?.TotalCount ?? 0;
+        return (apiResponse?.TotalCount ?? 0, null);
     }
+
+    private static string TruncateBody(string body)
+        => body.Length <= 200 ? body : body[..200] + "...";
 
     private static string NormalizePlate(string? plate)
         => plate is null
