@@ -7,6 +7,7 @@ namespace TTC.Weighing.Application.Queries;
 /// Hiển thị thông tin cân vào/ra, trọng lượng hàng, và trạng thái đồng bộ.
 /// </summary>
 public sealed record WeighedTripRow(
+    Guid TripId,
     string RegNo,
     string? TicketNo,
     string? TripNumber,

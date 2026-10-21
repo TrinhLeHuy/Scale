@@ -1,6 +1,7 @@
 using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Application.UseCases.Integration;
+using TTC.Weighing.Application.UseCases.Trips;
 using TTC.Weighing.Application.UseCases.Weighing;
 using TTC.Weighing.Domain.Enums;
 using TTC.Weighing.WinForms.Controls;
@@ -37,9 +38,39 @@ public sealed class WeighOperationForm : Form
     private readonly TextBox _txtBarcode = new()
     {
         PlaceholderText = Loc.T("weigh.scan_placeholder"),
-        Font = new Font(AgrisTheme.FontFamily, 11F),
-        AccessibleName = "Barcode QR input"
+        Font = new Font(AgrisTheme.FontFamily, 12F, FontStyle.Bold),
+        BackColor = Color.FromArgb(255, 255, 220),
+        BorderStyle = BorderStyle.FixedSingle,
+        AccessibleName = "Nhập số đăng tài hoặc biển số xe"
     };
+    private readonly Button _btnTripDropdown = new()
+    {
+        Text = "▼",
+        Width = 30,
+        FlatStyle = FlatStyle.Flat,
+        Cursor = Cursors.Hand,
+        TabStop = false
+    };
+    private readonly Button _btnWeighMode = new()
+    {
+        Text = "🔵 CÂN VÀO",
+        Width = 100,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = Color.FromArgb(0, 120, 215),
+        ForeColor = Color.White,
+        Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+        Cursor = Cursors.Hand,
+        TabStop = false
+    };
+    private bool _isWeighOutMode; // false = cân vào, true = cân ra
+    private readonly ListBox _lstTripPopup = new()
+    {
+        Visible = false,
+        BorderStyle = BorderStyle.FixedSingle,
+        IntegralHeight = false,
+        Font = AgrisTheme.Mono(9F)
+    };
+    private TripRegistrationRow[] _popupTrips = [];
     private readonly TextBox _txtTicketNo = ReadOnlyField(Loc.T("field.ticket_no"));
     private readonly TextBox _txtRegNo = ReadOnlyField(Loc.T("field.trip_no"));
     private readonly TextBox _txtPlate = ReadOnlyField(Loc.T("field.plate"));
@@ -91,7 +122,7 @@ public sealed class WeighOperationForm : Form
     // ── Nút hành động ──
     private readonly Button _btnSave = GridBuilder.PrimaryButton("Xác nhận (F5)", new Size(130, 36));
     private readonly Button _btnPrint = GridBuilder.SecondaryButton(Loc.T("weigh.btn_print"), new Size(120, 36));
-    private readonly Button _btnSync = GridBuilder.SecondaryButton(Loc.T("weigh.btn_sync"), new Size(110, 36));
+    private readonly Button _btnSync = GridBuilder.SecondaryButton("🔄 Đẩy lại Digi", new Size(140, 36));
     private readonly Button _btnReset = GridBuilder.SecondaryButton(Loc.T("weigh.btn_reset"), new Size(120, 36));
 
     // ── Nút cân lại (chỉ hiện khi có quyền weighing.reweigh.request — Req 10.1) ──
@@ -121,8 +152,8 @@ public sealed class WeighOperationForm : Form
     private readonly Button _btnTabPending = GridBuilder.SecondaryButton(Loc.T("weigh.tab_pending"), new Size(100, 28));
     private readonly Button _btnTabWeighIn = GridBuilder.PrimaryButton(Loc.T("weigh.tab_weigh_in"), new Size(100, 28));
     private readonly Button _btnTabBoth = GridBuilder.SecondaryButton(Loc.T("weigh.tab_both"), new Size(140, 28));
-    private readonly DateTimePicker _dtpFrom = new() { Format = DateTimePickerFormat.Short, Width = 120, AccessibleName = Loc.T("reg.filter_from") };
-    private readonly DateTimePicker _dtpTo = new() { Format = DateTimePickerFormat.Short, Width = 120, AccessibleName = Loc.T("reg.filter_to") };
+    private readonly DateTimePicker _dtpFrom = new() { Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy", Width = 150, AccessibleName = Loc.T("reg.filter_from") };
+    private readonly DateTimePicker _dtpTo = new() { Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy", Width = 150, AccessibleName = Loc.T("reg.filter_to") };
 
     // ── Cảnh báo CCS thiếu chữ đường (Req 4.3) ──
     private readonly Label _lblCcsWarning = new()
@@ -161,11 +192,57 @@ public sealed class WeighOperationForm : Form
     private readonly TripEventBus _eventBus;
     private Guid? _currentTripId;
     private int _currentTripVersion;
+    private string? _currentSourceSystem;
+    private string? _currentFrmLenhDonId;
+    private string? _currentFrmMaLenhDon;
+    private string? _currentFrmLenhDonBu;
     private Guid _currentWeighbridgeId;
     private Guid _currentLaneId;
+
+    /// <summary>True nếu đang cân mía (FRM), false nếu vật tư (ERP).</summary>
+    private bool IsUnitTon => _currentSourceSystem != "ERP";
+
+    /// <summary>Chuyển kg sang đơn vị hiển thị (tấn cho mía, kg cho vật tư).</summary>
+    private decimal ToDisplayWeight(decimal kg) => IsUnitTon ? kg / 1000m : kg;
+
+    /// <summary>Đơn vị hiển thị.</summary>
+    private string WeightUnitLabel => IsUnitTon ? "tấn" : "kg";
+
+    /// <summary>Format trọng lượng hiển thị — không số thập phân.</summary>
+    private string FormatWeight(decimal kg) => $"{ToDisplayWeight(kg):N0}";
+
+    /// <summary>Cập nhật label đơn vị (tấn/kg) trên các trường cân.</summary>
+    private void UpdateWeightUnitLabels()
+    {
+        var unit = WeightUnitLabel;
+        _txtWeightIn.AccessibleName = $"TL cân vào ({unit})";
+        _txtWeightOut.AccessibleName = $"TL cân ra ({unit})";
+        _txtNetWeight.AccessibleName = $"TL hàng ({unit})";
+
+        // Cập nhật label trong FormLayout table — tìm label theo text pattern "(tấn)" hoặc "(kg)"
+        static void UpdateLabel(Control parent, string fieldName, string newUnit)
+        {
+            foreach (Control c in parent.Controls)
+            {
+                if (c is Label lbl && lbl.Text.Contains("TL cân vào"))
+                    lbl.Text = $"TL cân vào ({newUnit})";
+                else if (c is Label lbl2 && lbl2.Text.Contains("TL cân ra"))
+                    lbl2.Text = $"TL cân ra ({newUnit})";
+                else if (c is Label lbl3 && lbl3.Text.Contains("TL hàng"))
+                    lbl3.Text = $"TL hàng ({newUnit})";
+                if (c.HasChildren) UpdateLabel(c, fieldName, newUnit);
+            }
+        }
+        UpdateLabel(this, "", unit);
+    }
     private CheckpointType _currentCheckpoint;
     private int _currentSegmentIndex;
     private Guid? _sessionId;
+
+    // ── Chính sách từ DigiScale (lấy khi cân lần 2) ──
+    private decimal? _policyCcsChinhSach;
+    private decimal? _policyTapChatCS;
+    private string? _policyChinhSachThuMia;
     private TimeSpan? _requiredStabilityWindow;
     private bool _isBusy;
     private bool _conditionCheckInFlight;
@@ -195,7 +272,7 @@ public sealed class WeighOperationForm : Form
         _eventBus = eventBus;
 
         Text = Loc.T("weigh.title");
-        MinimumSize = new Size(1100, 720);
+        MinimumSize = new Size(1280, 860);
         BackColor = AgrisTheme.Canvas;
         DoubleBuffered = true;
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
@@ -255,6 +332,7 @@ public sealed class WeighOperationForm : Form
         };
 
         // Tạm dừng timer khi tab không hiển thị để giảm tải CPU/IO.
+        // Ẩn device status bar khi tab không active — tránh chiếm không gian tab khác.
         VisibleChanged += (_, _) =>
         {
             if (Visible)
@@ -268,6 +346,7 @@ public sealed class WeighOperationForm : Form
                 _conditionTimer.Stop();
                 _deviceTimer.Stop();
             }
+            _deviceStatusBar.Visible = Visible;
         };
     }
 
@@ -298,7 +377,7 @@ public sealed class WeighOperationForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = hasSimBar ? 5 : 4,
+            RowCount = hasSimBar ? 4 : 3,
             Padding = new Padding(8, 6, 8, 0)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -307,7 +386,6 @@ public sealed class WeighOperationForm : Form
         if (hasSimBar)
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));   // Sim bar
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 35));   // Grid
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));   // Device status bar
 
         var row = 0;
         root.Controls.Add(BuildTopArea(), 0, row++);
@@ -316,8 +394,7 @@ public sealed class WeighOperationForm : Form
         if (hasSimBar)
             root.Controls.Add(BuildSimulationBar(), 0, row++);
 
-        root.Controls.Add(BuildGridArea(), 0, row++);
-        root.Controls.Add(BuildDeviceStatusBar(), 0, row);
+        root.Controls.Add(BuildGridArea(), 0, row);
 
         Controls.Add(root);
     }
@@ -362,7 +439,7 @@ public sealed class WeighOperationForm : Form
         {
             Minimum = 0,
             Maximum = 80_000,
-            DecimalPlaces = 3,
+            DecimalPlaces = 0,
             Increment = 100,
             Width = 120,
             Value = 30_050,
@@ -418,7 +495,7 @@ public sealed class WeighOperationForm : Form
         var header = GridBuilder.SectionHeader(Loc.T("weigh.section_trip"));
         var table = FormLayout.FieldTable();
 
-        FormLayout.AddFullWidth(table, _txtBarcode);
+        FormLayout.AddFullWidth(table, BuildBarcodeWithDropdown());
         FormLayout.AddField(table, Loc.T("field.trip_no"), _txtRegNo);
         FormLayout.AddField(table, Loc.T("field.plate"), _txtPlate);
         FormLayout.AddField(table, Loc.T("field.customer"), _txtCustomer);
@@ -456,7 +533,9 @@ public sealed class WeighOperationForm : Form
             rbFlow.Controls.Add(rb);
         }
         _pnlSugarcaneType.Controls.Add(rbFlow);
-        FormLayout.AddFullWidth(table, _pnlSugarcaneType, 38);
+        // Loại mía đã lưu từ FRM (LoaiMiaName) khi đăng tài — không cần chọn thủ công tại trạm cân.
+        // Giữ field declarations để tránh lỗi tham chiếu, chỉ không thêm vào layout.
+        // FormLayout.AddFullWidth(table, _pnlSugarcaneType, 38);
 
         // Ghi chú cân
         FormLayout.AddField(table, "Ghi chú", _txtWeighNotes);
@@ -466,6 +545,109 @@ public sealed class WeighOperationForm : Form
         card.Controls.Add(table);
         card.Controls.Add(header);
         return card;
+    }
+
+    /// <summary>Tạo panel TextBox + nút ▼ dropdown chọn xe trong nhà máy.</summary>
+    private Panel BuildBarcodeWithDropdown()
+    {
+        var panel = new Panel { Dock = DockStyle.Fill, Height = 36 };
+        _txtBarcode.Dock = DockStyle.Fill;
+        _btnTripDropdown.Dock = DockStyle.Right;
+        _btnTripDropdown.FlatAppearance.BorderSize = 1;
+        _btnWeighMode.Dock = DockStyle.Left;
+        _btnWeighMode.FlatAppearance.BorderSize = 0;
+        _btnWeighMode.Click += (_, _) => ToggleWeighMode();
+
+        panel.Controls.Add(_txtBarcode);
+        panel.Controls.Add(_btnTripDropdown);
+        panel.Controls.Add(_btnWeighMode);
+
+        _btnTripDropdown.Click += async (_, _) =>
+        {
+            if (_lstTripPopup.Visible) { _lstTripPopup.Visible = false; _txtBarcode.Focus(); return; }
+            await ShowTripDropdownAsync();
+        };
+        _lstTripPopup.Click += (_, _) => SelectTripFromPopup();
+        _lstTripPopup.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter) { e.Handled = true; SelectTripFromPopup(); }
+            else if (e.KeyCode == Keys.Escape) { _lstTripPopup.Visible = false; _txtBarcode.Focus(); }
+        };
+        _txtBarcode.GotFocus += (_, _) => _lstTripPopup.Visible = false;
+
+        return panel;
+    }
+
+    private void ToggleWeighMode()
+    {
+        _isWeighOutMode = !_isWeighOutMode;
+        UpdateWeighModeButton();
+    }
+
+    private void UpdateWeighModeButton()
+    {
+        if (_isWeighOutMode)
+        {
+            _btnWeighMode.Text = "🟠 CÂN RA";
+            _btnWeighMode.BackColor = Color.FromArgb(232, 120, 0);
+        }
+        else
+        {
+            _btnWeighMode.Text = "🔵 CÂN VÀO";
+            _btnWeighMode.BackColor = Color.FromArgb(0, 120, 215);
+        }
+    }
+
+    private async Task ShowTripDropdownAsync()
+    {
+        try
+        {
+            var filter = new TripRegistrationFilter { Tab = TripGridTab.InFactory };
+            var allTrips = await _presenter.ListTripsAsync(_siteContext.CurrentSiteId, filter, _cts.Token);
+
+            // Lọc theo mode: cân vào = chưa có lượt cân (lifecycle Registered/TempRegistered)
+            //                 cân ra = đã cân lần 1 (lifecycle InProgress)
+            var filtered = _isWeighOutMode
+                ? allTrips.Where(t => t.Lifecycle == Domain.Enums.TripLifecycle.InProgress).ToArray()
+                : allTrips.Where(t => t.Lifecycle is Domain.Enums.TripLifecycle.Registered
+                    or Domain.Enums.TripLifecycle.TempRegistered).ToArray();
+
+            _popupTrips = filtered;
+
+            if (_popupTrips.Length == 0) { _lstTripPopup.Visible = false; return; }
+
+            _lstTripPopup.Items.Clear();
+            foreach (var t in _popupTrips)
+                _lstTripPopup.Items.Add($"{t.Plate ?? "?",-15} | {t.TripNo,-25} | {t.CustomerOrSupplier ?? ""}");
+
+            var screenPos = _txtBarcode.PointToScreen(new Point(0, _txtBarcode.Height));
+            var formPos = FindForm()!.PointToClient(screenPos);
+            _lstTripPopup.Location = formPos;
+            _lstTripPopup.Width = Math.Max(_txtBarcode.Width + _btnTripDropdown.Width, 500);
+            _lstTripPopup.Height = Math.Min(_popupTrips.Length * 20 + 4, 300);
+
+            if (_lstTripPopup.Parent != FindForm())
+            {
+                FindForm()!.Controls.Add(_lstTripPopup);
+                _lstTripPopup.BringToFront();
+            }
+            _lstTripPopup.Visible = true;
+            _lstTripPopup.Focus();
+        }
+        catch { _lstTripPopup.Visible = false; }
+    }
+
+    private void SelectTripFromPopup()
+    {
+        var idx = _lstTripPopup.SelectedIndex;
+        _lstTripPopup.Visible = false;
+        if (idx < 0 || idx >= _popupTrips.Length) return;
+
+        var trip = _popupTrips[idx];
+        _txtBarcode.Text = trip.TripNo;
+
+        // Trigger scan giống nhấn Enter
+        _ = HandleQrScanAsync(trip.TripNo);
     }
 
     /// <summary>Panel giữa: số cân realtime + checklist điều kiện + thông tin cân vào/ra + dung sai.</summary>
@@ -662,6 +844,36 @@ public sealed class WeighOperationForm : Form
             GridBuilder.Column(Loc.T("col.customer"), "Customer", 130),
             GridBuilder.Column(Loc.T("col.commodity"), "Commodity", 100),
             GridBuilder.Column(Loc.T("col.sync_status"), "SyncStatus", 90));
+
+        // Cột Đồng bộ: hiện text thân thiện thay vì enum/null
+        _dgvWeighed.CellFormatting += (_, e) =>
+        {
+            if (e.RowIndex < 0) return;
+            if (_dgvWeighed.Columns[e.ColumnIndex].DataPropertyName != "SyncStatus") return;
+
+            var status = e.Value?.ToString();
+            if (string.IsNullOrEmpty(status))
+            {
+                e.Value = "Chưa đẩy";
+                e.CellStyle.ForeColor = AgrisTheme.Warning;
+            }
+            else if (status == "Posted" || status == "Acknowledged")
+            {
+                e.Value = "✅ Đã đẩy";
+                e.CellStyle.ForeColor = AgrisTheme.Success;
+            }
+            else if (status == "Failed" || status == "Unknown")
+            {
+                e.Value = "❌ Lỗi";
+                e.CellStyle.ForeColor = AgrisTheme.Danger;
+            }
+            else if (status == "Held" || status == "New")
+            {
+                e.Value = "⏳ Chờ";
+                e.CellStyle.ForeColor = AgrisTheme.Info;
+            }
+            e.FormattingApplied = true;
+        };
     }
 
     private DeviceStatusBar BuildDeviceStatusBar()
@@ -812,6 +1024,9 @@ public sealed class WeighOperationForm : Form
                     return;
                 }
 
+                // Check kho vận tạm bỏ — chưa có camera kiểm soát, sẽ thêm lại sau
+                // if (!preconditions.WarehouseSatisfied) { ... }
+
                 // Req 4.3: Cảnh báo thiếu chữ đường nhưng cho phép tiếp tục
                 if (preconditions.CcsPending)
                 {
@@ -822,6 +1037,9 @@ public sealed class WeighOperationForm : Form
                 {
                     _lblCcsWarning.Visible = false;
                 }
+
+                // Chính sách thu mua sẽ được lấy SAU khi cân lần 2 thành công
+                // (trong bước push phiếu cân với IsQuetCS = "Yes" + trọng lượng thực).
             }
             else
             {
@@ -852,8 +1070,14 @@ public sealed class WeighOperationForm : Form
             _currentWeighbridgeId = weighbridgeId.Value;
             _currentCheckpoint = checkpoint;
             _currentSegmentIndex = segmentIndex;
+            _isWeighOutMode = segmentIndex > 0;
+            UpdateWeighModeButton();
             _sessionId = openResult.SessionId;
             _requiredStabilityWindow = openResult.StabilityWindow;
+
+            // Loại mía lấy từ FRM — không cần hiện panel chọn thủ công
+            // if (segmentIndex > 0)
+            //     _pnlSugarcaneType.Visible = false;
 
             _lblQrMessage.Text = Loc.T("weigh.qr_scanning", checkpoint);
             _lblQrMessage.ForeColor = AgrisTheme.BrandGreen;
@@ -879,12 +1103,18 @@ public sealed class WeighOperationForm : Form
     {
         if (scan.TripId is null) return 0;
 
-        // Kiểm tra preconditions cho segment 1 (cân lần 2).
-        // Nếu PrecedingWeightsSatisfied = true → đã có lượt cân lần 1 → đây là cân lần 2.
-        var preconditions = await _presenter.CheckPreconditionsAsync(
-            scan.TripId.Value, WeightRole.Tare, segmentIndex: 1, ct);
+        // Kiểm tra xem đã có lượt cân nào (effective) chưa.
+        // Nếu đã có → đây là cân lần 2 (segment 1).
+        var existingEvent = await _presenter.GetEffectiveWeighEventAsync(
+            scan.TripId.Value, WeightRole.Gross, segmentIndex: 0, ct);
 
-        return preconditions.PrecedingWeightsSatisfied ? 1 : 0;
+        if (existingEvent is not null) return 1;
+
+        // Fallback: check Tare segment 0 (trường hợp profile mapping khác)
+        var existingTare = await _presenter.GetEffectiveWeighEventAsync(
+            scan.TripId.Value, WeightRole.Tare, segmentIndex: 0, ct);
+
+        return existingTare is not null ? 1 : 0;
     }
 
     private void PopulateTripInfo(QrScanResult scan)
@@ -895,12 +1125,21 @@ public sealed class WeighOperationForm : Form
         _txtCommodity.Text = scan.Commodity ?? "";
         _txtWarehouse.Text = scan.Warehouse ?? "";
         _txtShipment.Text = scan.ShipmentNo ?? "";
+        _txtDriver.Text = scan.DriverRef ?? "";
+        _currentSourceSystem = scan.SourceSystem;
+        _display.DisplayAsTon = _currentSourceSystem != "ERP"; // Mía = tấn, Vật tư = kg
+        UpdateWeightUnitLabels();
+        _currentFrmLenhDonId = scan.FrmLenhDonId;
+        _currentFrmMaLenhDon = scan.FrmMaLenhDon;
+        _currentFrmLenhDonBu = scan.FrmLenhDonBu;
 
-        // Hiện panel loại mía nếu profile là mía (CANE_IN)
-        var isSugarcane = scan.Commodity?.Contains("CANE", StringComparison.OrdinalIgnoreCase) == true
+        // Hiện panel loại mía chỉ ở cân lần 1 (segment 0). Cân ra không cần chọn lại.
+        var isSugarcane = _currentSourceSystem == "FRM"
+            || scan.Commodity?.Contains("CANE", StringComparison.OrdinalIgnoreCase) == true
             || scan.Commodity?.Contains("mía", StringComparison.OrdinalIgnoreCase) == true
-            || string.IsNullOrWhiteSpace(scan.Commodity); // Mặc định hiện cho mía
-        _pnlSugarcaneType.Visible = isSugarcane;
+            || string.IsNullOrWhiteSpace(scan.Commodity);
+        // Loại mía lấy từ FRM (LoaiMiaName) khi đăng tài — không cần chọn tại trạm cân.
+        // _pnlSugarcaneType.Visible = isSugarcane && _currentSegmentIndex == 0;
     }
 
     /// <summary>
@@ -911,12 +1150,17 @@ public sealed class WeighOperationForm : Form
     {
         try
         {
+            // Tìm WeighEvent hiệu lực segment 0 — role tùy theo profile (Gross cho mía, Tare cho vật tư xuất)
             var grossEvent = await _presenter.GetEffectiveWeighEventAsync(
                 tripId, WeightRole.Gross, segmentIndex: 0, _cts.Token);
 
+            // Fallback: nếu không có Gross ở segment 0, thử Tare (profile xuất vật tư)
+            grossEvent ??= await _presenter.GetEffectiveWeighEventAsync(
+                tripId, WeightRole.Tare, segmentIndex: 0, _cts.Token);
+
             if (grossEvent is not null)
             {
-                _txtWeightIn.Text = $"{grossEvent.NormalizedKg:N3}";
+                _txtWeightIn.Text = FormatWeight(grossEvent.NormalizedKg);
                 _txtTimeIn.Text = grossEvent.MeasuredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
             }
         }
@@ -1050,27 +1294,7 @@ public sealed class WeighOperationForm : Form
     {
         if (_sessionId is null || _currentTripId is null) return;
 
-        // Validation: phiếu mía phải chọn loại mía + nhập ghi chú
-        if (_pnlSugarcaneType.Visible)
-        {
-            var hasSelection = _rbMiaCay.Checked || _rbMiaKhuc.Checked || _rbMiaChay.Checked
-                || _rbMiaOpt4.Checked || _rbMiaOpt5.Checked;
-
-            if (!hasSelection)
-            {
-                MessageBox.Show("Vui lòng chọn loại mía trước khi xác nhận cân.",
-                    "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(_txtWeighNotes.Text))
-            {
-                MessageBox.Show("Bạn chưa điền ghi chú cho mía. Vui lòng nhập ghi chú.",
-                    "Thiếu ghi chú", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                _txtWeighNotes.Focus();
-                return;
-            }
-        }
+        // Loại mía đã lưu từ FRM khi đăng tài — bỏ validation chọn thủ công.
 
         SetBusy(true);
         try
@@ -1094,23 +1318,24 @@ public sealed class WeighOperationForm : Form
             // Cập nhật checklist trạng thái cuối cùng (tất cả đạt)
             _checklist.UpdateFromDecision(result.Decision);
 
-            // Cập nhật thông tin cân trên form
+            // Cập nhật thông tin cân trên form (hiển thị tấn)
             if (_currentSegmentIndex == 0)
             {
-                _txtWeightIn.Text = $"{result.NormalizedKg:N3}";
+                _txtWeightIn.Text = FormatWeight(result.NormalizedKg ?? 0);
                 _txtTimeIn.Text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
             }
             else
             {
-                _txtWeightOut.Text = $"{result.NormalizedKg:N3}";
+                _txtWeightOut.Text = FormatWeight(result.NormalizedKg ?? 0);
                 _txtTimeOut.Text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
 
                 // Hiển thị TL hàng nếu có cả cân vào và cân ra (Req 4.4)
                 // Net do server tính theo hướng profile. UI chỉ hiển thị chênh lệch tham khảo.
-                if (decimal.TryParse(_txtWeightIn.Text, out var weightIn) && result.NormalizedKg.HasValue)
+                if (decimal.TryParse(_txtWeightIn.Text.Replace(",", ""), out var weightInDisplay) && result.NormalizedKg.HasValue)
                 {
-                    var net = Math.Abs(result.NormalizedKg.Value - weightIn);
-                    _txtNetWeight.Text = $"{net:N3}";
+                    var weightOutDisplay = ToDisplayWeight(result.NormalizedKg.Value);
+                    var net = Math.Abs(weightOutDisplay - weightInDisplay);
+                    _txtNetWeight.Text = $"{net:N0}";
                     _txtNetWeight.Font = new Font(_txtNetWeight.Font, FontStyle.Bold);
                 }
 
@@ -1125,12 +1350,14 @@ public sealed class WeighOperationForm : Form
             var lifecycleNote = _currentSegmentIndex > 0
                 ? Loc.T("weigh.committed_note_done")
                 : Loc.T("weigh.committed_note_next");
-            _lblQrMessage.Text = Loc.T("weigh.committed", _currentCheckpoint, $"{result.NormalizedKg:N3}") + lifecycleNote;
+            _lblQrMessage.Text = Loc.T("weigh.committed", _currentCheckpoint, $"{FormatWeight(result.NormalizedKg ?? 0)} {WeightUnitLabel}") + lifecycleNote;
             _lblQrMessage.ForeColor = AgrisTheme.Success;
 
-            // Sau cân lần 1: mở lại barcode để quét QR cho cân lần 2
+            // Sau cân lần 1: mở lại barcode cho chuyến tiếp
             if (_currentSegmentIndex == 0)
             {
+                // Loại mía đã có từ FRM (LoaiMiaName) khi đăng tài — không cần lưu từ form.
+
                 _txtBarcode.Enabled = true;
                 _txtBarcode.Clear();
                 _txtBarcode.Focus();
@@ -1143,7 +1370,7 @@ public sealed class WeighOperationForm : Form
             var qrForNextStep = _lastQrContent;
 
             MessageBox.Show(
-                Loc.T("weigh.committed", _currentCheckpoint, $"{result.NormalizedKg:N3}"),
+                Loc.T("weigh.committed", _currentCheckpoint, $"{FormatWeight(result.NormalizedKg ?? 0)} {WeightUnitLabel}"),
                 Loc.T("weigh.committed_title"), MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             // Sau cân lần 1: mở lại barcode sau khi user đóng dialog
@@ -1151,10 +1378,171 @@ public sealed class WeighOperationForm : Form
             {
                 _txtBarcode.Enabled = true;
                 _txtBarcode.Clear();
+
+                // Auto chuyển sang tab "Chờ cân ra" sau cân lần 1
+                _btnTabWeighIn.PerformClick();
             }
 
             // Refresh lưới — KHÔNG publish event bus (F5 chỉ lưu, F7 mới nhảy tab)
             await LoadWeighedTripsAsync();
+
+            // Push phiếu cân lên DigiScale — CẢ lần 1 (cân vào) và lần 2 (cân ra)
+            {
+                var isCânRa = _currentSegmentIndex > 0;
+                try
+                {
+                    var shipment = _txtShipment.Text.Trim();
+                    var lanCan = isCânRa ? "2" : "1";
+                    // LoaiCan: 100000000=cân vào, 100000001=cân ra
+                    var loaiCan = isCânRa ? "100000001" : "100000000";
+
+                    var ldForWeigh = _presenter.FindLenhDonByPlate(_txtPlate.Text);
+                    var lenhDonId = _currentFrmLenhDonId ?? ldForWeigh?.SourceKey ?? shipment;
+                    var maLenhDon = _currentFrmMaLenhDon ?? ldForWeigh?.MaLD ?? shipment;
+                    var lenhDonBu = _currentFrmLenhDonBu ?? ldForWeigh?.BusinessUnit;
+
+                    // Lấy mã bàn cân
+                    var maBanCan = _currentWeighbridgeId != Guid.Empty
+                        ? await _presenter.GetWeighbridgeCodeAsync(_currentWeighbridgeId, _cts.Token)
+                        : null;
+
+                    // Push FRM phiếu cân (mía) — cả lần 1 và lần 2
+                    // FRM nhận đơn vị TẤN — chuyển đổi từ kg ÷ 1000
+                    if (_currentSourceSystem != "ERP")
+                    {
+                        var weightTon = (result.NormalizedKg ?? 0) / 1000m;
+                        var pushResult = await _presenter.PushPhieuCanAsync(
+                            loaiCan, lanCan, Program.LoggedInUserName, Program.LoggedInUserAccount,
+                            lenhDonId, maLenhDon,
+                            weightTon.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+                            DateTime.Now,
+                            _txtRegNo.Text.Trim(),
+                            maBanCan,
+                            "0", "0", "0",
+                            lenhDonBu, _cts.Token,
+                            isQuetCS: isCânRa); // Cân lần 2 → quét chính sách
+
+                        // Nếu có chính sách → lưu vào state
+                        if (pushResult.TapChatCS.HasValue || pushResult.CcsChinhSach.HasValue)
+                        {
+                            _policyTapChatCS = pushResult.TapChatCS;
+                            _policyCcsChinhSach = pushResult.CcsChinhSach;
+                            _policyChinhSachThuMia = pushResult.ChinhSachThuMia;
+                        }
+
+                        // Hiện popup kết quả push
+                        DigiScalePopup.Show(this,
+                            isCânRa ? "CÂN LẦN 2 THÀNH CÔNG" : "CÂN LẦN 1 THÀNH CÔNG",
+                            $"Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nTrọng lượng: {FormatWeight(result.NormalizedKg ?? 0)} {WeightUnitLabel}"
+                                + (pushResult.TapChatCS.HasValue ? $"\n\n📋 CS: {pushResult.ChinhSachThuMia}\nTC: {pushResult.TapChatCS:N2}% | CCS: {pushResult.CcsChinhSach:N2}" : ""),
+                            pushResult.IsSuccess, pushResult.IsSuccess ? "OK" : "Lỗi push");
+
+                        // Log trạng thái trên thanh message
+                        if (pushResult.IsSuccess)
+                        {
+                            _lblQrMessage.Text = $"✅ Đã đẩy DigiScale";
+                            _lblQrMessage.ForeColor = AgrisTheme.Success;
+                        }
+                        else
+                        {
+                            _lblQrMessage.Text = $"⚠ DigiScale: {pushResult.ErrorMessage?[..Math.Min(100, pushResult.ErrorMessage?.Length ?? 0)]}";
+                            _lblQrMessage.ForeColor = AgrisTheme.Warning;
+                        }
+                    }
+                    else
+                    {
+                        // ERP/Vật tư — chỉ push oracle-tickets khi cân lần 2 (cân ra)
+                        if (isCânRa)
+                        {
+                            try
+                            {
+                                // Vật tư: _txtWeightIn hiện kg, lấy trực tiếp
+                                var weightInKg = decimal.TryParse(_txtWeightIn.Text.Replace(",", ""), out var wiVal) ? wiVal : 0m;
+                                var weightOutKg = result.NormalizedKg ?? 0;
+                                var netKg = Math.Abs(weightInKg - weightOutKg);
+                                var bu = _presenter.DefaultBusinessUnit;
+                                var shipmentForErp = _txtShipment.Text.Trim();
+
+                                TTC.Weighing.Infrastructure.Adapters.ErpOrderLine? erpLine = null;
+                                try { erpLine = await _presenter.LookupErpOrderAsync(bu, shipmentForErp); }
+                                catch { }
+
+                                if (erpLine is not null)
+                                {
+                                    var txnTypeName = erpLine.TransactionTypeName ?? "";
+                                    var txnTypeCode = erpLine.TransactionTypeCode ?? "";
+                                    var actionCode = txnTypeCode is "04" or "06" ? "CONFIRM" : "RECEIVE";
+                                    var orgCode = erpLine.OrganizationCode ?? "";
+                                    var erpBu = erpLine.BusinessUnit ?? bu;
+
+                                    var erpPushResult = await _presenter.PushOracleTicketAsync(
+                                        txnTypeName, txnTypeCode, actionCode,
+                                        shipmentForErp, shipmentForErp,
+                                        weightInKg, weightOutKg, netKg,
+                                        _txtRegNo.Text.Trim(), orgCode, erpBu,
+                                        _txtRegNo.Text.Trim(),
+                                        erpLine.ItemNumber, erpLine.ItemDescription ?? erpLine.ItemName, netKg,
+                                        erpLine.Transporter ?? erpLine.TransporterName,
+                                        _txtPlate.Text.Trim(),
+                                        _txtDriver.Text.Trim().Length > 0 ? _txtDriver.Text.Trim() : erpLine.DriverName,
+                                        null,
+                                        erpLine.VendorName, null, null,
+                                        _cts.Token);
+
+                                    if (erpPushResult.IsSuccess)
+                                    {
+                                        _lblQrMessage.Text = "✅ Đã đẩy oracle-tickets";
+                                        _lblQrMessage.ForeColor = AgrisTheme.Success;
+
+                                        if (_currentTripId.HasValue)
+                                            try { await _presenter.RecordErpSyncAsync(_currentTripId.Value, "WEIGH_OUT", null); } catch { }
+
+                                        DigiScalePopup.Show(this,
+                                            "CÂN LẦN 2 VẬT TƯ — ĐÃ ĐẨY DIGISCALE",
+                                            $"Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nShipment: {shipmentForErp}\nTrọng lượng: {FormatWeight(result.NormalizedKg ?? 0)} {WeightUnitLabel}",
+                                            true, "OK");
+                                    }
+                                    else
+                                    {
+                                        _lblQrMessage.Text = $"⚠ ERP: {erpPushResult.ErrorMessage?[..Math.Min(80, erpPushResult.ErrorMessage?.Length ?? 0)]}";
+                                        _lblQrMessage.ForeColor = AgrisTheme.Warning;
+
+                                        DigiScalePopup.Show(this,
+                                            "CÂN LẦN 2 VẬT TƯ — LỖI ĐẨY DIGISCALE",
+                                            $"Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\n\n{erpPushResult.ErrorMessage}",
+                                            false, "Lỗi");
+                                    }
+                                }
+                                else
+                                {
+                                    _lblQrMessage.Text = "⚠ Không tìm thấy ERP order. Lưu local.";
+                                    _lblQrMessage.ForeColor = AgrisTheme.Warning;
+                                }
+                            }
+                            catch (Exception erpEx)
+                            {
+                                _lblQrMessage.Text = $"⚠ ERP: {erpEx.Message[..Math.Min(80, erpEx.Message.Length)]}";
+                                _lblQrMessage.ForeColor = AgrisTheme.Warning;
+                            }
+                        }
+                        // Cân lần 1 vật tư: không push, chỉ lưu local — hiện popup thông báo
+                        if (!isCânRa)
+                        {
+                            DigiScalePopup.Show(this,
+                                "CÂN LẦN 1 VẬT TƯ THÀNH CÔNG",
+                                $"Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nTrọng lượng: {FormatWeight(result.NormalizedKg ?? 0)} {WeightUnitLabel}\n\nĐẩy DigiScale khi cân lần 2.",
+                                true, "OK");
+                        }
+                    }
+                }
+                catch (Exception pushEx)
+                {
+                    _lblQrMessage.Text = $"⚠ Lỗi push: {pushEx.Message[..Math.Min(80, pushEx.Message.Length)]}";
+                    _lblQrMessage.ForeColor = AgrisTheme.Warning;
+                }
+
+                // Oracle-tickets push đã xử lý trong block trên cho cả lần 1 và lần 2
+            }
         }
         catch (Exception ex)
         {
@@ -1172,91 +1560,190 @@ public sealed class WeighOperationForm : Form
             return;
         }
 
-        // In lại nếu phiếu đã được in trước đó cho chuyến này (Req 5.3)
-        var isReprint = _ticketPrinted;
+        // Lấy data từ form fields
+        decimal.TryParse(_txtWeightIn.Text, out var grossTon);
+        decimal.TryParse(_txtWeightOut.Text, out var tareTon);
+        decimal.TryParse(_txtNetWeight.Text, out var netTon);
 
-        SetBusy(true);
-        try
+        // Lấy tạp chất từ DB
+        decimal? impurityPct = null;
+        try { impurityPct = await _presenter.GetEffectiveImpurityAsync(_currentTripId.Value, _cts.Token); }
+        catch { /* lỗi → null */ }
+
+        // Nếu chưa có chính sách → gọi API lấy chính sách trước khi in
+        if (!_policyTapChatCS.HasValue && tareTon > 0 && _currentSourceSystem != "ERP")
         {
-            // Hiển thị dialog chọn máy in → gọi service in phiếu (Req 5.1, 5.2)
-            // Lỗi in không ảnh hưởng dữ liệu cân đã lưu (Req 5.4)
-            var result = await PrintHelper.ShowPrintDialogAndPrintAsync(
-                _presenter.PrintService,
-                _currentTripId.Value,
-                isReprint,
-                this);
-
-            // null = người dùng hủy dialog
-            if (result is null)
-                return;
-
-            if (result.IsSuccess)
+            try
             {
-                _ticketPrinted = true;
+                var ld = _presenter.FindLenhDonByPlate(_txtPlate.Text);
+                var lenhDonId = _currentFrmLenhDonId ?? ld?.SourceKey ?? _txtShipment.Text.Trim();
+                var maLenhDon = _currentFrmMaLenhDon ?? ld?.MaLD ?? _txtShipment.Text.Trim();
+                var lenhDonBu = _currentFrmLenhDonBu ?? ld?.BusinessUnit;
+                string? maBanCan = null;
+                try { maBanCan = await _presenter.GetWeighbridgeCodeAsync(_currentWeighbridgeId, _cts.Token); } catch { }
 
-                // Cập nhật số phiếu trên form nếu có
-                if (!string.IsNullOrWhiteSpace(result.TicketNumber))
-                    _txtTicketNo.Text = result.TicketNumber;
+                var policyResult = await _presenter.PushPhieuCanAsync(
+                    "100000001", "2", Program.LoggedInUserName, Program.LoggedInUserAccount,
+                    lenhDonId, maLenhDon,
+                    tareTon.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+                    DateTime.Now, _txtRegNo.Text.Trim(), maBanCan,
+                    "0", "0", "0", lenhDonBu, _cts.Token, isQuetCS: true);
+
+                if (policyResult.IsSuccess && policyResult.TapChatCS.HasValue)
+                {
+                    _policyTapChatCS = policyResult.TapChatCS;
+                    _policyCcsChinhSach = policyResult.CcsChinhSach;
+                    _policyChinhSachThuMia = policyResult.ChinhSachThuMia;
+                }
+                else if (policyResult.ErrorMessage is not null && policyResult.ErrorMessage.Contains("NO_POLICY"))
+                {
+                    // DigiScale trả NO_POLICY — lệnh đốn chưa có chính sách thu mua
+                    _policyChinhSachThuMia = "Không có chính sách";
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[POLICY] IsSuccess={policyResult.IsSuccess} TapChatCS={policyResult.TapChatCS} Response={policyResult.ErrorMessage?[..Math.Min(500, policyResult.ErrorMessage?.Length ?? 0)]}");
+                }
             }
+            catch { /* API lỗi → in phiếu với dữ liệu hiện có */ }
         }
-        catch (Exception ex)
-        {
-            // Lỗi in KHÔNG ảnh hưởng dữ liệu cân đã lưu (Req 5.4)
-            ShowError(Loc.T("weigh.print_error"), ex);
-        }
-        finally { SetBusy(false); }
+
+        // Lấy thêm thông tin từ FRM cache
+        var ldForPrint = _presenter.FindLenhDonByPlate(_txtPlate.Text);
+
+        var data = new Printing.PhieuCanData(
+            CompanyName: _siteContext.CurrentSiteName,
+            CompanyAddress: _siteContext.CurrentSiteAddress,
+            PhieuCanSo: _txtTicketNo.Text.NullIfEmpty(),
+            SoDangTai: _txtRegNo.Text.NullIfEmpty(),
+            Ngay: DateTime.Now,
+            TenChuMia: _txtCustomer.Text.NullIfEmpty(),
+            HopDongSo: ldForPrint?.HopDongDauTuMiaName,
+            LenhDon: _txtShipment.Text.NullIfEmpty() ?? ldForPrint?.MaLD,
+            SoXe: _txtPlate.Text.NullIfEmpty(),
+            CongThuHoach: ldForPrint?.DoiTacThuHoachName,
+            CongBocXep: null,
+            GiongMia: ldForPrint?.GiongMiaName,
+            LoaiMia: _txtCommodity.Text.NullIfEmpty() ?? ldForPrint?.LoaiMiaName,
+            HinhThucThuHoach: null,
+            TrongLuongXi: grossTon > 0 ? grossTon : null,
+            ThoiGianCanXi: DateTime.TryParse(_txtTimeIn.Text, out var tIn) ? tIn : null,
+            TrongLuongBi: tareTon > 0 ? tareTon : null,
+            ThoiGianCanBi: DateTime.TryParse(_txtTimeOut.Text, out var tOut) ? tOut : null,
+            TapChatThanhToan: _policyTapChatCS ?? impurityPct,
+            TrongLuongThanhToan: netTon > 0 && _policyTapChatCS.HasValue
+                ? netTon * (1m - _policyTapChatCS.Value / 100m) : null,
+            GhiChu: _txtWeighNotes.Text.NullIfEmpty(),
+            IsMiaChay: false,
+            IsMiaCay: true,
+            IsMiaKhuc: false,
+            Barcode: _txtRegNo.Text.NullIfEmpty(),
+            ChinhSachThuMia: _policyChinhSachThuMia,
+            CcsThanhToan: _policyCcsChinhSach);
+
+        using var preview = new WeighTicketPreviewForm(data);
+        preview.ShowDialog(this);
+
+        _ticketPrinted = true;
     }
 
     private async void OnSyncClicked(object? sender, EventArgs e)
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show(Loc.T("weigh.sync_no_trip"), Loc.T("common.no_data"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show("Chọn chuyến trước khi đẩy lại.", "Thiếu thông tin",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         SetBusy(true);
         try
         {
-            var shipmentNo = string.IsNullOrWhiteSpace(_txtShipment.Text) || _txtShipment.Text == "—"
-                ? null
-                : _txtShipment.Text;
-
-            var cmd = new SubmitTripResultCommand(
-                TripId: _currentTripId.Value,
-                Destination: "ERP",
-                Operation: "WEIGH_RESULT",
-                ShipmentNo: shipmentNo,
-                CorrelationId: Guid.NewGuid().ToString("N"));
-
-            var result = await _presenter.SyncErpAsync(cmd, _cts.Token);
-
-            if (!result.IsQueued)
+            if (_currentSourceSystem == "ERP")
             {
-                MessageBox.Show(
-                    Loc.T("weigh.sync_cannot", result.Note),
-                    Loc.T("weigh.btn_sync"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                // ═══ VẬT TƯ → đẩy lại oracle-tickets ═══
+                var weightInKg = decimal.TryParse(_txtWeightIn.Text.Replace(",", "").Replace(".", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var wiVal) ? wiVal : 0m;
+                var weightOutKg = decimal.TryParse(_txtWeightOut.Text.Replace(",", "").Replace(".", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var woVal) ? woVal : 0m;
+                var netKg = Math.Abs(weightInKg - weightOutKg);
+                var bu = _presenter.DefaultBusinessUnit;
+                var shipmentForErp = _txtShipment.Text.Trim();
+
+                TTC.Weighing.Infrastructure.Adapters.ErpOrderLine? erpLine = null;
+                try { erpLine = await _presenter.LookupErpOrderAsync(bu, shipmentForErp); }
+                catch { }
+
+                if (erpLine is null)
+                {
+                    MessageBox.Show("Không tìm thấy ERP order-line.\nKhông thể đẩy lại.", "ERP", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var txnTypeName = erpLine.TransactionTypeName ?? "";
+                var txnTypeCode = erpLine.TransactionTypeCode ?? "";
+                var actionCode = txnTypeCode is "04" or "06" ? "CONFIRM" : "RECEIVE";
+                var erpBu = erpLine.BusinessUnit ?? bu;
+
+                var erpResult = await _presenter.PushOracleTicketAsync(
+                    txnTypeName, txnTypeCode, actionCode,
+                    shipmentForErp, shipmentForErp,
+                    weightInKg, weightOutKg, netKg,
+                    _txtRegNo.Text.Trim(), erpLine.OrganizationCode ?? "", erpBu,
+                    _txtRegNo.Text.Trim(),
+                    erpLine.ItemNumber, erpLine.ItemDescription ?? erpLine.ItemName, netKg,
+                    erpLine.Transporter ?? erpLine.TransporterName,
+                    _txtPlate.Text.Trim(),
+                    _txtDriver.Text.Trim().Length > 0 ? _txtDriver.Text.Trim() : erpLine.DriverName,
+                    null, erpLine.VendorName, null, null,
+                    _cts.Token);
+
+                DigiScalePopup.Show(this,
+                    erpResult.IsSuccess ? "ĐẨY LẠI VẬT TƯ THÀNH CÔNG" : "ĐẨY LẠI VẬT TƯ THẤT BẠI",
+                    $"Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nShipment: {shipmentForErp}\nTrọng lượng: {netKg:N0} kg",
+                    erpResult.IsSuccess, erpResult.IsSuccess ? "OK" : erpResult.ErrorMessage ?? "Lỗi");
+
+                if (erpResult.IsSuccess && _currentTripId.HasValue)
+                    try { await _presenter.RecordErpSyncAsync(_currentTripId.Value, "RETRY_PUSH", null); } catch { }
             }
-
-            var statusLabel = result.Status switch
+            else
             {
-                IntegrationMessageStatus.Held => Loc.T("weigh.sync_held"),
-                IntegrationMessageStatus.New => Loc.T("weigh.sync_new"),
-                _ => result.Status.ToString()
-            };
+                // ═══ MÍA → đẩy lại phiếu cân FRM ═══
+                decimal.TryParse(_txtWeightIn.Text, out var grossTon);
+                decimal.TryParse(_txtWeightOut.Text, out var tareTon);
+                var isCânRa = tareTon > 0;
+                var weightTon = isCânRa ? tareTon : grossTon;
+                var loaiCan = isCânRa ? "100000001" : "100000000";
+                var lanCan = isCânRa ? "2" : "1";
 
-            var message = $"{Loc.T("weigh.sync_ok")}{Environment.NewLine}" +
-                          $"{Loc.T("col.status")}: {statusLabel}";
+                var ld = _presenter.FindLenhDonByPlate(_txtPlate.Text);
+                var lenhDonId = _currentFrmLenhDonId ?? ld?.SourceKey ?? _txtShipment.Text.Trim();
+                var maLenhDon = _currentFrmMaLenhDon ?? ld?.MaLD ?? _txtShipment.Text.Trim();
+                var lenhDonBu = _currentFrmLenhDonBu ?? ld?.BusinessUnit;
 
-            if (!string.IsNullOrWhiteSpace(result.Note))
-                message += $"{Environment.NewLine}{result.Note}";
+                string? maBanCan = null;
+                try { maBanCan = await _presenter.GetWeighbridgeCodeAsync(_currentWeighbridgeId, _cts.Token); }
+                catch { }
 
-            MessageBox.Show(message, Loc.T("weigh.btn_sync"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                var pushResult = await _presenter.PushPhieuCanAsync(
+                    loaiCan, lanCan, Program.LoggedInUserName, Program.LoggedInUserAccount,
+                    lenhDonId, maLenhDon,
+                    weightTon.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+                    DateTime.Now,
+                    _txtRegNo.Text.Trim(),
+                    maBanCan,
+                    "0", "0", "0",
+                    lenhDonBu, _cts.Token,
+                    isQuetCS: false);
+
+                DigiScalePopup.Show(this,
+                    pushResult.IsSuccess ? "ĐẨY LẠI THÀNH CÔNG" : "ĐẨY LẠI THẤT BẠI",
+                    $"Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nTrọng lượng: {weightTon:N3} tấn",
+                    pushResult.IsSuccess, pushResult.IsSuccess ? "OK" : pushResult.ErrorMessage ?? "Lỗi");
+            }
         }
         catch (Exception ex)
         {
-            ShowError(Loc.T("weigh.sync_error"), ex);
+            MessageBox.Show($"Lỗi đẩy lại DigiScale:\n{ex.Message}", "Lỗi",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally { SetBusy(false); }
     }
@@ -1426,13 +1913,14 @@ public sealed class WeighOperationForm : Form
         using var dialog = new Form
         {
             Text = Loc.T("weigh.manual_title"),
-            Size = new Size(460, 420),
+            Size = new Size(800, 680),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false,
             MinimizeBox = false,
             BackColor = AgrisTheme.Canvas,
-            Padding = new Padding(16)
+            Padding = new Padding(16),
+            Font = AgrisTheme.Body(12F)
         };
 
         var table = FormLayout.FieldTable();
@@ -1440,47 +1928,53 @@ public sealed class WeighOperationForm : Form
         var numWeight = new NumericUpDown
         {
             Minimum = 0,
-            Maximum = 999_999.999m,
-            DecimalPlaces = 3,
-            Increment = 0.5m,
-            Width = 200,
+            Maximum = IsUnitTon ? 999_999m : 999_999_999m,
+            DecimalPlaces = 0,
+            Increment = IsUnitTon ? 1m : 100m,
+            Dock = DockStyle.Fill,
+            Font = AgrisTheme.Body(12F, FontStyle.Bold),
             AccessibleName = Loc.T("weigh.manual_field_weight")
         };
 
         var cmbUnit = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 200,
+            Dock = DockStyle.Fill,
+            Font = AgrisTheme.Body(11F),
             AccessibleName = Loc.T("weigh.manual_field_unit")
         };
         cmbUnit.Items.AddRange(["kg", Loc.T("weigh.unit_ton")]);
-        cmbUnit.SelectedIndex = 0; // Mặc định kg
+        // Mía = đơn vị tấn mặc định, vật tư = kg
+        cmbUnit.SelectedIndex = _currentSourceSystem != "ERP" ? 1 : 0;
 
         var cmbRole = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 200,
+            Dock = DockStyle.Fill,
+            Font = AgrisTheme.Body(11F),
             AccessibleName = Loc.T("weigh.manual_field_role")
         };
         cmbRole.Items.AddRange([
             new ReweighRoleItem(Loc.T("weigh.reweigh_role_gross"), WeightRole.Gross),
             new ReweighRoleItem(Loc.T("weigh.reweigh_role_tare"), WeightRole.Tare)
         ]);
-        cmbRole.SelectedIndex = 0;
+        cmbRole.SelectedIndex = _currentSegmentIndex > 0 ? 1 : 0;
 
         var txtReason = new TextBox
         {
             Multiline = true,
-            Height = 70,
-            Width = 380,
+            Height = 80,
+            Dock = DockStyle.Fill,
             ScrollBars = ScrollBars.Vertical,
+            Font = AgrisTheme.Body(11F),
             PlaceholderText = Loc.T("weigh.manual_reason_placeholder"),
             AccessibleName = Loc.T("weigh.manual_field_reason")
         };
 
         var txtApprovalRef = new TextBox
         {
-            Width = 380,
+            Dock = DockStyle.Fill,
+            Font = AgrisTheme.Body(11F),
             PlaceholderText = Loc.T("weigh.manual_approval_placeholder"),
             AccessibleName = Loc.T("weigh.manual_field_approval")
         };
@@ -1509,22 +2003,9 @@ public sealed class WeighOperationForm : Form
 
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
-        // ── Validate bắt buộc trước khi gọi server (Req 11.2) ──
+        // ── Validate — tạm bỏ ràng buộc lý do + phê duyệt ──
         var reason = txtReason.Text.Trim();
-        if (string.IsNullOrWhiteSpace(reason))
-        {
-            MessageBox.Show(Loc.T("weigh.manual_reason_required"), Loc.T("common.missing_info"),
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
         var approvalRef = txtApprovalRef.Text.Trim();
-        if (string.IsNullOrWhiteSpace(approvalRef))
-        {
-            MessageBox.Show(Loc.T("weigh.manual_approval_required"), Loc.T("common.missing_info"),
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
 
         if (numWeight.Value <= 0)
         {
@@ -1533,51 +2014,24 @@ public sealed class WeighOperationForm : Form
             return;
         }
 
-        var selectedRole = ((ReweighRoleItem)cmbRole.SelectedItem!).Role;
-        var rawUom = cmbUnit.SelectedItem!.ToString()!;
         var rawWeight = numWeight.Value;
+        var rawUom = cmbUnit.SelectedItem!.ToString()!;
 
-        SetBusy(true);
-        try
+        // Chuyển sang kg nếu nhập tấn
+        var weightKg = rawUom == "kg" ? rawWeight : rawWeight * 1000m;
+
+        // Set vào simulated scale — hiện lên display, user bấm Xác nhận (F5) để chốt
+        if (_simulatedScale is not null)
         {
-            var cmd = new ApproveManualWeightCommand(
-                TripId: _currentTripId.Value,
-                WeighbridgeId: _currentWeighbridgeId,
-                Checkpoint: _currentCheckpoint,
-                SegmentIndex: _currentSegmentIndex,
-                Role: selectedRole,
-                RawWeight: rawWeight,
-                RawUom: rawUom,
-                Reason: reason,
-                ApprovalRef: approvalRef,
-                CorrelationId: Guid.NewGuid().ToString("N"));
-
-            var result = await _presenter.ManualWeightAsync(cmd, _cts.Token);
-
-            if (!result.IsSuccess)
-            {
-                // Req 11.3: Trip đang Paused → từ chối
-                // Req 11.4: Unknown transaction → từ chối
-                // Server-side đã kiểm tra và trả FailureReason cụ thể.
-                MessageBox.Show(
-                    Loc.T("weigh.manual_denied", result.FailureReason),
-                    Loc.T("weigh.reweigh_denied_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            // Req 11.5: Audit log ghi đầy đủ ở server-side (ApproveManualWeightHandler)
-            MessageBox.Show(
-                Loc.T("weigh.manual_ok", $"{rawWeight:N3}", rawUom, selectedRole, approvalRef),
-                Loc.T("weigh.manual_ok_title"), MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-            // Refresh lưới sau nhập tay thành công
-            await LoadWeighedTripsAsync();
+            _simulatedScale.SetWeight(weightKg);
+            _lblQrMessage.Text = $"✋ Nhập tay: {rawWeight:N0} {rawUom} → Bấm Xác nhận (F5) để chốt cân";
+            _lblQrMessage.ForeColor = AgrisTheme.Warning;
         }
-        catch (Exception ex)
+        else
         {
-            ShowError(Loc.T("weigh.manual_error"), ex);
+            MessageBox.Show("Không có simulated scale. Hãy kết nối thiết bị cân.", "Lỗi",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
-        finally { SetBusy(false); }
     }
 
     /// <summary>
@@ -1612,10 +2066,21 @@ public sealed class WeighOperationForm : Form
         _sessionId = null;
         _currentTripId = null;
         _currentTripVersion = 0;
+        _currentSourceSystem = null;
+        _display.DisplayAsTon = true; // Reset về mặc định tấn
+        UpdateWeightUnitLabels();
+        _currentFrmLenhDonId = null;
+        _currentFrmMaLenhDon = null;
+        _currentFrmLenhDonBu = null;
         _currentWeighbridgeId = Guid.Empty;
         _currentLaneId = Guid.Empty;
         _currentCheckpoint = default;
         _currentSegmentIndex = 0;
+        _isWeighOutMode = false;
+        UpdateWeighModeButton();
+        _policyCcsChinhSach = null;
+        _policyTapChatCS = null;
+        _policyChinhSachThuMia = null;
         _ticketPrinted = false;
 
         // Reset tất cả fields
@@ -1637,14 +2102,13 @@ public sealed class WeighOperationForm : Form
         _lblCcsWarning.Text = string.Empty;
         _lblCcsWarning.Visible = false;
 
-        // Reset checkboxes loại mía
+        // Reset radio buttons loại mía (giữ để tránh lỗi tham chiếu, panel luôn ẩn)
         _rbMiaCay.Checked = false;
         _rbMiaKhuc.Checked = false;
         _rbMiaChay.Checked = false;
         _rbMiaOpt4.Checked = false;
         _rbMiaOpt5.Checked = false;
         _txtWeighNotes.Clear();
-        _pnlSugarcaneType.Visible = false;
         _display.Update(null, "kg", ScaleDeviceStatus.Unknown, false, TimeSpan.Zero, null);
         _checklist.Reset();
         _btnSave.Enabled = false;
@@ -1699,7 +2163,7 @@ public sealed class WeighOperationForm : Form
             // Mode 1/2: Cân vào / Cân cả vào và ra
             var weighbridgeId = _currentWeighbridgeId != Guid.Empty
                 ? _currentWeighbridgeId
-                : Guid.Empty;
+                : await _presenter.GetDefaultWeighbridgeAsync(_cts.Token) ?? Guid.Empty;
 
             var filter = new WeighedTripFilter
             {
@@ -1771,14 +2235,78 @@ public sealed class WeighOperationForm : Form
     {
         if (e.RowIndex < 0) return;
 
-        // Chỉ xử lý ở tab "Chờ cân" — các tab khác chỉ hiển thị lịch sử
-        if (_gridMode != 0) return;
-
         var row = _dgvWeighed.Rows[e.RowIndex];
         var tripNo = row.Cells["RegNo"]?.Value?.ToString();
         if (string.IsNullOrWhiteSpace(tripNo)) return;
 
+        // Tab "Đã cân đủ" (2): populate form từ grid data trực tiếp (không scan QR)
+        if (_gridMode == 2)
+        {
+            PopulateFromCompletedRow(row);
+            return;
+        }
+
+        // Tab "Chờ cân vào" (0) / "Chờ cân ra" (1): scan QR → mở session
         await AutoScanQrAsync(tripNo);
+    }
+
+    /// <summary>Điền thông tin từ dòng xe đã cân đủ lên form — để xem/in phiếu lại.</summary>
+    private void PopulateFromCompletedRow(DataGridViewRow row)
+    {
+        // Lấy data từ grid columns
+        var regNo = row.Cells["RegNo"]?.Value?.ToString() ?? "";
+        var ticketNo = row.Cells["TicketNo"]?.Value?.ToString() ?? "";
+        var plate = row.Cells["Plate"]?.Value?.ToString() ?? "";
+        var customer = row.Cells["Customer"]?.Value?.ToString() ?? "";
+        var commodity = row.Cells["Commodity"]?.Value?.ToString() ?? "";
+
+        // Detect source system từ commodity — vật tư không chứa "mía"
+        var isMia = commodity.Contains("mía", StringComparison.OrdinalIgnoreCase)
+            || commodity.Contains("Mía", StringComparison.OrdinalIgnoreCase)
+            || commodity.Contains("CANE", StringComparison.OrdinalIgnoreCase);
+        _currentSourceSystem = isMia ? "FRM" : "ERP";
+        _display.DisplayAsTon = isMia;
+        UpdateWeightUnitLabels();
+
+        _txtRegNo.Text = regNo;
+        _txtTicketNo.Text = ticketNo;
+        _txtPlate.Text = plate;
+        _txtCustomer.Text = customer;
+        _txtCommodity.Text = commodity;
+
+        // Shipment từ grid
+        var shipment = row.Cells["ShipmentNo"]?.Value?.ToString() ?? "";
+        _txtShipment.Text = shipment;
+
+        // Grid data luôn ở tấn — vật tư cần convert ngược sang kg
+        decimal ConvertFromGrid(decimal gridTon) => isMia ? gridTon : gridTon * 1000m;
+        string FormatFromGrid(decimal gridTon) => $"{(isMia ? gridTon : ConvertFromGrid(gridTon)):N0}";
+
+        if (row.Cells["WeightIn"]?.Value is decimal wiTon)
+            _txtWeightIn.Text = FormatFromGrid(wiTon);
+        if (row.Cells["TimeIn"]?.Value is DateTimeOffset tiDto)
+            _txtTimeIn.Text = tiDto.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
+        if (row.Cells["WeightOut"]?.Value is decimal woTon)
+            _txtWeightOut.Text = FormatFromGrid(woTon);
+        if (row.Cells["TimeOut"]?.Value is DateTimeOffset toDto)
+            _txtTimeOut.Text = toDto.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
+        if (row.Cells["NetWeight"]?.Value is decimal netTon)
+        {
+            _txtNetWeight.Text = FormatFromGrid(netTon);
+            _txtNetWeight.Font = new Font(_txtNetWeight.Font, FontStyle.Bold);
+        }
+
+        // Lấy TripId từ grid data (nếu có)
+        if (row.DataBoundItem is WeighedTripRow tripRow)
+            _currentTripId = tripRow.TripId;
+
+        // Bật In phiếu + Đẩy lại Digi
+        _btnPrint.Enabled = true;
+        _btnSync.Enabled = true;
+        _ticketPrinted = true;
+
+        _lblQrMessage.Text = $"📋 Xem chuyến {regNo} — bấm In phiếu (F6) hoặc Đẩy lại Digi";
+        _lblQrMessage.ForeColor = AgrisTheme.Info;
     }
 
     private async void OnDateFilterChanged(object? sender, EventArgs e)

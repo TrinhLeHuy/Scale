@@ -1,4 +1,5 @@
 using System.Drawing.Printing;
+using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
 
 namespace TTC.Weighing.WinForms.Printing;
@@ -67,7 +68,7 @@ public static class PrintHelper
 
     public static int DrawDateRange(Graphics g, Rectangle bounds, int y, string fromDate, string toDate)
     {
-        var text = $"Từ ngày: {fromDate}    Đến ngày: {toDate}";
+        var text = Loc.T("print.date_range", fromDate, toDate);
         g.DrawString(text, SmallFont, Brushes.Black, bounds.Right - g.MeasureString(text, SmallFont).Width, y);
         return y;
     }

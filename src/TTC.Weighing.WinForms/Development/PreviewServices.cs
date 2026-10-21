@@ -40,6 +40,18 @@ public sealed class PreviewTripRepository(PreviewDataStore store) : ITripReposit
     public Task<Trip?> GetByTripNoAsync(string tripNo, Guid siteId, CancellationToken ct = default)
         => Task.FromResult(store.Trips.FirstOrDefault(t => t.TripNo == tripNo && t.SiteId == siteId));
 
+    public Task<Trip?> GetActiveByPlateAsync(string plate, Guid siteId, CancellationToken ct = default)
+    {
+        var normalized = plate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
+        return Task.FromResult(store.Trips
+            .Where(t => t.SiteId == siteId
+                && t.TractorPlate != null
+                && t.Lifecycle is TripLifecycle.Registered or TripLifecycle.InProgress or TripLifecycle.WeighingCompleted)
+            .OrderByDescending(t => t.CreatedAt)
+            .FirstOrDefault(t =>
+                t.TractorPlate!.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant() == normalized));
+    }
+
     public Task<Trip?> GetForUpdateAsync(Guid tripId, int expectedVersion, CancellationToken ct = default)
         => Task.FromResult(store.Trips.FirstOrDefault(
             t => t.Id == tripId && t.Version == expectedVersion));
@@ -61,6 +73,19 @@ public sealed class PreviewTripRepository(PreviewDataStore store) : ITripReposit
             .ToDictionary(g => g.Key, g => g.Count());
 
         return Task.FromResult<IReadOnlyDictionary<Guid, int>>(counts);
+    }
+
+    public Task<string?> FindActiveByLenhDonIdAsync(string lenhDonId, CancellationToken ct = default)
+    {
+        var tripNo = store.Trips
+            .Where(t => t.FrmLenhDonId == lenhDonId
+                && t.Lifecycle != TripLifecycle.Cancelled
+                && t.Lifecycle != TripLifecycle.Closed)
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => t.TripNo)
+            .FirstOrDefault();
+
+        return Task.FromResult(tripNo);
     }
 }
 
@@ -206,6 +231,7 @@ public sealed class PreviewWeighPreconditionQuery(PreviewDataStore store) : IWei
         {
             PrecedingWeightsSatisfied = !isSecondSegment || hasFirstSegmentWeight,
             ImpuritySatisfied = !impurityRequired || impurityDone,
+            WarehouseSatisfied = true, // Preview mode: always satisfied
             PolicySatisfied = true,
             CcsPending = ccsPending,
             Warnings = warnings
@@ -641,32 +667,32 @@ public sealed class PreviewQrScanHandler(PreviewDataStore store, IClock clock) :
         if (token is null)
             return Task.FromResult(new QrScanResult(
                 false, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, "QR_NOT_FOUND",
+                null, null, null, null, null, null, null, null, null, null, null, "QR_NOT_FOUND",
                 "Không tìm thấy mã QR trong dữ liệu xem trước."));
 
         if (token.Status == QrTokenStatus.Revoked)
             return Task.FromResult(new QrScanResult(
                 false, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, QrTokenType.Trip, "QR_REVOKED",
+                null, null, null, null, null, QrTokenType.Trip, null, null, null, null, null, "QR_REVOKED",
                 "Mã QR đã bị thu hồi."));
 
         if (token.ExpiresAt < clock.UtcNow)
             return Task.FromResult(new QrScanResult(
                 false, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, QrTokenType.Trip, "QR_EXPIRED",
+                null, null, null, null, null, QrTokenType.Trip, null, null, null, null, null, "QR_EXPIRED",
                 "Mã QR đã hết hạn."));
 
         if (token.Type == QrTokenType.Temp)
             return Task.FromResult(new QrScanResult(
                 false, token.TripId, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, QrTokenType.Temp, "QR_TEMP",
+                null, null, null, null, null, QrTokenType.Temp, null, null, null, null, null, "QR_TEMP",
                 "Xe chưa đăng ký kế hoạch, cần quay lại cổng để lấy QR_chuyến."));
 
         var trip = store.Trips.FirstOrDefault(t => t.Id == token.TripId);
         if (trip is null)
             return Task.FromResult(new QrScanResult(
                 false, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, "TRIP_NOT_FOUND",
+                null, null, null, null, null, null, null, null, null, null, null, "TRIP_NOT_FOUND",
                 "Chuyến không tồn tại."));
 
         var profile = store.Profiles.FirstOrDefault(p => p.Id == trip.WorkflowProfileId);
@@ -688,6 +714,11 @@ public sealed class PreviewQrScanHandler(PreviewDataStore store, IClock clock) :
             AssignedWeighbridgeId: store.BridgeA.Id,
             AssignedWarehouseId: store.WarehouseId,
             QrType: QrTokenType.Trip,
+            SourceSystem: trip.SourceSystem,
+            DriverRef: trip.DriverRef,
+            FrmLenhDonId: trip.FrmLenhDonId,
+            FrmMaLenhDon: trip.FrmMaLenhDon,
+            FrmLenhDonBu: trip.FrmLenhDonBu,
             ErrorCode: null,
             ErrorMessage: null));
     }

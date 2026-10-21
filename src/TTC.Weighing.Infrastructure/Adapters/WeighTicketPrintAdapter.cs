@@ -100,6 +100,8 @@ public sealed class WeighTicketPrintAdapter(
             VehicleTypeName: vehicleTypeName,
             CustomerOrOwner: trip.SugarcaneOwner,
             Commodity: trip.SugarcaneType,
+            // TODO: Warehouse entity chưa tồn tại trong Domain — cần tạo khi có schema.
+            // Khi có, tra cứu: db.Set<Warehouse>().Where(w => w.Id == trip.AssignedWarehouseId.Value).Select(w => w.Name).FirstOrDefaultAsync(ct)
             Warehouse: null,
             ShipmentNo: trip.ReferenceTripNo,
             GrossKg: grossEvent?.NormalizedKg,
@@ -109,6 +111,9 @@ public sealed class WeighTicketPrintAdapter(
             NetKg: netKg,
             ImpurityPercent: impuritySample?.ImpurityPercent,
             CcsValue: ccsSample?.CcsValue,
+            BrixValue: null,  // TODO: Lưu Brix vào QualitySample khi có schema mới
+            PolValue: null,   // TODO: Lưu Pol vào QualitySample khi có schema mới
+            PolDocValue: null, // TODO: Lưu Pol cải chính vào QualitySample khi có schema mới
             SugarcaneType: trip.SugarcaneType,
             SugarcaneOwner: trip.SugarcaneOwner,
             SiteName: siteName,

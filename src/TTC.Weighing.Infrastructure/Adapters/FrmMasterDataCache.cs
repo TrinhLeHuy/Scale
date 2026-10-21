@@ -30,7 +30,36 @@ public sealed record FrmVehicleInfo(
     // Từ hop-dong-van-chuyen (ghép qua HopDongVanChuyen ID)
     string? DoiTacVanChuyenName,  // Khách hàng / NCC
     string? VuDauTuName,          // Vụ mùa
-    string? MaHopDong);           // Mã hợp đồng VC
+    string? MaHopDong,            // Mã hợp đồng VC
+    // Ngày tạo record (sourceCreatedDate) — dùng để lọc theo khung ngày đăng tài
+    string? SourceCreatedDate);
+
+/// <summary>
+/// Dữ liệu lệnh đốn (harvest-orders) chuẩn hóa từ FRM.
+/// </summary>
+public sealed record FrmLenhDonInfo(
+    string MaLD,           // Mã lệnh đốn (e.g. LD2425-00000863)
+    string? SourceKey,     // ID GUID từ FRM (e.g. f164b2cc-77ca-f011-a815-000d3ac7e30c)
+    string? BienSoXe,      // Biển số xe
+    string? NgayCap,       // Ngày cấp lệnh (lọc khung ngày)
+    string? NgayHetHan,    // Ngày hết hạn
+    string? StatusCodeName, // Trạng thái (Đã duyệt)
+    string? KHName,        // Chủ mía (cá nhân)
+    string? KHDNName,      // Khách hàng doanh nghiệp
+    string? LoaiMiaName,   // Loại mía (Mía Tơ, Mía Gốc)
+    string? GiongMiaName,  // Giống mía
+    string? TramName,      // Trạm
+    string? VudautuName,   // Vụ đầu tư
+    string? LoaixeCode,    // Mã loại xe (100000000=Xe Tải, 100000001=Máy kéo/Container, 100000002=Xe Kéo)
+    string? LoaixeName,    // Tên loại xe
+    string? UuTien,        // Ưu tiên (từ FRM LenhDon)
+    decimal? TaiTrong,     // Tải trọng
+    string? DoiTacThuHoachName, // Đối tác thu hoạch
+    string? ThuadatcanhtacName, // Thửa đất
+    string? Thexename,     // Tên thẻ xe
+    string? HopDongDauTuMiaName, // Hợp đồng đầu tư
+    string? SourceCreatedDate,  // sourceCreatedDate from API
+    string? BusinessUnit);       // BU (TTCS, ATN, ...)
 
 /// <summary>
 /// Cache dữ liệu master FRM vào bộ nhớ. Kéo toàn bộ xe-van-chuyen + the-xe
@@ -44,6 +73,10 @@ public sealed class FrmMasterDataCache
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly ILogger<FrmMasterDataCache> _logger;
+    private readonly string? _connectionString;
+
+    /// <summary>Connection string for raw queries (QualityPresenter dùng để tránh EF concurrent access).</summary>
+    public string? ConnectionString => _connectionString;
 
     // Index: normalized plate → list of vehicle info (1 biển số có thể có nhiều thẻ xe)
     private ConcurrentDictionary<string, List<FrmVehicleInfo>> _vehicleIndex = new();
@@ -51,9 +84,22 @@ public sealed class FrmMasterDataCache
     // Danh sách xe-van-chuyen thô (dùng cho autocomplete)
     private List<FrmVehicleInfo> _allVehicles = [];
 
+    // Danh sách lệnh đốn (harvest-orders)
+    private List<FrmLenhDonInfo> _allLenhDon = [];
+    public IReadOnlyList<FrmLenhDonInfo> AllLenhDon => _allLenhDon;
+
     private DateTimeOffset _lastRefreshedAt = DateTimeOffset.MinValue;
     private bool _isLoading;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
+
+    /// <summary>BU hiện tại (lấy từ account login, fallback config).</summary>
+    public string? ActiveBusinessUnit { get; set; }
+
+    /// <summary>
+    /// TTCBH = tổng công ty → thấy toàn bộ dữ liệu, không filter theo BU.
+    /// </summary>
+    public bool IsHeadquarters =>
+        string.Equals(ActiveBusinessUnit, "TTCBH", StringComparison.OrdinalIgnoreCase);
 
     public FrmMasterDataCache(
         HttpClient httpClient,
@@ -63,6 +109,7 @@ public sealed class FrmMasterDataCache
         _httpClient = httpClient;
         _configuration = configuration;
         _logger = logger;
+        _connectionString = configuration.GetConnectionString("WeighingDb");
     }
 
     /// <summary>Thời điểm refresh cuối cùng.</summary>
@@ -105,19 +152,49 @@ public sealed class FrmMasterDataCache
             _isLoading = true;
             _logger.LogInformation("FrmCache: starting refresh from FRM API...");
 
-            var businessUnit = _configuration.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit") ?? "TTCS";
+            var businessUnit = ActiveBusinessUnit
+                ?? _configuration.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit")
+                ?? "TTCS";
 
-            // 1. Kéo xe-van-chuyen
-            var xeVanChuyenItems = await FetchAllPagesAsync("xe-van-chuyen", businessUnit, ct);
-            _logger.LogInformation("FrmCache: fetched {Count} xe-van-chuyen items", xeVanChuyenItems.Count);
+            // Chỉ kéo BU của account login — mỗi nhà máy chỉ kéo dữ liệu của mình
+            var allBUs = new[] { businessUnit };
 
-            // 2. Kéo the-xe
-            var theXeItems = await FetchAllPagesAsync("the-xe", businessUnit, ct);
-            _logger.LogInformation("FrmCache: fetched {Count} the-xe items", theXeItems.Count);
+            var allXeVanChuyen = new List<FrmEntityItem>();
+            var allTheXe = new List<FrmEntityItem>();
+            var allHdvc = new List<FrmEntityItem>();
+            var allLenhDonItems = new List<(FrmEntityItem Item, string BU)>();
 
-            // 3. Kéo hop-dong-van-chuyen (có DoiTacVanChuyenName = Khách hàng, VuDauTuName = Vụ mùa)
-            var hdvcItems = await FetchAllPagesAsync("hop-dong-van-chuyen", businessUnit, ct);
-            _logger.LogInformation("FrmCache: fetched {Count} hop-dong-van-chuyen items", hdvcItems.Count);
+            foreach (var bu in allBUs)
+            {
+                try
+                {
+                    var xvc = await FetchAllPagesAsync("xe-van-chuyen", bu, ct);
+                    allXeVanChuyen.AddRange(xvc);
+
+                    var tx = await FetchAllPagesAsync("the-xe", bu, ct);
+                    allTheXe.AddRange(tx);
+
+                    var hd = await FetchAllPagesAsync("hop-dong-van-chuyen", bu, ct);
+                    allHdvc.AddRange(hd);
+
+                    var ld = await FetchAllPagesAsync("LenhDon", bu, ct);
+                    allLenhDonItems.AddRange(ld.Select(item => (item, bu)));
+
+                    _logger.LogInformation("FrmCache: BU {BU} — XVC:{Xvc} TX:{Tx} HDVC:{Hd} LD:{Ld}",
+                        bu, xvc.Count, tx.Count, hd.Count, ld.Count);
+                }
+                catch (Exception buEx)
+                {
+                    _logger.LogWarning(buEx, "FrmCache: error fetching BU {BU}", bu);
+                }
+            }
+
+            var xeVanChuyenItems = allXeVanChuyen;
+            var theXeItems = allTheXe;
+            var hdvcItems = allHdvc;
+
+            _logger.LogInformation("FrmCache: total — XVC:{Xvc} TX:{Tx} HDVC:{Hd} LD:{Ld}",
+                xeVanChuyenItems.Count, theXeItems.Count, hdvcItems.Count, allLenhDonItems.Count);
 
             // 4. Build lookup: xe-van-chuyen theo sourceKey
             var xeBySourceKey = new Dictionary<string, FrmEntityItem>();
@@ -176,7 +253,8 @@ public sealed class FrmMasterDataCache
                     // Từ hop-dong-van-chuyen
                     DoiTacVanChuyenName: hdvcItem is not null ? FrmFieldsReader.GetString(hdvcItem.Fields, "DoiTacVanChuyenName") : null,
                     VuDauTuName: hdvcItem is not null ? FrmFieldsReader.GetString(hdvcItem.Fields, "VuDauTuName") : null,
-                    MaHopDong: hdvcItem is not null ? FrmFieldsReader.GetString(hdvcItem.Fields, "MaHopDong") : null);
+                    MaHopDong: hdvcItem is not null ? FrmFieldsReader.GetString(hdvcItem.Fields, "MaHopDong") : null,
+                    SourceCreatedDate: theXe.SourceCreatedDate);
 
                 vehicles.Add(info);
 
@@ -212,7 +290,8 @@ public sealed class FrmMasterDataCache
                     NgayApDungDen: null,
                     DoiTacVanChuyenName: null,
                     VuDauTuName: null,
-                    MaHopDong: null);
+                    MaHopDong: null,
+                    SourceCreatedDate: xeItem.SourceCreatedDate);
 
                 vehicles.Add(info);
                 newIndex.TryAdd(key, [info]);
@@ -222,6 +301,43 @@ public sealed class FrmMasterDataCache
             _allVehicles = vehicles;
             _vehicleIndex = newIndex;
             _lastRefreshedAt = DateTimeOffset.UtcNow;
+
+            // 7. Parse LenhDon
+            var lenhDonList = new List<FrmLenhDonInfo>();
+            foreach (var (item, itemBu) in allLenhDonItems)
+            {
+                var maLD = FrmFieldsReader.GetString(item.Fields, "MaLD");
+                if (string.IsNullOrWhiteSpace(maLD)) continue;
+
+                lenhDonList.Add(new FrmLenhDonInfo(
+                    MaLD: maLD,
+                    SourceKey: FrmFieldsReader.GetString(item.Fields, "ID") ?? item.SourceKey,
+                    BienSoXe: FrmFieldsReader.GetString(item.Fields, "BienSoXe"),
+                    NgayCap: FrmFieldsReader.GetString(item.Fields, "NgayCap"),
+                    NgayHetHan: FrmFieldsReader.GetString(item.Fields, "NgayHetHan"),
+                    StatusCodeName: FrmFieldsReader.GetString(item.Fields, "StatusCodeName"),
+                    KHName: FrmFieldsReader.GetString(item.Fields, "KHName"),
+                    KHDNName: FrmFieldsReader.GetString(item.Fields, "KHDNName"),
+                    LoaiMiaName: FrmFieldsReader.GetString(item.Fields, "LoaiMiaName"),
+                    GiongMiaName: FrmFieldsReader.GetString(item.Fields, "GiongMiaName"),
+                    TramName: FrmFieldsReader.GetString(item.Fields, "TramName"),
+                    VudautuName: FrmFieldsReader.GetString(item.Fields, "VudautuName"),
+                    LoaixeCode: FrmFieldsReader.GetString(item.Fields, "LoaiXe") ?? FrmFieldsReader.GetString(item.Fields, "Loaixe"),
+                    LoaixeName: FrmFieldsReader.GetString(item.Fields, "LoaixeName"),
+                    UuTien: ParseUuTien(FrmFieldsReader.GetString(item.Fields, "Uutien") ?? FrmFieldsReader.GetString(item.Fields, "UuTien")),
+                    TaiTrong: FrmFieldsReader.GetDecimal(item.Fields, "TaiTrong"),
+                    DoiTacThuHoachName: FrmFieldsReader.GetString(item.Fields, "DoiTacThuHoachName"),
+                    ThuadatcanhtacName: FrmFieldsReader.GetString(item.Fields, "ThuadatcanhtacName"),
+                    Thexename: FrmFieldsReader.GetString(item.Fields, "Thexename"),
+                    HopDongDauTuMiaName: FrmFieldsReader.GetString(item.Fields, "HopDongDauTuMiaName"),
+                    SourceCreatedDate: item.SourceCreatedDate,
+                    BusinessUnit: itemBu));
+            }
+            _allLenhDon = lenhDonList;
+            _logger.LogInformation("FrmCache: parsed {Count} LenhDon records", lenhDonList.Count);
+
+            // Lưu xuống DB local để khởi động nhanh lần sau
+            await SaveToDbAsync();
 
             _logger.LogInformation(
                 "FrmCache: refresh complete. {VehicleCount} vehicles, {PlateCount} unique plates",
@@ -307,7 +423,8 @@ public sealed class FrmMasterDataCache
             }
 
             var entityResult = apiResponse?.Results?.FirstOrDefault(r =>
-                string.Equals(r.Entity, entity, StringComparison.OrdinalIgnoreCase));
+                string.Equals(r.Entity, entity, StringComparison.OrdinalIgnoreCase))
+                ?? apiResponse?.Results?.FirstOrDefault(); // Fallback: lấy result đầu tiên (API có thể trả tên khác, vd LenhDon → harvest-orders)
 
             if (entityResult?.Items is null || entityResult.Items.Count == 0)
                 break;
@@ -373,8 +490,239 @@ public sealed class FrmMasterDataCache
     private static string TruncateBody(string body)
         => body.Length <= 200 ? body : body[..200] + "...";
 
+    // ═══════════════════════════════════════════════════════════
+    //  DB persistence — lưu/load cache từ PostgreSQL
+    // ═══════════════════════════════════════════════════════════
+
+    /// <summary>Load dữ liệu FRM từ DB local khi khởi động (nhanh hơn gọi API).</summary>
+    public async Task LoadFromDbAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+
+        try
+        {
+            await using var conn = new Npgsql.NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            // Load vehicles
+            var vehicles = new List<FrmVehicleInfo>();
+            await using (var cmd = new Npgsql.NpgsqlCommand("SELECT * FROM frm_vehicles", conn))
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    vehicles.Add(new FrmVehicleInfo(
+                        BienSo: reader["bien_so"] as string ?? "",
+                        MaXe: reader["ma_xe"] as string,
+                        LoaiXe: reader["loai_xe"] as string,
+                        LoaiXeName: reader["loai_xe_name"] as string,
+                        TaiTrong: reader["tai_trong"] is DBNull ? null : (decimal?)reader["tai_trong"],
+                        TrongTaiToiDa: reader["trong_tai_toi_da"] is DBNull ? null : (decimal?)reader["trong_tai_toi_da"],
+                        MaThe: reader["ma_the"] as string,
+                        TramName: reader["tram_name"] as string,
+                        HopDongVanChuyenName: reader["hop_dong_van_chuyen_name"] as string,
+                        LoaiTheXeName: reader["loai_the_xe_name"] as string,
+                        StatusName: reader["status_name"] as string,
+                        ThuHoachMay: reader["thu_hoach_may"] is DBNull ? null : (bool?)reader["thu_hoach_may"],
+                        NgayApDungTu: reader["ngay_ap_dung_tu"] as string,
+                        NgayApDungDen: reader["ngay_ap_dung_den"] as string,
+                        DoiTacVanChuyenName: reader["doi_tac_van_chuyen_name"] as string,
+                        VuDauTuName: reader["vu_dau_tu_name"] as string,
+                        MaHopDong: reader["ma_hop_dong"] as string,
+                        SourceCreatedDate: reader["source_created_date"] as string));
+                }
+            }
+
+            // Load lenh don — chỉ load BU active
+            var lenhDon = new List<FrmLenhDonInfo>();
+            var lenhDonSql = ActiveBusinessUnit is not null
+                ? "SELECT * FROM frm_lenh_don WHERE business_unit = $1"
+                : "SELECT * FROM frm_lenh_don";
+            await using (var cmd = new Npgsql.NpgsqlCommand(lenhDonSql, conn))
+            {
+                if (ActiveBusinessUnit is not null)
+                    cmd.Parameters.AddWithValue(ActiveBusinessUnit);
+                await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    lenhDon.Add(new FrmLenhDonInfo(
+                        MaLD: reader["ma_ld"] as string ?? "",
+                        SourceKey: reader["source_key"] as string,
+                        BienSoXe: reader["bien_so_xe"] as string,
+                        NgayCap: reader["ngay_cap"] as string,
+                        NgayHetHan: reader["ngay_het_han"] as string,
+                        StatusCodeName: reader["status_code_name"] as string,
+                        KHName: reader["kh_name"] as string,
+                        KHDNName: HasColumn(reader, "khdn_name") ? reader["khdn_name"] as string : null,
+                        LoaiMiaName: reader["loai_mia_name"] as string,
+                        GiongMiaName: reader["giong_mia_name"] as string,
+                        TramName: reader["tram_name"] as string,
+                        VudautuName: reader["vu_dau_tu_name"] as string,
+                        LoaixeCode: HasColumn(reader, "loai_xe_code") ? reader["loai_xe_code"] as string : null,
+                        LoaixeName: reader["loai_xe_name"] as string,
+                        UuTien: HasColumn(reader, "uu_tien") ? reader["uu_tien"] as string : null,
+                        TaiTrong: reader["tai_trong"] is DBNull ? null : (decimal?)reader["tai_trong"],
+                        DoiTacThuHoachName: reader["doi_tac_thu_hoach_name"] as string,
+                        ThuadatcanhtacName: reader["thua_dat_canh_tac_name"] as string,
+                        Thexename: reader["the_xe_name"] as string,
+                        HopDongDauTuMiaName: reader["hop_dong_dau_tu_mia_name"] as string,
+                        SourceCreatedDate: reader["source_created_date"] as string,
+                        BusinessUnit: reader["business_unit"] as string));
+                }
+            }
+            }
+
+            if (vehicles.Count > 0 || lenhDon.Count > 0)
+            {
+                // Build index
+                var newIndex = new ConcurrentDictionary<string, List<FrmVehicleInfo>>();
+                foreach (var v in vehicles)
+                {
+                    var key = NormalizePlate(v.BienSo);
+                    newIndex.AddOrUpdate(key, _ => [v], (_, list) => { list.Add(v); return list; });
+                }
+
+                _allVehicles = vehicles;
+                _vehicleIndex = newIndex;
+                _allLenhDon = lenhDon;
+                _lastRefreshedAt = DateTimeOffset.UtcNow;
+
+                _logger.LogInformation(
+                    "FrmCache: loaded from DB — {Vehicles} vehicles, {LenhDon} lệnh đốn",
+                    vehicles.Count, lenhDon.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "FrmCache: failed to load from DB, will fetch from API");
+        }
+    }
+
+    /// <summary>Lưu cache hiện tại xuống DB local (UPSERT). Trùng key thì đè, không trùng thì thêm. Không xóa data cũ.</summary>
+    private async Task SaveToDbAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        if (_allVehicles.Count == 0 && _allLenhDon.Count == 0) return;
+
+        try
+        {
+            await using var conn = new Npgsql.NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            // Đảm bảo unique index tồn tại (idempotent)
+            await using (var idx1 = new Npgsql.NpgsqlCommand(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_frm_vehicles_bien_so_ma_the ON frm_vehicles (bien_so, COALESCE(ma_the, ''))", conn))
+                await idx1.ExecuteNonQueryAsync();
+            await using (var idx2 = new Npgsql.NpgsqlCommand(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_frm_lenh_don_ma_ld_bu ON frm_lenh_don (ma_ld, COALESCE(business_unit, ''))", conn))
+                await idx2.ExecuteNonQueryAsync();
+
+            // Upsert vehicles
+            foreach (var v in _allVehicles)
+            {
+                await using var cmd = new Npgsql.NpgsqlCommand(@"
+INSERT INTO frm_vehicles (bien_so,ma_xe,loai_xe,loai_xe_name,tai_trong,trong_tai_toi_da,ma_the,tram_name,
+  hop_dong_van_chuyen_name,loai_the_xe_name,status_name,thu_hoach_may,ngay_ap_dung_tu,ngay_ap_dung_den,
+  doi_tac_van_chuyen_name,vu_dau_tu_name,ma_hop_dong,source_created_date,synced_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,now())
+ON CONFLICT (bien_so, COALESCE(ma_the, ''))
+DO UPDATE SET ma_xe=$2,loai_xe=$3,loai_xe_name=$4,tai_trong=$5,trong_tai_toi_da=$6,
+  tram_name=$8,hop_dong_van_chuyen_name=$9,loai_the_xe_name=$10,status_name=$11,thu_hoach_may=$12,
+  ngay_ap_dung_tu=$13,ngay_ap_dung_den=$14,doi_tac_van_chuyen_name=$15,vu_dau_tu_name=$16,
+  ma_hop_dong=$17,source_created_date=$18,synced_at=now()
+", conn);
+                cmd.Parameters.AddWithValue(v.BienSo);
+                cmd.Parameters.AddWithValue((object?)v.MaXe ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.LoaiXe ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.LoaiXeName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.TaiTrong ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.TrongTaiToiDa ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.MaThe ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.TramName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.HopDongVanChuyenName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.LoaiTheXeName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.StatusName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.ThuHoachMay ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.NgayApDungTu ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.NgayApDungDen ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.DoiTacVanChuyenName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.VuDauTuName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.MaHopDong ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)v.SourceCreatedDate ?? DBNull.Value);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // Upsert lenh don
+            foreach (var ld in _allLenhDon)
+            {
+                await using var cmd = new Npgsql.NpgsqlCommand(@"
+INSERT INTO frm_lenh_don (ma_ld,source_key,bien_so_xe,ngay_cap,ngay_het_han,status_code_name,kh_name,
+  loai_mia_name,giong_mia_name,tram_name,vu_dau_tu_name,loai_xe_code,loai_xe_name,uu_tien,tai_trong,doi_tac_thu_hoach_name,
+  thua_dat_canh_tac_name,the_xe_name,hop_dong_dau_tu_mia_name,source_created_date,business_unit,synced_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,now())
+ON CONFLICT (ma_ld, COALESCE(business_unit, ''))
+DO UPDATE SET source_key=$2,bien_so_xe=$3,ngay_cap=$4,ngay_het_han=$5,status_code_name=$6,kh_name=$7,
+  loai_mia_name=$8,giong_mia_name=$9,tram_name=$10,vu_dau_tu_name=$11,loai_xe_code=$12,loai_xe_name=$13,uu_tien=$14,tai_trong=$15,
+  doi_tac_thu_hoach_name=$16,thua_dat_canh_tac_name=$17,the_xe_name=$18,hop_dong_dau_tu_mia_name=$19,
+  source_created_date=$20,synced_at=now()
+", conn);
+                cmd.Parameters.AddWithValue(ld.MaLD);
+                cmd.Parameters.AddWithValue((object?)ld.SourceKey ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.BienSoXe ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.NgayCap ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.NgayHetHan ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.StatusCodeName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.KHName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.LoaiMiaName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.GiongMiaName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.TramName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.VudautuName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.LoaixeCode ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.LoaixeName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.UuTien ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.TaiTrong ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.DoiTacThuHoachName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.ThuadatcanhtacName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.Thexename ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.HopDongDauTuMiaName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.SourceCreatedDate ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.BusinessUnit ?? DBNull.Value);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            _logger.LogInformation(
+                "FrmCache: upserted to DB — {Vehicles} vehicles, {LenhDon} lệnh đốn",
+                _allVehicles.Count, _allLenhDon.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "FrmCache: failed to save to DB");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  Seed test data — dữ liệu mẫu khi FRM API không trả records
+    // ═══════════════════════════════════════════════════════════
+
     private static string NormalizePlate(string? plate)
         => plate is null
             ? string.Empty
             : plate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
+
+    /// <summary>Parse UuTien từ FRM: boolean (true/false) → "1"/"0", hoặc giữ nguyên nếu đã là string số.</summary>
+    private static string? ParseUuTien(string? value)
+    {
+        if (value is null) return null;
+        if (bool.TryParse(value, out var b)) return b ? "1" : "0";
+        return value; // Đã là "1"/"0" hoặc giá trị khác
+    }
+
+    private static bool HasColumn(System.Data.IDataReader reader, string columnName)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+            if (reader.GetName(i).Equals(columnName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
 }

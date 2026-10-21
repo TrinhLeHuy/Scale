@@ -143,10 +143,13 @@ public sealed class SiteCodeContext : Forms.ISiteContext
 
         CurrentSiteId = site.Id;
         CurrentSiteCode = site.Code;
+        CurrentSiteName = site.Name;
     }
 
     public Guid CurrentSiteId { get; }
     public string CurrentSiteCode { get; }
+    public string? CurrentSiteName { get; }
+    public string? CurrentSiteAddress { get; set; }
 
     /// <summary>Lấy từ Program.ActiveOrganizationUnitCode sau đăng nhập. Null = admin → thấy tất cả.</summary>
     public string? OrganizationUnitCode => WinForms.Program.ActiveOrganizationUnitCode;

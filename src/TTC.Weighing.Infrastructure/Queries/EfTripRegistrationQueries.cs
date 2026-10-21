@@ -77,7 +77,7 @@ public sealed class EfTripRegistrationQueries(WeighingDbContext db) : ITripRegis
                         dl => dl.DocumentId, doc => doc.Id,
                         (dl, doc) => doc.OrganizationCode)
                     .FirstOrDefault()
-                    ?? t.SugarcaneOwner, // Fallback: đối tác vận chuyển từ FRM
+                    ?? t.DriverRef, // Nhà vận tải — fallback DriverRef (nhập tay) thay vì chủ mía
                 CustomerOrSupplier = t.SugarcaneOwner,
                 Commodity = t.SugarcaneType ?? db.WorkflowProfiles
                     .Where(p => p.Id == t.WorkflowProfileId)
@@ -88,22 +88,52 @@ public sealed class EfTripRegistrationQueries(WeighingDbContext db) : ITripRegis
             })
             .ToListAsync(ct);
 
+        // Pre-fetch weigh events and quality samples for process status
+        var tripIds = rows.Select(r => r.Id).ToHashSet();
+
+        var weighEvents = await db.WeighEvents
+            .Where(e => tripIds.Contains(e.TripId) && e.IsEffective)
+            .Select(e => new { e.TripId, e.Role })
+            .ToListAsync(ct);
+
+        var qualitySamples = await db.QualitySamples
+            .Where(s => tripIds.Contains(s.TripId))
+            .Select(s => new { s.TripId, s.Type })
+            .ToListAsync(ct);
+
+        var syncStatuses = await db.IntegrationMessages
+            .Where(m => tripIds.Contains(m.TripId))
+            .GroupBy(m => m.TripId)
+            .Select(g => new { TripId = g.Key, HasAck = g.Any(m => m.Status == Domain.Enums.IntegrationMessageStatus.Acknowledged) })
+            .ToListAsync(ct);
+
+        var weighByTrip = weighEvents.ToLookup(e => e.TripId);
+        var qualityByTrip = qualitySamples.ToLookup(s => s.TripId);
+        var syncByTrip = syncStatuses.ToDictionary(s => s.TripId, s => s.HasAck);
+
         return rows
-            .Select(r => new TripRegistrationRow(
-                r.Id,
-                r.Version,
-                r.TripNo,
-                r.ShipmentNo,
-                r.Plate,
-                r.QueueSequenceNumber,
-                r.DriverRef,
-                r.EntryTime,
-                r.ExitTime,
-                r.Transporter,
-                r.CustomerOrSupplier,
-                r.Commodity,
-                r.Lifecycle,
-                r.VehicleType?.ToString()))
+            .Select(r =>
+            {
+                var hasGross = weighByTrip[r.Id].Any(e => e.Role == Domain.Enums.WeightRole.Gross);
+                var hasTare = weighByTrip[r.Id].Any(e => e.Role == Domain.Enums.WeightRole.Tare);
+                var hasImpurity = qualityByTrip[r.Id].Any(s => s.Type == Domain.Enums.QualitySampleType.Impurity);
+                var hasCcs = qualityByTrip[r.Id].Any(s => s.Type == Domain.Enums.QualitySampleType.Ccs);
+                var hasSynced = syncByTrip.TryGetValue(r.Id, out var ack) && ack;
+
+                var status = hasSynced ? "📤 Đã đẩy Digi"
+                    : hasTare && hasGross ? "✅ Đã cân đủ"
+                    : hasCcs ? "🧪 Đã đo CCS"
+                    : hasImpurity ? "🔬 Đã đo tạp chất"
+                    : hasGross ? "⚖️ Đã cân lần 1"
+                    : r.Lifecycle == Domain.Enums.TripLifecycle.InProgress ? "⚖️ Đang cân"
+                    : "📋 Đã đăng tài";
+
+                return new TripRegistrationRow(
+                    r.Id, r.Version, r.TripNo, r.ShipmentNo, r.Plate,
+                    r.QueueSequenceNumber, r.DriverRef, r.EntryTime, r.ExitTime,
+                    r.Transporter, r.CustomerOrSupplier, r.Commodity,
+                    r.Lifecycle, r.VehicleType?.ToString(), status);
+            })
             .ToList();
     }
 }

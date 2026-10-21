@@ -7,6 +7,8 @@ public sealed class PreviewSiteContext(PreviewDataStore store) : ISiteContext
 {
     public Guid CurrentSiteId => store.Site.Id;
     public string CurrentSiteCode => store.Site.Code;
+    public string? CurrentSiteName => store.Site.Name;
+    public string? CurrentSiteAddress => null;
     public string? OrganizationUnitCode => null; // Preview → thấy tất cả
 }
 
@@ -18,5 +20,7 @@ public sealed class ConfiguredSiteContext(Guid siteId, string siteCode) : ISiteC
 {
     public Guid CurrentSiteId { get; } = siteId;
     public string CurrentSiteCode { get; } = siteCode;
+    public string? CurrentSiteName { get; set; }
+    public string? CurrentSiteAddress { get; set; }
     public string? OrganizationUnitCode { get; set; }
 }

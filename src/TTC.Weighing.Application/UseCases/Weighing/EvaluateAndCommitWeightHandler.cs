@@ -205,8 +205,8 @@ public sealed class EvaluateAndCommitWeightHandler(
     }
 
     /// <summary>
-    /// Chuyển sang WEIGHING_COMPLETED khi mọi vai trò cân của hồ sơ đã có bản hiệu lực.
-    /// Không suy ra từ số lượt cân cố định; lấy theo chuỗi vai trò khai báo trong hồ sơ (R-030).
+    /// Chuyển sang CLOSED khi mọi vai trò cân của hồ sơ đã có bản hiệu lực.
+    /// Luồng đơn giản: đủ cân lần 1 + cân lần 2 = kết thúc chuyến.
     /// </summary>
     private async Task AdvanceWhenAllWeightsCommittedAsync(
         Domain.Entities.Trip trip, Domain.Entities.WorkflowProfile profile, CancellationToken ct)
@@ -223,7 +223,8 @@ public sealed class EvaluateAndCommitWeightHandler(
                 return;
         }
 
-        trip.Lifecycle = TripLifecycle.WeighingCompleted;
+        // Đủ lượt cân → đóng chuyến luôn (không qua WeighingCompleted)
+        trip.Lifecycle = TripLifecycle.Closed;
         trip.UpdatedAt = clock.UtcNow;
         trip.UpdatedBy = user.UserId;
 

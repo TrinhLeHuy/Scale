@@ -46,9 +46,9 @@ public sealed class CancelTripHandler(
         if (!user.HasPermission(RequiredPermission, trip.SiteId))
             return Fail("Không có quyền hủy đăng tài tại nhà máy này.");
 
-        // 3. Validate Lifecycle ∈ {TempRegistered, Registered}
-        if (trip.Lifecycle is not (TripLifecycle.TempRegistered or TripLifecycle.Registered))
-            return Fail($"Không thể hủy chuyến ở trạng thái {trip.Lifecycle}. Chỉ hủy được khi chuyến ở TempRegistered hoặc Registered.");
+        // 3. Validate Lifecycle ∈ {TempRegistered, Registered, InProgress}
+        if (trip.Lifecycle is not (TripLifecycle.TempRegistered or TripLifecycle.Registered or TripLifecycle.InProgress))
+            return Fail($"Không thể hủy chuyến ở trạng thái {trip.Lifecycle}. Chỉ hủy được khi chuyến chưa hoàn thành.");
 
         // 4. Kiểm tra chưa có WeighSession Committed
         var hasCommittedSession = trip.WeighSessions
@@ -88,6 +88,18 @@ public sealed class CancelTripHandler(
         // 7. Giải phóng hàng chờ (xóa assignment)
         trip.AssignedWeighbridgeId = null;
         trip.QueueSequenceNumber = null;
+
+        // 7b. Đóng tất cả WeighSession đang active → giải phóng bàn cân
+        foreach (var ws in trip.WeighSessions)
+        {
+            if (ws.Status is WeighSessionStatus.Open)
+            {
+                ws.Status = WeighSessionStatus.Abandoned;
+                ws.ClosedAt = now;
+                ws.UpdatedAt = now;
+                ws.UpdatedBy = user.UserId;
+            }
+        }
 
         // 8. Nếu nguồn FRM → gọi NotifyCancellationAsync, xử lý UNKNOWN theo R-024
         IntegrationMessageStatus? frmNotifyStatus = null;

@@ -1,8 +1,10 @@
 using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Application.UseCases.Integration;
+using TTC.Weighing.Application.UseCases.Trips;
 using TTC.Weighing.Application.UseCases.Weighing;
 using TTC.Weighing.Domain.Enums;
+using TTC.Weighing.Infrastructure.Adapters;
 using TTC.Weighing.WinForms.Forms;
 
 namespace TTC.Weighing.WinForms.Presenters;
@@ -36,7 +38,12 @@ public sealed class WeighOperationPresenter(
     IWeighSessionRepository weighSessionRepository,
     IWeighbridgeRepository weighbridgeRepository,
     ISiteContext siteContext,
-    TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter digiScaleTickets)
+    ITripRegistrationQueries tripRegistrationQueries,
+    UpdateSugarcaneTypeHandler updateSugarcaneType,
+    TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache frmCache,
+    TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter digiScaleTickets,
+    TTC.Weighing.Infrastructure.Adapters.ErpOrderLineAdapter erpOrderLines,
+    IQualitySampleRepository qualitySampleRepository)
 {
     /// <summary>Độ mới tối đa dùng riêng cho hiển thị. Không dùng làm điều kiện chốt cân.</summary>
     private static readonly TimeSpan DisplayStaleAfter = TimeSpan.FromSeconds(2);
@@ -46,6 +53,9 @@ public sealed class WeighOperationPresenter(
     /// PrintHelper cần service để hiển thị dialog chọn máy in rồi gọi PrintAsync.
     /// </summary>
     public IWeighTicketPrintService PrintService => printService;
+
+    /// <summary>BU mặc định — từ account login hoặc config.</summary>
+    public string DefaultBusinessUnit => frmCache.ActiveBusinessUnit ?? "TTCS";
 
     // ── Existing methods ──────────────────────────────────────────────
 
@@ -81,6 +91,16 @@ public sealed class WeighOperationPresenter(
     public Task<QrScanResult> ScanQrAsync(
         string qrContent, Guid siteId, CancellationToken ct = default)
         => qrScanHandler.DecodeAndLookupAsync(qrContent, siteId, ct);
+
+    /// <summary>Danh sách chuyến đang trong nhà máy — dùng cho dropdown chọn xe.</summary>
+    public Task<IReadOnlyList<TripRegistrationRow>> ListTripsAsync(
+        Guid siteId, TripRegistrationFilter filter, CancellationToken ct = default)
+        => tripRegistrationQueries.ListAsync(siteId, filter, ct);
+
+    /// <summary>Cập nhật loại mía cho chuyến (sau khi cân lần 1).</summary>
+    public Task<UpdateSugarcaneTypeResult> UpdateSugarcaneTypeAsync(
+        UpdateSugarcaneTypeCommand cmd, CancellationToken ct = default)
+        => updateSugarcaneType.HandleAsync(cmd, ct);
 
     /// <summary>Đồng bộ thông tin chuyến từ FRM tại thời điểm quét QR cân lần 2 (Req 4.1).</summary>
     public Task<FrmSyncResult> SyncFrmAsync(
@@ -143,10 +163,82 @@ public sealed class WeighOperationPresenter(
         Guid siteId, CancellationToken ct = default)
         => await weighOperationQueries.ListPendingAsync(siteId, ct);
 
-    /// <summary>Push phiếu cân lên DigiScale (bước 8).</summary>
+    /// <summary>Tìm LenhDon theo biển số xe — lọc theo BU active (TTCBH thấy tất cả).</summary>
+    public FrmLenhDonInfo? FindLenhDonByPlate(string plate)
+    {
+        var normalized = plate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
+        var activeBu = frmCache.ActiveBusinessUnit;
+
+        return frmCache.AllLenhDon
+            .Where(ld => ld.StatusCodeName == "Đã duyệt")
+            .Where(ld => activeBu is null || string.Equals(ld.BusinessUnit, activeBu, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(ld => ld.NgayCap)
+            .FirstOrDefault(ld =>
+            {
+                if (ld.BienSoXe is null) return false;
+                var ldPlate = ld.BienSoXe.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
+                return ldPlate == normalized;
+            });
+    }
+
+    /// <summary>Push phiếu cân lên DigiScale (bước 8). isQuetCS = true khi cân lần 2 để lấy chính sách.</summary>
     public Task<TTC.Weighing.Infrastructure.Adapters.TicketResult> PushPhieuCanAsync(
-        string loaiCan, string lanCan, string nvCan, string lenhDon,
-        string trongLuong, DateTime thoiGian, string soPhieuCan,
-        string tlThanhToan, string tcThanhToan, string ccsThanhToan, CancellationToken ct = default)
-        => digiScaleTickets.PushPhieuCanAsync(loaiCan, lanCan, nvCan, lenhDon, trongLuong, thoiGian, soPhieuCan, tlThanhToan, tcThanhToan, ccsThanhToan, ct);
+        string loaiCan, string lanCan, string nvCan, string? userNameNvCan, string lenhDonId, string maLenhDon,
+        string trongLuong, DateTime thoiGian, string soPhieuCan, string? maBanCan,
+        string tlThanhToan, string tcThanhToan, string ccsThanhToan, string? lenhDonBu = null, CancellationToken ct = default, bool isQuetCS = false)
+        => digiScaleTickets.PushPhieuCanAsync(loaiCan, lanCan, nvCan, userNameNvCan, lenhDonId, maLenhDon, trongLuong, thoiGian, soPhieuCan, maBanCan, tlThanhToan, tcThanhToan, ccsThanhToan, lenhDonBu, ct, isQuetCS);
+
+    /// <summary>Push phiếu cân vật tư lên ERP (oracle-tickets).</summary>
+    public Task<TicketResult> PushOracleTicketAsync(
+        string transactionTypeName, string transactionTypeCode, string actionCode,
+        string tripNumber, string shipmentNumber,
+        decimal weightIn, decimal weightOut, decimal netWeight,
+        string weightNumber, string organizationCode, string businessUnit,
+        string interfaceReference,
+        string? itemNumber = null, string? itemDescription = null, decimal? quantity = null,
+        string? transporter = null, string? plateNumber = null, string? driverName = null, string? truckOwner = null,
+        string? vendorName = null, string? vendorNumber = null, string? vendorSiteCode = null,
+        CancellationToken ct = default)
+        => digiScaleTickets.PushOracleTicketAsync(
+            transactionTypeName, transactionTypeCode, actionCode,
+            tripNumber, shipmentNumber, weightIn, weightOut, netWeight,
+            weightNumber, organizationCode, businessUnit, interfaceReference,
+            itemNumber, itemDescription, quantity,
+            transporter, plateNumber, driverName, truckOwner,
+            vendorName, vendorNumber, vendorSiteCode, ct);
+
+    /// <summary>Tra cứu ERP order-line theo shipment number — dùng để lấy TransactionType + OrgCode.</summary>
+    public async Task<TTC.Weighing.Infrastructure.Adapters.ErpOrderLine?> LookupErpOrderAsync(string bu, string shipmentNumber)
+    {
+        // 1. Tìm trong DB local trước
+        var dbItem = await erpOrderLines.FindInDbAsync(shipmentNumber);
+        if (dbItem is not null) return dbItem;
+
+        // 2. Fallback: gọi API
+        var from = DateTime.Today.AddDays(-90);
+        var to = DateTime.Today.AddDays(1);
+        var response = await erpOrderLines.GetOrderLinesAsync(bu, from, to,
+            shipmentNumber: shipmentNumber, pageSize: 1);
+        return response?.Items?.FirstOrDefault();
+    }
+
+    /// <summary>Ghi trạng thái đồng bộ ERP vào integration_messages.</summary>
+    public Task RecordErpSyncAsync(Guid tripId, string operation, string? responseBody)
+        => erpOrderLines.RecordErpSyncAsync(tripId, operation, responseBody);
+
+    /// <summary>Lấy mã bàn cân theo ID.</summary>
+    public async Task<string?> GetWeighbridgeCodeAsync(Guid weighbridgeId, CancellationToken ct = default)
+    {
+        if (weighbridgeId == Guid.Empty) return null;
+        var bridge = await weighbridgeRepository.GetByIdAsync(weighbridgeId, ct);
+        return bridge?.Code;
+    }
+
+    /// <summary>Lấy tạp chất hiệu lực cho chuyến — dùng cho phiếu cân.</summary>
+    public async Task<decimal?> GetEffectiveImpurityAsync(Guid tripId, CancellationToken ct = default)
+    {
+        var sample = await qualitySampleRepository.GetEffectiveAsync(
+            tripId, Domain.Enums.QualitySampleType.Impurity, ct);
+        return sample?.ImpurityPercent;
+    }
 }

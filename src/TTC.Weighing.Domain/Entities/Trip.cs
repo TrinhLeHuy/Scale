@@ -75,6 +75,20 @@ public class Trip : AuditableEntity
     /// <summary>Vụ mùa.</summary>
     public string? CropSeason { get; set; }
 
+    // --- Thông tin lệnh đốn FRM (lưu khi đăng tài để push DigiScale sau) ---
+
+    /// <summary>GUID lệnh đốn từ FRM (sourceKey).</summary>
+    public string? FrmLenhDonId { get; set; }
+
+    /// <summary>Mã lệnh đốn (VD: LD2425-00000003).</summary>
+    public string? FrmMaLenhDon { get; set; }
+
+    /// <summary>BU của lệnh đốn (VD: KSK, TTCS).</summary>
+    public string? FrmLenhDonBu { get; set; }
+
+    /// <summary>Mã loại xe từ FRM (100000000/100000001/100000002).</summary>
+    public string? FrmLoaiXeCode { get; set; }
+
     // --- Phiếu cân ---
 
     /// <summary>Số phiếu cân sau khi cân lần 2 hoàn thành.</summary>

@@ -21,6 +21,9 @@ public sealed record WeighPreconditions
     /// <summary>Với profile mía: đã đo tạp chất trước cân lần 2.</summary>
     public required bool ImpuritySatisfied { get; init; }
 
+    /// <summary>Với profile vật tư: đã xác nhận vào kho trước cân lần 2.</summary>
+    public required bool WarehouseSatisfied { get; init; }
+
     /// <summary>Chính sách FRM đạt theo hợp đồng đã xác nhận. Khác với chữ đường đang chờ.</summary>
     public required bool PolicySatisfied { get; init; }
 

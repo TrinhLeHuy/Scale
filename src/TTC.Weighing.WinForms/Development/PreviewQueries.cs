@@ -163,6 +163,9 @@ public sealed class PreviewTripDetailQueries(PreviewDataStore store, IDashboardQ
             .Where(s => s.TripId == tripId)
             .OrderBy(s => s.Type).ThenByDescending(s => s.Revision)
             .Select(s => new QualitySampleRow(
+                s.TripId,
+                store.Trips.FirstOrDefault(t => t.Id == s.TripId)?.TripNo,
+                store.Trips.FirstOrDefault(t => t.Id == s.TripId)?.TractorPlate,
                 s.Type, s.Status, s.Revision, s.IsEffective,
                 s.SampleBeforeKg, s.SampleAfterKg, s.ImpurityPercent, s.CcsValue,
                 s.BelowMinimumSampleWarning, s.Source, s.ReceivedAt))
@@ -232,6 +235,24 @@ public sealed class PreviewTripDetailQueries(PreviewDataStore store, IDashboardQ
         return new TripDetailView(
             header, checkpoints, weighEvents, samples, measurementSessions,
             checks, allocations, messages, audit, blockers);
+    }
+
+    public Task<IReadOnlyList<QualitySampleRow>> ListAllSamplesAsync(
+        Guid siteId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var result = store.QualitySamples
+            .Where(s => s.ReceivedAt >= fromUtc && s.ReceivedAt < toUtc)
+            .OrderByDescending(s => s.ReceivedAt)
+            .Select(s => new QualitySampleRow(
+                s.TripId,
+                store.Trips.FirstOrDefault(t => t.Id == s.TripId)?.TripNo,
+                store.Trips.FirstOrDefault(t => t.Id == s.TripId)?.TractorPlate,
+                s.Type, s.Status, s.Revision, s.IsEffective,
+                s.SampleBeforeKg, s.SampleAfterKg, s.ImpurityPercent, s.CcsValue,
+                s.BelowMinimumSampleWarning, s.Source, s.ReceivedAt))
+            .ToList();
+
+        return Task.FromResult<IReadOnlyList<QualitySampleRow>>(result);
     }
 }
 
@@ -380,7 +401,7 @@ public sealed class PreviewTripRegistrationQueries(PreviewDataStore store) : ITr
                 t.Id, t.Version, t.TripNo, t.ReferenceTripNo, t.TractorPlate,
                 t.QueueSequenceNumber, t.DriverRef, null, null, null,
                 t.SugarcaneOwner, t.SugarcaneType, t.Lifecycle,
-                t.VehicleType?.ToString()))
+                t.VehicleType?.ToString(), "📋 Đã đăng tài"))
             .ToList();
 
         return Task.FromResult<IReadOnlyList<TripRegistrationRow>>(rows);
@@ -432,6 +453,7 @@ public sealed class PreviewWeighOperationQueries(PreviewDataStore store) : IWeig
                 .FirstOrDefault();
 
             rows.Add(new WeighedTripRow(
+                TripId: trip.Id,
                 RegNo: trip.TripNo,
                 TicketNo: ticket?.TicketNumber,
                 TripNumber: trip.TripNo,
@@ -462,6 +484,7 @@ public sealed class PreviewWeighOperationQueries(PreviewDataStore store) : IWeig
                 && !store.WeighEvents.Any(e => e.TripId == t.Id))
             .OrderByDescending(t => t.CreatedAt)
             .Select(t => new WeighedTripRow(
+                TripId: t.Id,
                 RegNo: t.TripNo,
                 TicketNo: null,
                 TripNumber: t.ReferenceTripNo,

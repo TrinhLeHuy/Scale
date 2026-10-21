@@ -1,3 +1,6 @@
+using TTC.Weighing.WinForms.Localization;
+using TTC.Weighing.WinForms.Theme;
+
 namespace TTC.Weighing.WinForms.Printing;
 
 // ════════════════════════════════════════════════════════════
@@ -7,38 +10,99 @@ public sealed class PhieuDangTaiTemplate(PhieuDangTaiData d) : IPrintTemplate
 {
     public void Render(Graphics g, Rectangle b)
     {
-        var y = PrintHelper.DrawCompanyHeader(g, b, b.Top, d.Factory.CompanyName, d.Factory.Address);
-        y = PrintHelper.DrawTitle(g, b, y + 8, "PHIẾU ĐĂNG TÀI");
-        y += 4;
+        // ── Company header — centered ──
+        var y = b.Top;
+        using var companyFont = new Font("Times New Roman", 11, FontStyle.Bold);
+        using var addressFont = new Font("Times New Roman", 9, FontStyle.Italic);
+        var companySz = g.MeasureString(d.Factory.CompanyName, companyFont);
+        g.DrawString(d.Factory.CompanyName, companyFont, Brushes.Black,
+            b.Left + (b.Width - companySz.Width) / 2, y);
+        y += (int)companySz.Height + 2;
+        var addrSz = g.MeasureString(d.Factory.Address, addressFont);
+        g.DrawString(d.Factory.Address, addressFont, Brushes.Black,
+            b.Left + (b.Width - addrSz.Width) / 2, y);
+        y += (int)addrSz.Height + 12;
 
+        // ── Title — centered, bold ──
+        using var titleFont = new Font("Times New Roman", 18, FontStyle.Bold);
+        var titleText = Loc.T("print.dangtai_title");
+        var titleSz = g.MeasureString(titleText, titleFont);
+        g.DrawString(titleText, titleFont, Brushes.Black,
+            b.Left + (b.Width - titleSz.Width) / 2, y);
+        y += (int)titleSz.Height + 14;
+
+        // ── Two-column field layout matching mẫu phiếu ──
         var x = b.Left;
-        // 2 cột: trái = thông tin, phải = ngày giờ
-        y = PrintHelper.DrawField(g, x, y, "Lệnh đốn số", d.LenhDonSo);
-        PrintHelper.DrawField(g, x + 350, y - 18, "Ngày", d.Ngay.ToString("dd/MM/yyyy"));
-        y = PrintHelper.DrawField(g, x, y, "Số đăng tài", d.SoDangTai);
-        PrintHelper.DrawField(g, x + 350, y - 18, "Giờ", d.Gio.ToString(@"hh\:mm"));
-        y = PrintHelper.DrawField(g, x, y, "Tên chủ mía", d.TenChuMia ?? "");
-        y = PrintHelper.DrawField(g, x, y, "Hợp đồng số", d.HopDongSo ?? "");
-        y = PrintHelper.DrawField(g, x, y, "Số xe vận chuyển", d.SoXeVanChuyen ?? "");
-        PrintHelper.DrawField(g, x + 350, y - 18, "Loại xe", d.LoaiXe ?? "");
-        y = PrintHelper.DrawField(g, x, y, "Công thu hoạch", d.CongThuHoach ?? "");
-        PrintHelper.DrawField(g, x + 350, y - 18, "Công bốc xếp", d.CongBocXep ?? "");
-        y = PrintHelper.DrawField(g, x, y, "Giống mía", d.GiongMia ?? "");
-        PrintHelper.DrawField(g, x + 350, y - 18, "Loại mía", d.LoaiMia ?? "");
-        y = PrintHelper.DrawField(g, x, y, "Hình thức thu hoạch", d.HinhThucThuHoach ?? "");
-        y += 4;
-        y = PrintHelper.DrawField(g, x, y, "Ghi chú", d.GhiChu ?? "");
+        var rightColX = b.Left + 350;
+        var labelW = 160;
 
-        // Barcode (text)
+        // Row 1: Lệnh đốn số ... Ngày
+        y = PrintHelper.DrawFieldBold(g, x, y, Loc.T("print.dangtai_lenh_don"), d.LenhDonSo, labelW);
+        DrawDateTimeRight(g, rightColX, y - 22, d.Ngay, d.Gio, b.Right);
+
+        // Row 2: Số đăng tài
+        y = PrintHelper.DrawFieldBold(g, x, y, Loc.T("print.dangtai_so_dangtai"), d.SoDangTai, labelW);
+
+        // Row 3: Tên chủ mía
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_chu_mia"), d.TenChuMia ?? "", labelW);
+
+        // Row 4: Hợp đồng số
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_hop_dong"), d.HopDongSo ?? "", labelW);
+
+        // Row 5: Số xe vận chuyển ... Loại xe
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_so_xe"), d.SoXeVanChuyen ?? "", labelW);
+        PrintHelper.DrawField(g, rightColX, y - 18, Loc.T("print.field_loai_xe"), d.LoaiXe ?? "", 90);
+
+        // Row 6: Công TH ... Công BX
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_cong_thu_hoach"), d.CongThuHoach ?? "", labelW);
+        PrintHelper.DrawField(g, rightColX, y - 18, Loc.T("print.field_cong_boc_xep"), d.CongBocXep ?? "", 90);
+
+        // Row 7: Giống mía ... Loại mía
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_giong_mia"), d.GiongMia ?? "", labelW);
+        PrintHelper.DrawField(g, rightColX, y - 18, Loc.T("print.field_loai_mia"), d.LoaiMia ?? "", 90);
+
+        // Row 8: Hình thức thu hoạch
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_hinh_thuc_thu_hoach"), d.HinhThucThuHoach ?? "", labelW);
+
+        // Row 9: Ghi chú
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_ghi_chu"), d.GhiChu ?? "", labelW);
+
+        // ── Barcode (Code 128) ──
         if (!string.IsNullOrWhiteSpace(d.Barcode))
         {
             y += 10;
-            using var barcodeFont = new Font("Consolas", 14, FontStyle.Bold);
-            g.DrawString(d.Barcode, barcodeFont, Brushes.Black, x, y);
+            if (!Code128Renderer.Draw(g, d.Barcode, x, y, 300, 50))
+            {
+                // Fallback: vẽ text nếu encode thất bại
+                using var fallbackFont = new Font("Consolas", 12, FontStyle.Bold);
+                g.DrawString(d.Barcode, fallbackFont, Brushes.Black, x, y);
+            }
+            y += 54;
+
+            // Barcode text below image
+            using var barcodeTextFont = new Font("Consolas", 10);
+            g.DrawString(d.Barcode, barcodeTextFont, Brushes.Black, x, y);
+            y += 16;
         }
 
-        y += 30;
-        PrintHelper.DrawSignatures(g, b, y, "ĐƠN VỊ NHẬN MÍA", "ĐƠN VỊ GIAO HÀNG", "NGƯỜI CÂN");
+        // ── Print timestamp — bottom right ──
+        y += 8;
+        var printTime = System.DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+        var printLabel = Loc.T("print.dangtai_ngay_in", printTime);
+        using var timestampFont = new Font("Times New Roman", 9, FontStyle.Italic);
+        var tsSz = g.MeasureString(printLabel, timestampFont);
+        g.DrawString(printLabel, timestampFont, Brushes.Black, b.Right - tsSz.Width, y);
+    }
+
+    /// <summary>Vẽ ngày tháng năm + giờ phút theo format mẫu phiếu (góc phải).</summary>
+    private static void DrawDateTimeRight(Graphics g, int x, int y, DateTime ngay, TimeSpan gio, int rightEdge)
+    {
+        // "Ngày  dd  tháng  MM  năm  yyyy"  /  "Giờ  hh  thg  mm"
+        using var italicFont = new Font("Times New Roman", 10, FontStyle.Italic);
+        var dateText = $"{Loc.T("print.field_date")}   {ngay:dd}   {Loc.T("print.dangtai_thang")}   {ngay:MM}   {Loc.T("print.dangtai_nam")}   {ngay:yyyy}";
+        g.DrawString(dateText, italicFont, Brushes.Black, x, y);
+        var timeText = $"{Loc.T("print.field_time")}   {gio:hh}   {Loc.T("print.dangtai_thang")}   {gio:mm}";
+        g.DrawString(timeText, italicFont, Brushes.Black, x, y + 18);
     }
 }
 
@@ -50,21 +114,21 @@ public sealed class PhieuTapChatTemplate(PhieuTapChatData d) : IPrintTemplate
     public void Render(Graphics g, Rectangle b)
     {
         var y = PrintHelper.DrawCompanyHeader(g, b, b.Top, d.Factory.CompanyName, d.Factory.Address);
-        y = PrintHelper.DrawTitle(g, b, y + 8, "PHIẾU CÂN TRỪ TẠP CHẤT");
+        y = PrintHelper.DrawTitle(g, b, y + 8, Loc.T("print.tapchat_title"));
 
         var x = b.Left + 80;
-        y = PrintHelper.DrawField(g, x, y, $"Ngày {d.Ngay:dd} tháng {d.Ngay:MM} năm {d.Ngay:yyyy}", "");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.tapchat_date", d.Ngay.Day, d.Ngay.Month, d.Ngay.Year), "");
         y += 8;
-        y = PrintHelper.DrawFieldBold(g, x, y, "Mã số xe mía", d.MaSoXeMia);
-        y = PrintHelper.DrawFieldBold(g, x, y, "Số xe", d.SoXe);
-        y = PrintHelper.DrawField(g, x, y, "Trọng lượng thô", $"{d.TrongLuongTho:N2}");
-        y = PrintHelper.DrawField(g, x, y, "Trọng lượng tinh", $"{d.TrongLuongTinh:N2}");
-        y = PrintHelper.DrawField(g, x, y, "Tỷ lệ tạp chất thực tế", $"{d.TapChatThucTe:N2} %");
-        y = PrintHelper.DrawField(g, x, y, "Hệ số phạt tạp chất", $"{d.HeSoPhatTapChat:N2}");
-        y = PrintHelper.DrawField(g, x, y, "Tỷ lệ tạp chất thanh toán", $"{d.TapChatThanhToan:N2} %");
+        y = PrintHelper.DrawFieldBold(g, x, y, Loc.T("print.field_ma_xe"), d.MaSoXeMia);
+        y = PrintHelper.DrawFieldBold(g, x, y, Loc.T("print.field_so_xe_short"), d.SoXe);
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_tl_tho"), $"{d.TrongLuongTho:N2}");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_tl_tinh"), $"{d.TrongLuongTinh:N2}");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_tc_thuc_te"), $"{d.TapChatThucTe:N2} %");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_hs_phat_tc"), $"{d.HeSoPhatTapChat:N2}");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_tc_thanh_toan"), $"{d.TapChatThanhToan:N2} %");
 
         y += 30;
-        PrintHelper.DrawSignatures(g, b, y, "NHÂN VIÊN CÂN MẪU", "CHỦ MÍA XÁC NHẬN");
+        PrintHelper.DrawSignatures(g, b, y, Loc.T("print.sig_nv_can_mau"), Loc.T("print.sig_chu_mia"));
     }
 }
 
@@ -76,19 +140,19 @@ public sealed class PhieuKiemNghiemTemplate(PhieuKiemNghiemData d) : IPrintTempl
     public void Render(Graphics g, Rectangle b)
     {
         var y = PrintHelper.DrawCompanyHeader(g, b, b.Top, d.Factory.CompanyName, d.Factory.Address);
-        y = PrintHelper.DrawTitle(g, b, y + 8, "PHIẾU KIỂM NGHIỆM MÍA");
+        y = PrintHelper.DrawTitle(g, b, y + 8, Loc.T("print.kiemnghiem_title"));
 
         var x = b.Left + 40;
         // 2 cột
-        PrintHelper.DrawField(g, x, y, "Ngày", d.Ngay.ToString("dd/MM/yyyy"));
-        y = PrintHelper.DrawField(g, x + 300, y, "Giờ", d.Gio.ToString(@"hh\:mm\:ss"));
+        PrintHelper.DrawField(g, x, y, Loc.T("print.field_date"), d.Ngay.ToString("dd/MM/yyyy"));
+        y = PrintHelper.DrawField(g, x + 300, y, Loc.T("print.field_time"), d.Gio.ToString(@"hh\:mm\:ss"));
         y += 8;
-        y = PrintHelper.DrawFieldBold(g, x, y, "Mã số lô mía", d.MaSoLoMia);
+        y = PrintHelper.DrawFieldBold(g, x, y, Loc.T("print.field_ma_lo_mia"), d.MaSoLoMia);
         y += 8;
-        y = PrintHelper.DrawFieldBold(g, x, y, "Chữ đường phân tích được", $"{d.ChuDuongPhanTich:N2}");
+        y = PrintHelper.DrawFieldBold(g, x, y, Loc.T("print.field_chu_duong"), $"{d.ChuDuongPhanTich:N2}");
 
         y += 50;
-        PrintHelper.DrawSignatures(g, b, y, "KIỂM NGHIỆM VIÊN", "");
+        PrintHelper.DrawSignatures(g, b, y, Loc.T("print.sig_kiem_nghiem"), "");
     }
 }
 
@@ -102,44 +166,44 @@ public sealed class PhieuNhapMiaTemplate(PhieuNhapMiaData d) : IPrintTemplate
         var y = PrintHelper.DrawCompanyHeader(g, b, b.Top, d.Factory.CompanyName, d.Factory.Address);
 
         // Quốc hiệu bên phải
-        g.DrawString("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", PrintHelper.SmallFont, Brushes.Black, b.Right - 280, b.Top);
-        g.DrawString("Độc lập - Tự do - Hạnh phúc", PrintHelper.SmallFont, Brushes.Black, b.Right - 240, b.Top + 14);
+        g.DrawString(Loc.T("print.national_title"), PrintHelper.SmallFont, Brushes.Black, b.Right - 280, b.Top);
+        g.DrawString(Loc.T("print.national_motto"), PrintHelper.SmallFont, Brushes.Black, b.Right - 240, b.Top + 14);
 
-        y = PrintHelper.DrawTitle(g, b, y + 4, $"PHIẾU NHẬP MÍA    SỐ: {d.SoPhieu}    NGÀY {d.Ngay:dd/MM/yyyy}");
+        y = PrintHelper.DrawTitle(g, b, y + 4, $"{Loc.T("print.nhapmia_title")}    {Loc.T("print.field_so")} {d.SoPhieu}    {Loc.T("print.field_date")} {d.Ngay:dd/MM/yyyy}");
 
         var x = b.Left;
-        y = PrintHelper.DrawField(g, x, y, "Họ và tên", d.HoTen ?? "");
-        PrintHelper.DrawField(g, x + 350, y - 18, "Địa chỉ", d.DiaChi ?? "");
-        y = PrintHelper.DrawField(g, x, y, "Vùng mía", d.VungMia ?? "");
-        PrintHelper.DrawField(g, x + 350, y - 18, "Phân loại", d.PhanLoai ?? "");
-        y = PrintHelper.DrawField(g, x, y, "Xe vận chuyển", d.XeVanChuyen ?? "");
-        y = PrintHelper.DrawField(g, x, y, "LN Mía", d.LenhMia ?? "");
-        PrintHelper.DrawField(g, x + 350, y - 18, "NV điều vận", d.NvDieuVan ?? "FRM");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.nhapmia_ho_ten"), d.HoTen ?? "");
+        PrintHelper.DrawField(g, x + 350, y - 18, Loc.T("print.nhapmia_dia_chi"), d.DiaChi ?? "");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.nhapmia_vung_mia"), d.VungMia ?? "");
+        PrintHelper.DrawField(g, x + 350, y - 18, Loc.T("print.nhapmia_phan_loai"), d.PhanLoai ?? "");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.nhapmia_xe_van_chuyen"), d.XeVanChuyen ?? "");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.nhapmia_ln_mia"), d.LenhMia ?? "");
+        PrintHelper.DrawField(g, x + 350, y - 18, Loc.T("print.nhapmia_nv_dieu_van"), d.NvDieuVan ?? "");
 
         y += 4;
-        y = PrintHelper.DrawField(g, x, y, "TL xe vào", $"{d.TlXeVao:N0} kg");
-        PrintHelper.DrawField(g, x + 200, y - 18, "NV cân", d.NvCanVao ?? "");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.nhapmia_tl_xe_vao"), $"{d.TlXeVao:N0} kg");
+        PrintHelper.DrawField(g, x + 200, y - 18, Loc.T("print.nhapmia_nv_can"), d.NvCanVao ?? "");
         PrintHelper.DrawField(g, x + 380, y - 18, "", d.ThoiGianCanVao?.ToString("dd/MM/yyyy h:mm:ss tt") ?? "");
 
-        y = PrintHelper.DrawField(g, x, y, "TL xe ra", $"{d.TlXeRa:N0} kg");
-        PrintHelper.DrawField(g, x + 200, y - 18, "NV cân", d.NvCanRa ?? "");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.nhapmia_tl_xe_ra"), $"{d.TlXeRa:N0} kg");
+        PrintHelper.DrawField(g, x + 200, y - 18, Loc.T("print.nhapmia_nv_can"), d.NvCanRa ?? "");
         PrintHelper.DrawField(g, x + 380, y - 18, "", d.ThoiGianCanRa?.ToString("dd/MM/yyyy h:mm:ss tt") ?? "");
 
-        y = PrintHelper.DrawFieldBold(g, x, y, "TL mía thô", $"{d.TlMiaTho:N0} kg");
-        y = PrintHelper.DrawField(g, x, y, "TLệ tạp chất", $"{d.TleTapChat:N2} %");
-        PrintHelper.DrawField(g, x + 200, y - 18, "H.số phạt tạp chất", $"{d.HeSoPhatTapChat:N2} %");
-        PrintHelper.DrawField(g, x + 420, y - 18, "Tỷ lệ tạp chất thanh toán", $"{d.TleTapChatThanhToan:N2}%");
+        y = PrintHelper.DrawFieldBold(g, x, y, Loc.T("print.nhapmia_tl_mia_tho"), $"{d.TlMiaTho:N0} kg");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.nhapmia_tle_tap_chat"), $"{d.TleTapChat:N2} %");
+        PrintHelper.DrawField(g, x + 200, y - 18, Loc.T("print.nhapmia_hs_phat_tc"), $"{d.HeSoPhatTapChat:N2} %");
+        PrintHelper.DrawField(g, x + 420, y - 18, Loc.T("print.nhapmia_tle_tc_thanh_toan"), $"{d.TleTapChatThanhToan:N2}%");
 
-        y = PrintHelper.DrawField(g, x, y, "Trọng lượng rác", $"{d.TrongLuongRac:N0} kg");
-        PrintHelper.DrawField(g, x + 350, y - 18, "NV cân tạp chất", d.NvCanTapChat ?? "QC");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.nhapmia_tl_rac"), $"{d.TrongLuongRac:N0} kg");
+        PrintHelper.DrawField(g, x + 350, y - 18, Loc.T("print.nhapmia_nv_can_tc"), d.NvCanTapChat ?? "");
 
-        y = PrintHelper.DrawField(g, x, y, "Phiếu kiểm nghiệm CCS", $"{d.PhieuKiemNghiemCcs:N2}");
-        PrintHelper.DrawField(g, x + 350, y - 18, "NV kiểm nghiệm", d.NvKiemNghiem ?? "");
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.nhapmia_phieu_kn_ccs"), $"{d.PhieuKiemNghiemCcs:N2}");
+        PrintHelper.DrawField(g, x + 350, y - 18, Loc.T("print.nhapmia_nv_kiem_nghiem"), d.NvKiemNghiem ?? "");
 
         // Bảng chi tiết
         y += 8;
         y = PrintHelper.DrawLine(g, b, y);
-        var headers = new[] { "TL Mía T_Nhập", "Đơn giá Đ/CCS/T", "Chữ Đường", "Tiền Mía (đồng)", "Giá VC (đ/tấn)", "Tiền xe VC (đồng)" };
+        var headers = new[] { Loc.T("print.nhapmia_col_tl_mia"), Loc.T("print.nhapmia_col_don_gia"), Loc.T("print.nhapmia_col_chu_duong"), Loc.T("print.nhapmia_col_tien_mia"), Loc.T("print.nhapmia_col_gia_vc"), Loc.T("print.nhapmia_col_tien_xe") };
         var colW = new[] { 100, 100, 80, 100, 80, 100 };
         var rows = new List<string[]>
         {
@@ -148,7 +212,7 @@ public sealed class PhieuNhapMiaTemplate(PhieuNhapMiaData d) : IPrintTemplate
         y = PrintHelper.DrawTable(g, b.Left, y, b.Width, headers, colW, rows);
 
         y += 20;
-        PrintHelper.DrawSignatures(g, b, y, "NGƯỜI BÁN", "LẬP PHIẾU", "PHÒNG KẾ TOÁN");
+        PrintHelper.DrawSignatures(g, b, y, Loc.T("print.sig_nguoi_ban"), Loc.T("print.sig_lap_phieu"), Loc.T("print.sig_phong_ke_toan"));
     }
 }
 
@@ -161,9 +225,9 @@ public sealed class DanhSachDangTaiTemplate(BaoCaoDanhSachDangTaiData d) : IPrin
     {
         var y = PrintHelper.DrawCompanyHeader(g, b, b.Top, d.Factory.CompanyName, d.Factory.Address);
         PrintHelper.DrawDateRange(g, b, b.Top, d.TuNgay, d.DenNgay);
-        y = PrintHelper.DrawTitle(g, b, y + 8, "DANH SÁCH ĐĂNG TÀI");
+        y = PrintHelper.DrawTitle(g, b, y + 8, Loc.T("print.danhsach_title"));
 
-        var headers = new[] { "Số tt", "Số xe", "Giờ vào", "Ngày vào" };
+        var headers = new[] { Loc.T("print.danhsach_col_stt"), Loc.T("print.danhsach_col_so_xe"), Loc.T("print.danhsach_col_gio_vao"), Loc.T("print.danhsach_col_ngay_vao") };
         var colW = new[] { 80, 150, 120, 120 };
         var rows = d.Rows.Select(r => new[] { r.Stt.ToString(), r.SoXe, r.GioVao, r.NgayVao }).ToList();
         PrintHelper.DrawTable(g, b.Left + 40, y, b.Width - 80, headers, colW, rows);
@@ -179,17 +243,17 @@ public sealed class BaoCaoCanMiaTemplate(BaoCaoCanMiaData d) : IPrintTemplate
     {
         var y = PrintHelper.DrawCompanyHeader(g, b, b.Top, d.Factory.CompanyName, d.Factory.Address);
         PrintHelper.DrawDateRange(g, b, b.Top, d.TuNgay, d.DenNgay);
-        y = PrintHelper.DrawTitle(g, b, y + 4, "BÁO CÁO CÂN MÍA");
+        y = PrintHelper.DrawTitle(g, b, y + 4, Loc.T("print.baocao_canmia_title"));
 
         // Tổng hợp
         var x = b.Left;
-        y = PrintHelper.DrawField(g, x, y, "Tổng số chuyến xe mía", $"{d.TongSoChuyenXeMia:N0}", 200);
-        y = PrintHelper.DrawField(g, x, y, "Tổng khối lượng mía thô (kg)", $"{d.TongKlMiaTho:N0}", 200);
-        y = PrintHelper.DrawField(g, x, y, "Tổng khối lượng mía sạch (kg)", $"{d.TongKlMiaSach:N0}", 200);
-        y = PrintHelper.DrawField(g, x, y, "Tỷ lệ tạp chất bình quân", $"{d.TyLeTcBinhQuan:N2}", 200);
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.baocao_canmia_tong_chuyen"), $"{d.TongSoChuyenXeMia:N0}", 200);
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.baocao_canmia_tong_tho"), $"{d.TongKlMiaTho:N0}", 200);
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.baocao_canmia_tong_sach"), $"{d.TongKlMiaSach:N0}", 200);
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.baocao_canmia_tc_bq"), $"{d.TyLeTcBinhQuan:N2}", 200);
         y += 8;
 
-        var headers = new[] { "Ngày", "Ca", "Số chuyến", "Mía thô", "Mía sạch", "Mía cháy", "Mía cây", "Mía khúc", "%TC BQ" };
+        var headers = new[] { Loc.T("print.baocao_canmia_col_ngay"), Loc.T("print.baocao_canmia_col_ca"), Loc.T("print.baocao_canmia_col_so_chuyen"), Loc.T("print.baocao_canmia_col_mia_tho"), Loc.T("print.baocao_canmia_col_mia_sach"), Loc.T("print.baocao_canmia_col_mia_chay"), Loc.T("print.baocao_canmia_col_mia_cay"), Loc.T("print.baocao_canmia_col_mia_khuc"), Loc.T("print.baocao_canmia_col_tc_bq") };
         var colW = new[] { 70, 30, 55, 70, 70, 65, 65, 65, 55 };
         var rows = d.Rows.Select(r => new[]
         {
@@ -211,9 +275,9 @@ public sealed class BaoCaoTrongTaiTemplate(BaoCaoTrongTaiData d) : IPrintTemplat
     {
         var y = PrintHelper.DrawCompanyHeader(g, b, b.Top, d.Factory.CompanyName, d.Factory.Address);
         PrintHelper.DrawDateRange(g, b, b.Top, d.TuNgay, d.DenNgay);
-        y = PrintHelper.DrawTitle(g, b, y + 4, "BÁO CÁO KIỂM TRA TRỌNG TẢI XE VẬN CHUYỂN");
+        y = PrintHelper.DrawTitle(g, b, y + 4, Loc.T("print.baocao_trongtai_title"));
 
-        var headers = new[] { "Số xe", "Tên chủ xe", "Số chuyến", "Vào Max", "Vào Min", "Vào Lệch", "Ra Max", "Ra Min", "Ra Lệch", "TL BQ/chuyến" };
+        var headers = new[] { Loc.T("print.baocao_trongtai_col_so_xe"), Loc.T("print.baocao_trongtai_col_ten_chu"), Loc.T("print.baocao_trongtai_col_so_chuyen"), Loc.T("print.baocao_trongtai_col_vao_max"), Loc.T("print.baocao_trongtai_col_vao_min"), Loc.T("print.baocao_trongtai_col_vao_lech"), Loc.T("print.baocao_trongtai_col_ra_max"), Loc.T("print.baocao_trongtai_col_ra_min"), Loc.T("print.baocao_trongtai_col_ra_lech"), Loc.T("print.baocao_trongtai_col_tl_bq") };
         var colW = new[] { 65, 80, 50, 55, 55, 50, 55, 55, 50, 65 };
         var rows = d.Rows.Select(r => new[]
         {

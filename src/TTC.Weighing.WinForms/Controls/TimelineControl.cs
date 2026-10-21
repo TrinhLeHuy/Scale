@@ -14,17 +14,6 @@ public sealed class TimelineControl : UserControl
 {
     private IReadOnlyList<CheckpointRow> _checkpoints = [];
 
-    /// <summary>Thứ tự mặc định các mốc hiển thị trên timeline.</summary>
-    private static readonly CheckpointType[] DefaultOrder =
-    [
-        CheckpointType.GateIn,
-        CheckpointType.FirstWeight,
-        CheckpointType.ImpuritySample,
-        CheckpointType.SecondWeight,
-        CheckpointType.WarehouseIn,
-        CheckpointType.GateOut
-    ];
-
     // Kích thước vẽ
     private const int CircleRadius = 14;
     private const int CircleDiameter = CircleRadius * 2;
@@ -174,33 +163,19 @@ public sealed class TimelineControl : UserControl
         _ => (AgrisTheme.SurfaceMuted, AgrisTheme.Border, "◯", AgrisTheme.Neutral) // Pending
     };
 
-    /// <summary>Xây dựng danh sách hiển thị từ checkpoint data, theo thứ tự mặc định.</summary>
+    /// <summary>Xây dựng danh sách hiển thị từ checkpoint data — dynamic theo profile.</summary>
     private IReadOnlyList<DisplayItem> BuildDisplayItems()
     {
-        var lookup = new Dictionary<CheckpointType, CheckpointRow>();
+        // Hiển thị đúng thứ tự checkpoint được trả từ queries (đã tùy theo FRM/ERP)
+        if (_checkpoints.Count == 0)
+            return [];
+
+        var items = new List<DisplayItem>(_checkpoints.Count);
+
         foreach (var cp in _checkpoints)
         {
-            // Nếu trùng type, ưu tiên bản mới nhất (CompletedAt lớn hơn).
-            if (!lookup.TryGetValue(cp.Type, out var existing)
-                || cp.CompletedAt > existing.CompletedAt)
-            {
-                lookup[cp.Type] = cp;
-            }
-        }
-
-        var items = new List<DisplayItem>(DefaultOrder.Length);
-
-        foreach (var type in DefaultOrder)
-        {
-            if (lookup.TryGetValue(type, out var row))
-            {
-                var time = row.CompletedAt ?? row.StartedAt;
-                items.Add(new DisplayItem(CheckpointLabel(type), row.Status, time));
-            }
-            else
-            {
-                items.Add(new DisplayItem(CheckpointLabel(type), CheckpointStatus.Pending, null));
-            }
+            var time = cp.CompletedAt ?? cp.StartedAt;
+            items.Add(new DisplayItem(CheckpointLabel(cp.Type), cp.Status, time));
         }
 
         return items;

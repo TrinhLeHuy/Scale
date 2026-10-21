@@ -53,7 +53,7 @@ public static class AgrisTheme
     /// Tăng để người vận hành đọc rõ hơn ở khoảng cách xa; các hằng chiều cao dòng/ô nhập
     /// trong FormLayout và GridBuilder đã được nới tương ứng để không bị chồng chữ.
     /// </summary>
-    public const float FontScale = 1.18F;
+    public const float FontScale = 1.50F;
 
     // ── Font cache — tránh tạo GDI object mới mỗi lần gọi, giảm GC pressure và GDI leak ──
     private static readonly Dictionary<(string Family, float Size, FontStyle Style), Font> _fontCache = [];

@@ -30,8 +30,13 @@ public sealed record RegisterTripCommand(
     string? HarvestMethod,
     string? Station,
     string? CropSeason,
+    // Thông tin lệnh đốn FRM (lưu để push DigiScale sau)
+    string? FrmLenhDonId = null,
+    string? FrmMaLenhDon = null,
+    string? FrmLenhDonBu = null,
+    string? FrmLoaiXeCode = null,
     // Điều khiển
-    string CorrelationId,
+    string? CorrelationId = null,
     bool IssueTemporaryQrOnly = false,
     string? OrganizationUnitCode = null);
 
@@ -125,12 +130,16 @@ public sealed class RegisterTripHandler(
             // Trường mới
             GateId = cmd.GateId,
             VehicleType = cmd.VehicleType,
-            SugarcaneType = cmd.SugarcaneType,
+            SugarcaneType = cmd.SugarcaneType ?? cmd.CommodityType,
             SugarcaneVariety = cmd.SugarcaneVariety,
             SugarcaneOwner = cmd.SugarcaneOwner,
             HarvestMethod = cmd.HarvestMethod,
             Station = cmd.Station,
             CropSeason = cmd.CropSeason,
+            FrmLenhDonId = cmd.FrmLenhDonId,
+            FrmMaLenhDon = cmd.FrmMaLenhDon,
+            FrmLenhDonBu = cmd.FrmLenhDonBu,
+            FrmLoaiXeCode = cmd.FrmLoaiXeCode,
             Version = 1,
             CreatedAt = clock.UtcNow,
             CreatedBy = user.UserId

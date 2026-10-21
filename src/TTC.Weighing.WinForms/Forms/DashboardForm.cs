@@ -323,6 +323,8 @@ public sealed class DashboardForm : Form
 
     private async Task RefreshAsync()
     {
+        if (_cts.IsCancellationRequested) return;
+
         try
         {
             _btnRefresh.Enabled = false;
@@ -347,6 +349,10 @@ public sealed class DashboardForm : Form
         catch (OperationCanceledException)
         {
             // Form đang đóng.
+        }
+        catch (ObjectDisposedException)
+        {
+            // CancellationTokenSource đã dispose — form đã đóng.
         }
         catch (Exception ex)
         {
@@ -424,6 +430,16 @@ public interface ISiteContext
 {
     Guid CurrentSiteId { get; }
     string CurrentSiteCode { get; }
+
+    /// <summary>
+    /// Tên nhà máy (hiển thị trên phiếu in). Null = chưa tải.
+    /// </summary>
+    string? CurrentSiteName { get; }
+
+    /// <summary>
+    /// Địa chỉ nhà máy (hiển thị trên phiếu in). Null = chưa có.
+    /// </summary>
+    string? CurrentSiteAddress { get; }
 
     /// <summary>
     /// Mã BU (công ty) của tài khoản đăng nhập. Null = admin/super → thấy tất cả.

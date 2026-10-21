@@ -38,5 +38,10 @@ public sealed record QrScanResult(
     Guid? AssignedWeighbridgeId,
     Guid? AssignedWarehouseId,
     QrTokenType? QrType,
+    string? SourceSystem,
+    string? DriverRef,
+    string? FrmLenhDonId,
+    string? FrmMaLenhDon,
+    string? FrmLenhDonBu,
     string? ErrorCode,
     string? ErrorMessage);

@@ -88,7 +88,7 @@ public sealed class MainForm : Form
         _site = site;
 
         Text = Loc.T("app.title");
-        MinimumSize = new Size(1200, 820);
+        MinimumSize = new Size(1380, 920);
         BackColor = AgrisTheme.Canvas;
         KeyPreview = true;
         DoubleBuffered = true;
@@ -349,6 +349,7 @@ public sealed class MainForm : Form
         itMenu.DropDownItems.Add(Screen(Loc.T("menu.configuration"), Open<ConfigurationForm>));
         itMenu.DropDownItems.Add(new ToolStripSeparator());
         itMenu.DropDownItems.Add(Screen("Quản lý dữ liệu FRM", Open<FrmSyncForm>));
+        itMenu.DropDownItems.Add(Screen("Quản lý dữ liệu ERP", Open<ErpSyncForm>));
 
         var tabMenu = new ToolStripMenuItem(Loc.T("menu.tab"));
         tabMenu.DropDownItems.Add(Screen(Loc.T("menu.guide"), OpenGuide));

@@ -17,7 +17,8 @@ public sealed record TripRegistrationRow(
     string? CustomerOrSupplier,
     string? Commodity,
     TripLifecycle Lifecycle,
-    string? VehicleType);
+    string? VehicleType,
+    string? ProcessStatus = null);
 
 /// <summary>Bộ lọc lưới đăng tài: tab nhanh + khoảng ngày (Req 7.2, 7.3).</summary>
 public sealed record TripRegistrationFilter

@@ -135,6 +135,18 @@ public static class DependencyInjection
         // DigiScale ticket sync — đẩy phiếu cân/đăng tài/tạp chất/CCS lên DigiScale
         services.AddHttpClient<DigiScaleTicketAdapter>(client =>
         {
+            client.Timeout = TimeSpan.FromSeconds(90); // 90s — API chính sách (TrQuetCS) cần thời gian xử lý
+            var baseUrl = configuration?.GetValue<string>("FrmPlanLookup:BaseUrl");
+            if (!string.IsNullOrWhiteSpace(baseUrl))
+            {
+                if (!baseUrl.EndsWith('/')) baseUrl += '/';
+                client.BaseAddress = new Uri(baseUrl);
+            }
+        });
+
+        // ERP order-lines — kéo đơn hàng ERP từ DigiScale
+        services.AddHttpClient<ErpOrderLineAdapter>(client =>
+        {
             client.Timeout = TimeSpan.FromSeconds(30);
             var baseUrl = configuration?.GetValue<string>("FrmPlanLookup:BaseUrl");
             if (!string.IsNullOrWhiteSpace(baseUrl))

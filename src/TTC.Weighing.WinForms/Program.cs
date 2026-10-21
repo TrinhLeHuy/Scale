@@ -31,6 +31,15 @@ internal static class Program
     /// <summary>Mã BU của tài khoản đăng nhập. Null = admin/super → thấy tất cả dữ liệu.</summary>
     internal static string? ActiveOrganizationUnitCode { get; set; }
 
+    /// <summary>Tên người dùng đăng nhập — dùng cho NhanVienCanVao, NhanVienDoCCS, etc.</summary>
+    internal static string LoggedInUserName { get; set; } = "Admin";
+
+    /// <summary>Username (account login) — dùng cho UserNameNhanVienCanVao.</summary>
+    internal static string LoggedInUserAccount { get; set; } = "admin";
+
+    /// <summary>Access token DigiScale (Bearer) — set sau login, dùng cho ERP API.</summary>
+    internal static string? DigiScaleAccessToken { get; set; }
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -116,21 +125,34 @@ internal static class Program
             // Build DI SAU login (chỉ 1 lần)
             provider ??= services.BuildServiceProvider();
 
-            // FRM cache load background
-            _ = Task.Run(async () =>
+            // FRM cache: set BU TRƯỚC khi load → load đúng BU từ DB
             {
-                try
+                var cache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
+
+                // Set BU từ login result TRƯỚC khi load DB
+                if (loginForm.LoginResult is { OrganizationUnitCode.Length: > 0 } lrForCache)
+                    cache.ActiveBusinessUnit = lrForCache.OrganizationUnitCode;
+                else
+                    cache.ActiveBusinessUnit = configuration?.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit");
+
+                try { cache.LoadFromDbAsync().GetAwaiter().GetResult(); }
+                catch { /* DB chưa có data → sẽ kéo API sau */ }
+
+                // Refresh API background — không block UI
+                _ = Task.Run(async () =>
                 {
-                    var cache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
-                    await cache.RefreshAsync();
-                }
-                catch { }
-            });
+                    try { await cache.RefreshAsync(); }
+                    catch { }
+                });
+            }
 
             try
             {
                 var mainForm = provider.GetRequiredService<MainForm>();
                 mainForm.SetLoggedInUser(loginForm.AuthenticatedUser ?? "Admin");
+                LoggedInUserName = loginForm.AuthenticatedUser ?? "Admin";
+                LoggedInUserAccount = loginForm.LoginResult?.UserName ?? loginForm.AuthenticatedUser ?? "admin";
+                DigiScaleAccessToken = loginForm.LoginResult?.AccessToken;
 
             // Hiển thị tên BU (công ty) trên brand bar nếu có.
             if (loginForm.LoginResult is { OrganizationUnitCode.Length: > 0 } lr)
@@ -139,11 +161,38 @@ internal static class Program
                 // Set org unit vào SiteContext để filter dữ liệu theo BU
                 ActiveOrganizationUnitCode = lr.OrganizationUnitCode;
                 Infrastructure.Queries.OrganizationUnitFilter.CurrentOrgUnit = lr.OrganizationUnitCode;
+
+                // Set BU cho FRM cache để kéo đúng data theo account
+                var frmCache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
+                frmCache.ActiveBusinessUnit = lr.OrganizationUnitCode;
+
+                // Set BU cho DigiScale ticket adapter
+                var digiScale = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter>();
+                digiScale.ActiveBusinessUnit = lr.OrganizationUnitCode;
+
+                // Set Bearer token cho ERP order-lines adapter
+                var erpAdapter = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.ErpOrderLineAdapter>();
+                erpAdapter.ActiveAccessToken = loginForm.LoginResult?.AccessToken;
             }
             else
             {
-                ActiveOrganizationUnitCode = null;
-                Infrastructure.Queries.OrganizationUnitFilter.CurrentOrgUnit = null;
+                // Admin offline — fallback config DefaultBusinessUnit
+                var defaultBu = configuration?.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit");
+                ActiveOrganizationUnitCode = defaultBu;
+                Infrastructure.Queries.OrganizationUnitFilter.CurrentOrgUnit = defaultBu;
+
+                var frmCache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
+                frmCache.ActiveBusinessUnit = defaultBu;
+
+                var digiScale = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter>();
+                digiScale.ActiveBusinessUnit = defaultBu;
+
+                // Set Bearer token nếu có (admin online)
+                if (loginForm.LoginResult?.AccessToken is { Length: > 0 } offlineToken)
+                {
+                    var erpAdapter = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.ErpOrderLineAdapter>();
+                    erpAdapter.ActiveAccessToken = offlineToken;
+                }
             }
 
             WinFormsApp.Run(mainForm);
@@ -233,6 +282,8 @@ internal static class Program
         services.AddTransient<ReportForm>();
         services.AddTransient<GuideForm>();
         services.AddTransient<FrmSyncForm>();
+        services.AddTransient<ErpSyncForm>();
+        services.AddTransient<WarehouseForm>();
     }
 
     /// <summary>

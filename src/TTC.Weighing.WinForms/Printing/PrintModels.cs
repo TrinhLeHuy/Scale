@@ -24,6 +24,42 @@ public sealed record PhieuDangTaiData(
     string? GhiChu,
     string? Barcode);
 
+/// <summary>Data phiếu cân (weigh ticket) — hiển thị khi xe cân đủ.</summary>
+public sealed record PhieuCanData(
+    // Header
+    string? CompanyName,
+    string? CompanyAddress,
+    // Thông tin phiếu
+    string? PhieuCanSo,
+    string? SoDangTai,
+    DateTime? Ngay,
+    string? TenChuMia,
+    string? HopDongSo,
+    string? LenhDon,
+    string? SoXe,
+    string? CongThuHoach,
+    string? CongBocXep,
+    string? GiongMia,
+    string? LoaiMia,
+    string? HinhThucThuHoach,
+    // Kết quả cân
+    decimal? TrongLuongXi,       // Gross (tấn)
+    DateTime? ThoiGianCanXi,
+    decimal? TrongLuongBi,       // Tare (tấn)
+    DateTime? ThoiGianCanBi,
+    decimal? TapChatThanhToan,   // %
+    decimal? TrongLuongThanhToan,// tấn
+    string? GhiChu,
+    // Checkbox loại mía
+    bool IsMiaChay,
+    bool IsMiaCay,
+    bool IsMiaKhuc,
+    // Barcode
+    string? Barcode,
+    // Chính sách (từ DigiScale)
+    string? ChinhSachThuMia,
+    decimal? CcsThanhToan);
+
 /// <summary>Data phiếu cân trừ tạp chất.</summary>
 public sealed record PhieuTapChatData(
     FactoryInfo Factory,

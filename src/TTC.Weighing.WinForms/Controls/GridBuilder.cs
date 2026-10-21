@@ -23,9 +23,9 @@ public static class GridBuilder
             BorderStyle = BorderStyle.None,
             CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
             EnableHeadersVisualStyles = false,
-            ColumnHeadersHeight = 40,
+            ColumnHeadersHeight = 58,
             ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
-            RowTemplate = { Height = 32 },
+            RowTemplate = { Height = 42 },
             Font = AgrisTheme.Body(),
             AccessibleName = accessibleName,
             AutoGenerateColumns = false
@@ -33,10 +33,11 @@ public static class GridBuilder
 
         grid.ColumnHeadersDefaultCellStyle.BackColor = AgrisTheme.BrandGreenDark;
         grid.ColumnHeadersDefaultCellStyle.ForeColor = AgrisTheme.TextOnBrand;
-        grid.ColumnHeadersDefaultCellStyle.Font = AgrisTheme.Body(9.5F, FontStyle.Bold);
+        grid.ColumnHeadersDefaultCellStyle.Font = AgrisTheme.Body(9F, FontStyle.Bold);
         grid.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
-        grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(6, 0, 0, 0);
+        grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(4, 0, 0, 0);
         grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = AgrisTheme.BrandGreenDark;
+        grid.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.True;
 
         grid.DefaultCellStyle.ForeColor = AgrisTheme.TextPrimary;
         grid.DefaultCellStyle.BackColor = AgrisTheme.Surface;
@@ -78,8 +79,8 @@ public static class GridBuilder
     {
         Text = text,
         Dock = DockStyle.Top,
-        Height = 38,
-        Font = AgrisTheme.Body(10F, FontStyle.Bold),
+        Height = 42,
+        Font = AgrisTheme.Body(11F, FontStyle.Bold),
         ForeColor = AgrisTheme.BrandGreenDark,
         Padding = new Padding(10, 9, 8, 0),
         BackColor = AgrisTheme.SurfaceMuted
@@ -118,11 +119,11 @@ public static class GridBuilder
         var button = new Button
         {
             Text = text,
-            Size = size,
+            Size = new Size(Math.Max(size.Width, 150), Math.Max(size.Height, 40)),
             FlatStyle = FlatStyle.Flat,
             BackColor = AgrisTheme.BrandGreen,
             ForeColor = AgrisTheme.TextOnBrand,
-            Font = AgrisTheme.Body(10F, FontStyle.Bold),
+            Font = AgrisTheme.Body(10.5F, FontStyle.Bold),
             UseVisualStyleBackColor = false,
             AccessibleName = text
         };
@@ -146,11 +147,11 @@ public static class GridBuilder
         var button = new Button
         {
             Text = text,
-            Size = size,
+            Size = new Size(Math.Max(size.Width, 130), Math.Max(size.Height, 38)),
             FlatStyle = FlatStyle.Flat,
             BackColor = AgrisTheme.Surface,
             ForeColor = AgrisTheme.TextPrimary,
-            Font = AgrisTheme.Body(9.5F),
+            Font = AgrisTheme.Body(10F),
             UseVisualStyleBackColor = false,
             AccessibleName = text
         };

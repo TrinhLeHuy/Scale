@@ -8,16 +8,16 @@ namespace TTC.Weighing.WinForms.Controls;
 /// </summary>
 public static class FormLayout
 {
-    private const int LabelColumnWidth = 248;
+    private const int LabelColumnWidth = 200;
 
     /// <summary>Chiều cao một dòng nhãn + ô nhập. Công khai để các form tính chiều cao panel con.</summary>
-    public const int RowHeight = 46;
+    public const int RowHeight = 58;
 
     /// <summary>
     /// Chiều cao chuẩn cho hàng chứa thanh nút hành động. Đủ chỗ cho nút cao + khoảng đệm
     /// của FlowLayoutPanel và Card bao ngoài, tránh nút bị cắt mép dưới.
     /// </summary>
-    public const int ActionRowHeight = 60;
+    public const int ActionRowHeight = 70;
 
     /// <summary>Chiều cao tối thiểu để một bảng dữ liệu còn hiển thị được vài dòng.</summary>
     private const int MinimumFillHeight = 170;
@@ -35,7 +35,7 @@ public static class FormLayout
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
             BackColor = AgrisTheme.Surface,
-            Padding = new Padding(4, 4, 8, 4)
+            Padding = new Padding(2, 2, 4, 2)
         };
 
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, LabelColumnWidth));
@@ -56,14 +56,39 @@ public static class FormLayout
         if (field is TextBox or ComboBox)
         {
             field.Dock = DockStyle.Fill;
-            field.Margin = new Padding(0, 6, 0, 6);
+            field.Margin = new Padding(0, 4, 0, 4);
         }
         else
         {
-            field.Margin = new Padding(0, 8, 0, 6);
+            field.Margin = new Padding(0, 5, 0, 4);
         }
 
-        field.Font = AgrisTheme.Body(10F);
+        field.Font = AgrisTheme.Body(11F);
+
+        // Nổi bật ô nhập liệu — viền + nền sáng cho editable, nền xám cho readonly
+        if (field is TextBox txt)
+        {
+            if (!txt.ReadOnly)
+            {
+                txt.BorderStyle = BorderStyle.FixedSingle;
+                txt.BackColor = Color.FromArgb(255, 255, 248); // Vàng nhạt — nổi bật "cần nhập"
+            }
+            else
+            {
+                txt.BackColor = AgrisTheme.ReadOnlyBg;
+                txt.ForeColor = AgrisTheme.ReadOnlyText;
+            }
+        }
+        else if (field is ComboBox cbo)
+        {
+            cbo.FlatStyle = FlatStyle.Flat;
+        }
+        else if (field is NumericUpDown num)
+        {
+            num.BorderStyle = BorderStyle.FixedSingle;
+            if (!num.ReadOnly)
+                num.BackColor = Color.FromArgb(255, 255, 248);
+        }
 
         if (string.IsNullOrEmpty(field.AccessibleName))
             field.AccessibleName = caption;
@@ -89,10 +114,11 @@ public static class FormLayout
     {
         Text = caption,
         Dock = DockStyle.Fill,
-        Font = AgrisTheme.Body(9F),
+        Font = AgrisTheme.Body(10F),
         ForeColor = AgrisTheme.TextMuted,
         TextAlign = ContentAlignment.MiddleLeft,
-        Margin = new Padding(6, 0, 8, 0)
+        Margin = new Padding(4, 0, 6, 0),
+        AutoEllipsis = true
     };
 
     /// <summary>
@@ -114,9 +140,9 @@ public static class FormLayout
         {
             button.AutoSize = true;
             button.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            button.MinimumSize = new Size(96, 40);
-            button.Padding = new Padding(16, 0, 16, 0);
-            button.Margin = new Padding(0, 0, 8, 2);
+            button.MinimumSize = new Size(90, 40);
+            button.Padding = new Padding(14, 0, 14, 0);
+            button.Margin = new Padding(0, 0, 6, 2);
             bar.Controls.Add(button);
         }
 
@@ -136,7 +162,7 @@ public static class FormLayout
             ColumnCount = 1,
             RowCount = rows.Length,
             BackColor = AgrisTheme.Canvas,
-            Padding = new Padding(12, 10, 12, 10)
+            Padding = new Padding(8, 6, 8, 6)
         };
 
         var requiredHeight = table.Padding.Vertical;

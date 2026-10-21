@@ -16,6 +16,12 @@ public sealed class WeighDisplayControl : UserControl
     private readonly Label _lblStability;
     private readonly StabilityBar _stabilityBar;
 
+    /// <summary>
+    /// true = hiển thị tấn (cân xe: ÷1000), false = hiển thị kg nguyên gốc (cân mẫu tạp chất).
+    /// Mặc định true (cân xe).
+    /// </summary>
+    public bool DisplayAsTon { get; set; } = true;
+
     public WeighDisplayControl()
     {
         BackColor = AgrisTheme.ScaleDisplayBack;
@@ -35,7 +41,7 @@ public sealed class WeighDisplayControl : UserControl
 
         _lblUom = new Label
         {
-            Text = "kg",
+            Text = "tấn",
             Font = AgrisTheme.Body(11F),
             ForeColor = Color.FromArgb(150, 160, 166),
             TextAlign = ContentAlignment.MiddleRight,
@@ -111,8 +117,11 @@ public sealed class WeighDisplayControl : UserControl
             return;
         }
 
-        _lblWeight.Text = $"{normalizedKg.Value:N3}";
-        _lblUom.Text = uom;
+        var displayValue = DisplayAsTon ? normalizedKg.Value / 1000m : normalizedKg.Value;
+        var displayUom = DisplayAsTon ? "tấn" : "kg";
+
+        _lblWeight.Text = $"{displayValue:N0}";
+        _lblUom.Text = displayUom;
 
         var window = requiredWindow ?? TimeSpan.Zero;
         var isStable = window > TimeSpan.Zero && stableDuration >= window;
@@ -137,7 +146,7 @@ public sealed class WeighDisplayControl : UserControl
             _lblStability.Text = Loc.T("control.scale_stability_pending");
         }
 
-        AccessibleDescription = $"{normalizedKg.Value:N3} {uom}, {_lblSignalState.Text}";
+        AccessibleDescription = $"{displayValue:N3} {displayUom}, {_lblSignalState.Text}";
     }
 
     /// <summary>Thanh tiến trình phẳng, màu theo trạng thái ổn định.</summary>

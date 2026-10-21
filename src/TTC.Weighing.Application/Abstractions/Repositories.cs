@@ -27,6 +27,12 @@ public interface ITripRepository
     /// <summary>Tra cứu chuyến theo số đăng tài (TripNo). Dùng khi quét barcode TripNo thay vì QR token.</summary>
     Task<Trip?> GetByTripNoAsync(string tripNo, Guid siteId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Tra cứu chuyến đang trong nhà máy theo biển số xe (mới nhất, chưa hoàn tất).
+    /// Dùng khi nhập biển số tại trạm đo tạp chất / chữ đường thay vì quét QR.
+    /// </summary>
+    Task<Trip?> GetActiveByPlateAsync(string plate, Guid siteId, CancellationToken ct = default);
+
     /// <summary>Kiểm tra version mong đợi để chống ghi đè đồng thời.</summary>
     Task<Trip?> GetForUpdateAsync(Guid tripId, int expectedVersion, CancellationToken ct = default);
 
@@ -41,6 +47,9 @@ public interface ITripRepository
     /// </summary>
     Task<IReadOnlyDictionary<Guid, int>> CountPendingByWeighbridgeAsync(
         Guid siteId, CancellationToken ct = default);
+
+    /// <summary>Tìm chuyến active (chưa Closed/Cancelled) theo lệnh đốn GUID. Trả TripNo nếu tìm thấy.</summary>
+    Task<string?> FindActiveByLenhDonIdAsync(string lenhDonId, CancellationToken ct = default);
 }
 
 public interface IQrTokenRepository

@@ -22,6 +22,7 @@ public sealed class EfWeighPreconditionQuery(WeighingDbContext db) : IWeighPreco
             {
                 PrecedingWeightsSatisfied = false,
                 ImpuritySatisfied = false,
+                WarehouseSatisfied = false,
                 PolicySatisfied = false,
                 Warnings = ["Không tìm thấy chuyến."]
             };
@@ -63,10 +64,24 @@ public sealed class EfWeighPreconditionQuery(WeighingDbContext db) : IWeighPreco
         if (impurityRequired && !impurityRecorded)
             warnings.Add("Chưa đo tạp chất — sẽ chặn lượt cân này (S02 tr.21).");
 
+        // Vật tư (ERP): phải xác nhận vào kho trước cân lần 2
+        var warehouseRequired = profile?.SourceSystem == "ERP" && !isFirstSegment;
+        var warehouseConfirmed = false;
+
+        if (warehouseRequired)
+        {
+            warehouseConfirmed = await db.CheckpointEvents.AnyAsync(
+                c => c.TripId == tripId && c.Type == CheckpointType.WarehouseIn, ct);
+
+            if (!warehouseConfirmed)
+                warnings.Add("Chưa xác nhận vào kho — chặn cân lần 2 cho vật tư.");
+        }
+
         return new WeighPreconditions
         {
             PrecedingWeightsSatisfied = precedingSatisfied,
             ImpuritySatisfied = !impurityRequired || impurityRecorded,
+            WarehouseSatisfied = !warehouseRequired || warehouseConfirmed,
 
             // Chính sách FRM cần hợp đồng API đã xác minh (D-09); chưa có thì không tự chặn cân
             // vì đây là điều kiện riêng, khác với lỗi kết nối.

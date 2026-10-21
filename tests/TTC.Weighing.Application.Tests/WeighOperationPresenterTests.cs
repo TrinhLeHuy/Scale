@@ -2,6 +2,7 @@ using NSubstitute;
 using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Application.UseCases.Integration;
+using TTC.Weighing.Application.UseCases.Trips;
 using TTC.Weighing.Application.UseCases.Weighing;
 using TTC.Weighing.Domain.Enums;
 using TTC.Weighing.WinForms.Forms;
@@ -129,7 +130,12 @@ public class WeighOperationPresenterTests
             Substitute.For<IWeighSessionRepository>(),
             Substitute.For<IWeighbridgeRepository>(),
             Substitute.For<ISiteContext>(),
-            Substitute.For<TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter>());
+            Substitute.For<ITripRegistrationQueries>(),
+            Substitute.For<UpdateSugarcaneTypeHandler>(),
+            Substitute.For<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>(),
+            Substitute.For<TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter>(),
+            Substitute.For<TTC.Weighing.Infrastructure.Adapters.ErpOrderLineAdapter>(),
+            Substitute.For<IQualitySampleRepository>());
     }
 
     // ──────────────────────────────────────────────────────
@@ -157,6 +163,11 @@ public class WeighOperationPresenterTests
             AssignedWeighbridgeId: WeighbridgeId,
             AssignedWarehouseId: null,
             QrType: QrTokenType.Trip,
+            SourceSystem: "FRM",
+            DriverRef: null,
+            FrmLenhDonId: null,
+            FrmMaLenhDon: null,
+            FrmLenhDonBu: null,
             ErrorCode: null,
             ErrorMessage: null);
 

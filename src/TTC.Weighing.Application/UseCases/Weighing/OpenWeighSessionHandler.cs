@@ -63,31 +63,18 @@ public sealed class OpenWeighSessionHandler(
         var owning = await sessions.GetOwningSessionAsync(cmd.WeighbridgeId, ct);
         if (owning is not null)
         {
-            // Phiên cũ của CÙNG chuyến, CÙNG checkpoint — chưa commit nghĩa là lần trước bị chặn
-            // (ví dụ chặn vì chưa tạp chất). Abandon để nhường chỗ cho lần thử mới.
-            var isSameContext = owning.TripId == cmd.TripId
-                && owning.Checkpoint == cmd.Checkpoint
-                && owning.SegmentIndex == cmd.SegmentIndex
-                && owning.Status == WeighSessionStatus.Open;
+            // Tự động abandon phiên cũ — chưa có camera nên không chặn
+            owning.Status = WeighSessionStatus.Abandoned;
+            owning.ClosedAt = clock.UtcNow;
+            owning.UpdatedAt = clock.UtcNow;
+            owning.UpdatedBy = user.UserId;
 
-            if (isSameContext)
-            {
-                owning.Status = WeighSessionStatus.Abandoned;
-                owning.ClosedAt = clock.UtcNow;
-                owning.UpdatedAt = clock.UtcNow;
-                owning.UpdatedBy = user.UserId;
+            await audit.LogAsync("WEIGH_SESSION_ABANDONED", owning.TripId, user.UserId,
+                $"{{\"sessionId\":\"{owning.Id}\",\"checkpoint\":\"{owning.Checkpoint}\",\"previousTrip\":\"{owning.TripId}\"}}",
+                "{\"reason\":\"Phiên cũ tự động giải phóng khi mở phiên mới (chưa có camera kiểm soát).\"}",
+                null, cmd.CorrelationId, ct);
 
-                await audit.LogAsync("WEIGH_SESSION_ABANDONED", trip.Id, user.UserId,
-                    $"{{\"sessionId\":\"{owning.Id}\",\"checkpoint\":\"{owning.Checkpoint}\"}}",
-                    "{\"reason\":\"Phiên cũ chưa commit, được giải phóng khi mở phiên mới cho cùng bước.\"}",
-                    null, cmd.CorrelationId, ct);
-
-                await uow.SaveChangesAsync(ct);
-            }
-            else
-            {
-                return Fail($"Bàn cân đang bị phiên khác chiếm giữ (chuyến {owning.TripId}).");
-            }
+            await uow.SaveChangesAsync(ct);
         }
 
         var profile = await profiles.GetEffectiveAsync(

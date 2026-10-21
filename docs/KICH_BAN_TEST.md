@@ -199,3 +199,63 @@
 | UI-11 Cổng | F6 | Xác nhận qua cổng |
 | Tất cả | Esc | Làm mới form |
 | Tất cả | Ctrl+W | Đóng tab |
+
+
+---
+
+## Kịch bản 7: Đăng tài vật tư — Xuất đường thành phẩm (ERP có đơn hàng)
+
+**Mục tiêu:** Test đăng tài vật tư khi ERP trả dữ liệu đơn hàng đầy đủ.
+
+| Bước | Thao tác | Kết quả mong đợi |
+|------|----------|-------------------|
+| 1 | Mở tab Đăng tài | Form đăng tài hiện |
+| 2 | Chọn **Vật tư (ERP)** ở combo Loại nghiệp vụ | Panel mía ẩn, panel vật tư hiện (Radio Nhập/Xuất, Số TRIP, Biển số, Kiểm tra) |
+| 3 | Chọn ○ **Xuất** | |
+| 4 | Nhập Số TRIP: `SH-20261001` | |
+| 5 | Nhập Biển số: `65C-11656` | |
+| 6 | Bấm **[Kiểm tra]** | Điền tự động: Shipment=SH-20261001, NVC=ĐẠI THUẬN PHÁT, Kho=102501, Hàng=Đường tinh luyện, KH=CTY CP ĐƯỜNG VN |
+| 7 | Bấm **Đăng tài (F4)** | Đăng tài thành công, hiện số đăng tài, in phiếu |
+
+**Dữ liệu mẫu ERP sẵn có (8 đơn hàng):**
+
+| Số TRIP | Biển số | Hướng | Hàng hóa | Kho | Khách hàng |
+|---------|---------|-------|----------|-----|------------|
+| SH-20261001 | 65C-11656 | Xuất | Đường tinh luyện cao cấp Biên Hòa Pure | 102501 Thanh phẩm | CTY CP ĐƯỜNG VIỆT NAM |
+| SH-20261002 | 51D-33344 | Xuất | Đường RE cao cấp | 102501 Thanh phẩm | CTY TNHH TM THỰC PHẨM SG |
+| SH-20261003 | 62C-55566 | Xuất | Đường thô RS | 102502 Đường thô | CTY CP MÍA ĐƯỜNG LÂM SƠN |
+| SH-20261010 | 51C-77788 | Nhập | Bao PP 50kg | 103001 NVL | CTY CP BAO BÌ MIỀN NAM |
+| SH-20261011 | 72C-99900 | Nhập | Hóa chất CaO | 103001 NVL | CTY TNHH HÓA CHẤT ĐÔNG Á |
+| SH-20261012 | 51D-12345 | Nhập | Dầu bôi trơn Shell | 103002 Phụ tùng | SHELL VIỆT NAM |
+| SH-20261020 | 66C-44455 | Xuất | Bã mía ép khô | 104001 Phụ phẩm | CTY CP NĂNG LƯỢNG XANH TTC |
+| SH-20261021 | 70C-66677 | Xuất | Mật rỉ đường | 104001 Phụ phẩm | CTY CP THỨC ĂN CHĂN NUÔI |
+
+## Kịch bản 8: Đăng tài vật tư — Nhập NVL (ERP có đơn hàng)
+
+| Bước | Thao tác | Kết quả mong đợi |
+|------|----------|-------------------|
+| 1 | Chọn **Vật tư (ERP)** → ○ **Nhập** | |
+| 2 | Nhập Số TRIP: `SH-20261010` | |
+| 3 | Nhập Biển số: `51C-77788` | |
+| 4 | Bấm **[Kiểm tra]** | Điền: Bao PP 50kg, Kho NVL, KH=BAO BÌ MIỀN NAM |
+| 5 | Bấm **Đăng tài (F4)** | Thành công |
+
+## Kịch bản 9: Đăng tài vật tư — Xe không có đơn hàng (QR tạm)
+
+| Bước | Thao tác | Kết quả mong đợi |
+|------|----------|-------------------|
+| 1 | Chọn **Vật tư (ERP)** → ○ **Xuất** | |
+| 2 | Nhập Số TRIP: `99999` | |
+| 3 | Nhập Biển số: `51C-00000` | |
+| 4 | Bấm **[Kiểm tra]** | Hiện hộp thoại "Không tìm thấy đơn hàng. Cho xe vào?" |
+| 5 | Bấm **Yes** | Điền thông tin tạm, bật nút Đăng tài |
+| 6 | Bấm **Đăng tài (F4)** | Đăng tài tạm (QR tạm) thành công |
+
+## Kịch bản 10: Luồng vật tư hoàn chỉnh — Xuất đường
+
+| Bước | Thao tác | Ghi chú |
+|------|----------|---------|
+| 1 | Đăng tài: TRIP=SH-20261002, Biển số=51D-33344, Kiểm tra → Đăng tài | Đăng tài Xuất vật tư |
+| 2 | Cân hợp nhất: Nhập biển số 51D-33344 → Cân vào 15T | Cân lần 1 |
+| 3 | Kho vận: Nhập biển số 51D-33344 → Xác nhận vào kho → Xuất hàng → Xác nhận ra kho | Vào/ra kho |
+| 4 | Cân hợp nhất: Nhập biển số 51D-33344 → Cân ra 30T | Cân lần 2 → Closed |

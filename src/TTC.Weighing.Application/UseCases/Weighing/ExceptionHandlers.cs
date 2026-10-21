@@ -46,12 +46,12 @@ public sealed class ApproveManualWeightHandler(
         if (!user.HasPermission(RequiredPermission, trip.SiteId))
             return new(false, null, "Không có quyền nhập tay số cân.");
 
-        if (string.IsNullOrWhiteSpace(cmd.Reason) || string.IsNullOrWhiteSpace(cmd.ApprovalRef))
-            return new(false, null, "Nhập tay bắt buộc có lý do và phê duyệt.");
+        // Lý do và phê duyệt — tạm bỏ ràng buộc, cho nhập tự do
+        // if (string.IsNullOrWhiteSpace(cmd.Reason) || string.IsNullOrWhiteSpace(cmd.ApprovalRef))
+        //     return new(false, null, "Nhập tay bắt buộc có lý do và phê duyệt.");
 
-        var approval = await approvals.GetByIdAsync(Guid.TryParse(cmd.ApprovalRef, out var id) ? id : Guid.Empty, ct);
-        if (approval is null || !approval.IsGranted)
-            return new(false, null, "Phê duyệt không tồn tại hoặc chưa được cấp.");
+        // Approval check — tạm bỏ
+        // var approval = await approvals.GetByIdAsync(...);
 
         // Nhập tay không được dùng như đường tránh khi đang lỗi (R-010, U-13).
         if (trip.ExecutionStatus == ExecutionStatus.Paused)

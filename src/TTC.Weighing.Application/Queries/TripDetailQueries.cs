@@ -40,6 +40,9 @@ public sealed record WeighEventRow(
     int EvidenceCount);
 
 public sealed record QualitySampleRow(
+    Guid? TripId,
+    string? TripNo,
+    string? Plate,
     QualitySampleType Type,
     QualityResultStatus Status,
     int Revision,
@@ -112,6 +115,10 @@ public sealed record AuditRow(
 public interface ITripDetailQueries
 {
     Task<TripDetailView?> GetAsync(Guid tripId, CancellationToken ct = default);
+
+    /// <summary>Load tất cả quality samples trong khung ngày cho 1 site.</summary>
+    Task<IReadOnlyList<QualitySampleRow>> ListAllSamplesAsync(
+        Guid siteId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default);
 }
 
 /// <summary>Hàng chờ ngoại lệ cho UI-07 (R-009, R-010, R-025).</summary>

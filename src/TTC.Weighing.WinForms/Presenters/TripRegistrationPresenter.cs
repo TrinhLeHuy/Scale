@@ -2,6 +2,7 @@ using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Application.UseCases.Trips;
 using TTC.Weighing.Domain.Entities;
+using TTC.Weighing.Infrastructure.Adapters;
 using TTC.Weighing.WinForms.Forms;
 
 namespace TTC.Weighing.WinForms.Presenters;
@@ -23,7 +24,8 @@ public sealed class TripRegistrationPresenter(
     ICurrentUser currentUser,
     IWeighTicketPrintService printService,
     TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache frmCache,
-    TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter digiScaleTickets)
+    TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter digiScaleTickets,
+    TTC.Weighing.Infrastructure.Adapters.ErpOrderLineAdapter erpOrderLines)
 {
     /// <summary>
     /// IWeighTicketPrintService cho PrintHelper dùng (Req 8.3).
@@ -32,6 +34,12 @@ public sealed class TripRegistrationPresenter(
     public IWeighTicketPrintService PrintService => printService;
     /// <summary>SiteId hiện tại từ ISiteContext, Form dùng để binding UI.</summary>
     public Guid SiteId => siteContext.CurrentSiteId;
+
+    /// <summary>Tên nhà máy, hiển thị trên phiếu đăng tài.</summary>
+    public string? SiteName => siteContext.CurrentSiteName;
+
+    /// <summary>Địa chỉ nhà máy, hiển thị trên phiếu đăng tài.</summary>
+    public string? SiteAddress => siteContext.CurrentSiteAddress;
 
     /// <summary>Tên người dùng hiện tại, hiển thị trên thanh trạng thái.</summary>
     public string OperatorName => currentUser.DisplayName;
@@ -138,40 +146,116 @@ public sealed class TripRegistrationPresenter(
         => frmCache.RefreshAsync(ct);
 
     /// <summary>
-    /// Lấy danh sách biển số xe CÓ THẺ FRM hiệu lực trong khung ngày [from, to].
-    /// Chỉ xe có thẻ (có kế hoạch/hợp đồng) mới hiện — xe chỉ trong danh mục không hiện.
+    /// Lấy danh sách biển số xe từ LenhDon đã duyệt, có NgayCap trong khung ngày [from, to].
+    /// Lọc theo BU active của account đăng nhập.
+    /// <summary>
+    /// Lấy danh sách biển số xe từ LenhDon đã duyệt, có NgayCap trong khung ngày [from, to].
+    /// Lọc theo BU active. Loại bỏ biển số đã có chuyến active (chưa hủy/đóng).
     /// </summary>
-    public string[] GetPlatesInDateRange(DateTime from, DateTime to)
+    public async Task<string[]> GetPlatesInDateRangeAsync(DateTime from, DateTime to, CancellationToken ct = default)
     {
-        return frmCache.AllVehicles
-            .Where(v => v.MaThe is not null) // Chỉ xe CÓ thẻ
-            .Where(v =>
+        var activeBu = frmCache.ActiveBusinessUnit;
+
+        var candidates = frmCache.AllLenhDon
+            .Where(ld =>
             {
-                DateTimeOffset? apDungTu = null, apDungDen = null;
-                if (v.NgayApDungTu is not null && DateTimeOffset.TryParse(v.NgayApDungTu, out var tu))
-                    apDungTu = tu;
-                if (v.NgayApDungDen is not null && DateTimeOffset.TryParse(v.NgayApDungDen, out var den))
-                    apDungDen = den;
-
-                // Không có ngày → hiện (thẻ không ghi thời hạn)
-                if (!apDungTu.HasValue && !apDungDen.HasValue)
-                    return true;
-
-                // Thẻ đã hết hạn trước khung ngày
-                if (apDungDen.HasValue && apDungDen.Value.LocalDateTime < from)
+                if (activeBu is not null && !string.Equals(ld.BusinessUnit, activeBu, StringComparison.OrdinalIgnoreCase))
                     return false;
-
-                // Thẻ chưa bắt đầu trong khung ngày
-                if (apDungTu.HasValue && apDungTu.Value.LocalDateTime > to)
-                    return false;
-
-                return true;
+                if (ld.NgayCap is null) return false;
+                if (!DateTimeOffset.TryParse(ld.NgayCap, out var ngayCap)) return false;
+                return ngayCap.LocalDateTime.Date >= from.Date && ngayCap.LocalDateTime.Date <= to.Date;
             })
-            .Select(v => v.BienSo)
-            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Where(ld => ld.StatusCodeName == "Đã duyệt")
+            .ToList();
+
+        // Loại bỏ lệnh đốn đã có trip active
+        var available = new List<string>();
+        foreach (var ld in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(ld.BienSoXe)) continue;
+            var existing = await tripRepository.FindActiveByLenhDonIdAsync(ld.SourceKey ?? "", ct);
+            if (existing is null)
+                available.Add(ld.BienSoXe);
+        }
+
+        return available
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(p => p)
             .ToArray();
+    }
+
+    /// <summary>Sync version — dùng cho khởi tạo nhanh (không filter active trips).</summary>
+    public string[] GetPlatesInDateRange(DateTime from, DateTime to)
+    {
+        var activeBu = frmCache.ActiveBusinessUnit;
+
+        // Lọc theo NgayCap của LenhDon (ngày cấp lệnh đốn) + BU
+        return frmCache.AllLenhDon
+            .Where(ld =>
+            {
+                // Filter theo BU
+                if (activeBu is not null && !string.Equals(ld.BusinessUnit, activeBu, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                if (ld.NgayCap is null) return false;
+                if (!DateTimeOffset.TryParse(ld.NgayCap, out var ngayCap)) return false;
+                return ngayCap.LocalDateTime.Date >= from.Date && ngayCap.LocalDateTime.Date <= to.Date;
+            })
+            .Where(ld => ld.StatusCodeName == "Đã duyệt") // Chỉ lệnh đốn đã duyệt
+            .Select(ld => ld.BienSoXe)
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p)
+            .ToArray()!;
+    }
+
+    /// <summary>Lấy biển số từ lệnh đốn đã duyệt trong khung ngày — fallback khi thẻ xe rỗng.</summary>
+    public string[] GetLenhDonPlatesInDateRange(DateTime from, DateTime to)
+    {
+        var activeBu = frmCache.ActiveBusinessUnit;
+        return frmCache.AllLenhDon
+            .Where(ld =>
+            {
+                if (activeBu is not null && !string.Equals(ld.BusinessUnit, activeBu, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                if (ld.StatusCodeName != "Đã duyệt") return false;
+
+                // Check NgayCap trong khung ngày
+                if (ld.NgayCap is not null && DateTimeOffset.TryParse(ld.NgayCap, out var ngayCap))
+                {
+                    if (ngayCap.LocalDateTime.Date >= from.Date && ngayCap.LocalDateTime.Date <= to.Date)
+                        return true;
+                }
+                // Fallback: check SourceCreatedDate (ngày tạo từ API) nếu NgayCap ngoài khung
+                if (ld.SourceCreatedDate is not null && DateTimeOffset.TryParse(ld.SourceCreatedDate, out var srcDate))
+                {
+                    if (srcDate.LocalDateTime.Date >= from.Date && srcDate.LocalDateTime.Date <= to.Date)
+                        return true;
+                }
+                return false;
+            })
+            .Select(ld => ld.BienSoXe)
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p)
+            .ToArray()!;
+    }
+
+    /// <summary>Tìm LenhDon theo biển số xe — lọc theo BU active (TTCBH thấy tất cả).</summary>
+    public FrmLenhDonInfo? FindLenhDonByPlate(string plate)
+    {
+        var normalized = plate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
+        var activeBu = frmCache.ActiveBusinessUnit;
+
+        return frmCache.AllLenhDon
+            .Where(ld => ld.StatusCodeName == "Đã duyệt")
+            .Where(ld => activeBu is null || string.Equals(ld.BusinessUnit, activeBu, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(ld => ld.NgayCap) // Mới nhất trước
+            .FirstOrDefault(ld =>
+            {
+                if (ld.BienSoXe is null) return false;
+                var ldPlate = ld.BienSoXe.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
+                return ldPlate == normalized;
+            });
     }
 
     /// <summary>
@@ -215,11 +299,78 @@ public sealed class TripRegistrationPresenter(
         await tripRepository.UpdateAsync(trip, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        return (true, null);
+        return (true, null);    
     }
 
-    /// <summary>Push phiếu đăng tài lên DigiScale (bước 8).</summary>
+    /// <summary>Push phiếu đăng tài lên DigiScale (bước 8). BU từ lệnh đốn.</summary>
     public async Task<TTC.Weighing.Infrastructure.Adapters.TicketResult> PushDangTaiAsync(
-        string lenhDon, DateTime ngay, string loaiXe, string soDangTai, CancellationToken ct = default)
-        => await digiScaleTickets.PushDangTaiAsync(lenhDon, ngay, "1", loaiXe, soDangTai, ct);
+        string lenhDonId, string maLenhDon, DateTime ngay, string loaiXe, string soDangTai, string? uuTien = null, string? lenhDonBu = null, CancellationToken ct = default)
+        => await digiScaleTickets.PushDangTaiAsync(lenhDonId, maLenhDon, ngay, loaiXe, soDangTai, uuTien, lenhDonBu, ct);
+
+    /// <summary>Kéo đơn hàng ERP theo shipment/trip/plate. Số TRIP tìm cả shipmentNumber lẫn tripNumber.</summary>
+    public Task<TTC.Weighing.Infrastructure.Adapters.ErpOrderLine?> LookupErpOrderAsync(
+        string businessUnit, string? tripOrShipment, string? plateNumber, CancellationToken ct = default)
+    {
+        return Task.Run(async () =>
+        {
+            // 1. Tìm trong DB local trước (đã kéo về từ form ERP)1
+            var dbItem = await erpOrderLines.FindInDbAsync(tripOrShipment, plateNumber);
+            if (dbItem is not null) return dbItem;
+
+            // 2. Fallback: gọi API tìm theo shipmentNumber
+            var from = DateTime.Today.AddDays(-90);
+            var to = DateTime.Today.AddDays(1);
+
+            var response = await erpOrderLines.GetOrderLinesAsync(
+                businessUnit, from, to,
+                shipmentNumber: tripOrShipment,
+                pageSize: 1, ct: ct);
+
+            var item = response?.Items?.FirstOrDefault();
+            if (item is not null) return item;
+
+            // Fallback: tìm theo tripNumber
+            if (!string.IsNullOrWhiteSpace(tripOrShipment))
+            {
+                response = await erpOrderLines.GetOrderLinesAsync(
+                    businessUnit, from, to,
+                    tripNumber: tripOrShipment,
+                    pageSize: 1, ct: ct);
+                item = response?.Items?.FirstOrDefault();
+                if (item is not null) return item;
+            }
+
+            // Fallback: tìm theo biển số (nếu có)
+            if (!string.IsNullOrWhiteSpace(plateNumber))
+            {
+                response = await erpOrderLines.GetOrderLinesAsync(
+                    businessUnit, from, to,
+                    plateNumber: plateNumber,
+                    pageSize: 1, ct: ct);
+                return response?.Items?.FirstOrDefault();
+            }
+
+            return null;
+        }, ct);
+    }
+
+    /// <summary>Tìm chuyến active (chưa Closed/Cancelled) theo lệnh đốn GUID.</summary>
+    public async Task<string?> FindActiveTripByLenhDonAsync(string? lenhDonId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(lenhDonId)) return null;
+        var trips = await tripRepository.FindActiveByLenhDonIdAsync(lenhDonId, ct);
+        return trips;
+    }
+
+    /// <summary>Tìm chuyến active theo biển số (xe chưa cân ra).</summary>
+    public async Task<string?> FindActiveTripByPlateAsync(string plate, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(plate)) return null;
+        var trip = await tripRepository.GetActiveByPlateAsync(plate, siteContext.CurrentSiteId, ct);
+        return trip?.TripNo;
+    }
+
+    /// <summary>Tìm xe trong FRM cache theo biển số.</summary>
+    public List<TTC.Weighing.Infrastructure.Adapters.FrmVehicleInfo> FindVehicleByPlate(string plate)
+        => frmCache.FindByPlate(plate);
 }

@@ -256,30 +256,43 @@ public sealed class TripReceiptPreviewForm : Form
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
         var pageWidth = ((Control)sender!).Width;
+        var pageHeight = ((Control)sender).Height;
         var margin = 30;
         var contentWidth = pageWidth - margin * 2;
         var y = margin;
 
-        // ── Viền phiếu ──
+        // ── Viền phiếu — dùng màu BrandGreenDark ──
         using var borderPen = new Pen(AgrisTheme.BrandGreenDark, 2f);
-        g.DrawRectangle(borderPen, 2, 2, pageWidth - 4, ((Control)sender).Height - 4);
+        g.DrawRectangle(borderPen, 2, 2, pageWidth - 4, pageHeight - 4);
 
-        // ── Logo text (thay cho ảnh logo) ──
-        using var logoFont = new Font(AgrisTheme.FontFamily, 16F, FontStyle.Bold);
-        using var logoBrush = new SolidBrush(AgrisTheme.BrandGreen);
-        g.DrawString("TTC", logoFont, logoBrush, margin, y);
+        // ── Company header — centered, bold ──
+        using var companyFont = new Font(AgrisTheme.FontFamily, 12F, FontStyle.Bold);
+        var companySz = g.MeasureString(_data.Factory ?? "", companyFont, contentWidth);
+        var companyText = _data.Factory ?? "";
+        g.DrawString(companyText, companyFont, Brushes.Black,
+            margin + (contentWidth - companySz.Width) / 2, y);
+        y += (int)companySz.Height + 2;
 
-        using var logoSubFont = new Font(AgrisTheme.FontFamily, 8F, FontStyle.Bold);
-        g.DrawString("SUGAR", logoSubFont, logoBrush, margin, y + 24);
-        y += 10;
+        // Factory address
+        if (!string.IsNullOrWhiteSpace(_data.FactoryAddress))
+        {
+            using var addrFont = new Font(AgrisTheme.FontFamily, 8.5F, FontStyle.Italic);
+            var addrSz = g.MeasureString(_data.FactoryAddress, addrFont, contentWidth);
+            g.DrawString(_data.FactoryAddress, addrFont, Brushes.Black,
+                margin + (contentWidth - addrSz.Width) / 2, y);
+            y += (int)addrSz.Height + 4;
+        }
 
-        // ── Tiêu đề ──
-        using var titleFont = new Font(AgrisTheme.FontFamily, 16F, FontStyle.Bold);
-        var titleText = Loc.T("receipt.card_title");
-        var titleSize = g.MeasureString(titleText, titleFont);
-        var titleX = margin + (contentWidth - titleSize.Width) / 2;
-        g.DrawString(titleText, titleFont, Brushes.Black, titleX, y);
-        y += (int)titleSize.Height + 4;
+        y += 8;
+
+        // ── Title — centered, bold, large, system color ──
+        using var titleFont = new Font(AgrisTheme.FontFamily, 18F, FontStyle.Bold);
+        using var titleBrush = new SolidBrush(AgrisTheme.BrandGreenDark);
+        var titleText = Loc.T("print.dangtai_title");
+        var titleSz = g.MeasureString(titleText, titleFont);
+        g.DrawString(titleText, titleFont, titleBrush,
+            margin + (contentWidth - titleSz.Width) / 2, y);
+        y += (int)titleSz.Height + 4;
 
         // ── Nhãn BẢN IN LẠI ──
         if (_isReprint)
@@ -287,81 +300,90 @@ public sealed class TripReceiptPreviewForm : Form
             using var reprintFont = new Font(AgrisTheme.FontFamily, 10F, FontStyle.Bold);
             using var reprintBrush = new SolidBrush(AgrisTheme.Danger);
             var reprintText = Loc.T("receipt.reprint_label");
-            var reprintSize = g.MeasureString(reprintText, reprintFont);
+            var reprintSz = g.MeasureString(reprintText, reprintFont);
             g.DrawString(reprintText, reprintFont, reprintBrush,
-                margin + (contentWidth - reprintSize.Width) / 2, y);
-            y += (int)reprintSize.Height + 4;
+                margin + (contentWidth - reprintSz.Width) / 2, y);
+            y += (int)reprintSz.Height + 4;
         }
 
-        // ── QR placeholder (góc phải trên) ──
-        var qrSize = 100;
-        var qrX = pageWidth - margin - qrSize;
-        var qrY = margin;
-        DrawQrPlaceholder(g, qrX, qrY, qrSize, _data.QrToken);
+        y += 10;
 
-        y += 12;
-
-        // ── Thông tin phiếu ──
+        // ── Fields — matching phiếu đăng tài mẫu ──
         using var labelFont = new Font(AgrisTheme.FontFamily, 9.5F, FontStyle.Regular);
         using var valueFont = new Font(AgrisTheme.FontFamily, 9.5F, FontStyle.Bold);
+        using var valueBoldFont = new Font(AgrisTheme.FontFamily, 11F, FontStyle.Bold);
         using var textBrush = new SolidBrush(AgrisTheme.TextPrimary);
+        using var italicFont = new Font(AgrisTheme.FontFamily, 9.5F, FontStyle.Italic);
 
         var labelX = margin;
         var valueX = margin + 140;
+        var rightColX = margin + 310;
+        var rightValX = rightColX + 90;
         var lineHeight = 22;
 
-        DrawField(g, Loc.T("receipt.field_date"), _data.DateTime, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_reg_no"), _data.TripNo, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_gate"), _data.Gate, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_transporter"), _data.Transporter, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_driver"), _data.DriverName, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_id_card"), _data.DriverIdCard, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_plate"), _data.Plate, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_trailer"), _data.TrailerPlate, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+        // Row 1: Lệnh đốn số (bold)  +  Ngày tháng năm (right, italic)
+        DrawFieldBold(g, _data.IsMaterial ? "Shipment" : Loc.T("print.dangtai_lenh_don"), _data.ShipmentNo, labelFont, valueBoldFont, textBrush, labelX, valueX, ref y, lineHeight);
+        if (!string.IsNullOrWhiteSpace(_data.DateTime))
+            g.DrawString(_data.DateTime, italicFont, textBrush, rightColX, y - lineHeight);
 
-        // ── Separator ──
-        y += 6;
-        using var sepPen = new Pen(AgrisTheme.Border, 1f);
-        g.DrawLine(sepPen, margin, y, pageWidth - margin, y);
-        y += 8;
+        // Row 2: Số đăng tài (bold)
+        DrawFieldBold(g, Loc.T("print.dangtai_so_dangtai"), _data.TripNo, labelFont, valueBoldFont, textBrush, labelX, valueX, ref y, lineHeight);
 
-        DrawField(g, Loc.T("receipt.field_order"), _data.ShipmentNo, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_warehouse"), _data.Warehouse, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_commodity"), _data.Commodity, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        DrawField(g, Loc.T("receipt.field_customer"), _data.CustomerOrSupplier, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-
-        // ── Thông tin mía (nếu có) ──
-        if (!string.IsNullOrWhiteSpace(_data.SugarcaneType) ||
-            !string.IsNullOrWhiteSpace(_data.SugarcaneOwner))
+        if (_data.IsMaterial)
         {
-            y += 6;
-            g.DrawLine(sepPen, margin, y, pageWidth - margin, y);
-            y += 8;
-
-            DrawField(g, Loc.T("receipt.field_sugarcane_type"), _data.SugarcaneType, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, Loc.T("receipt.field_sugarcane_owner"), _data.SugarcaneOwner, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, Loc.T("receipt.field_variety"), _data.SugarcaneVariety, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, Loc.T("receipt.field_harvest"), _data.HarvestMethod, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, Loc.T("receipt.field_station"), _data.Station, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, Loc.T("receipt.field_crop"), _data.CropSeason, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            // ── VẬT TƯ ──
+            DrawField(g, "Khách hàng/NCC", _data.CustomerOrSupplier, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawField(g, "Hàng hóa", _data.Commodity, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawField(g, "Kho", _data.Warehouse, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawField(g, "Biển số xe", _data.Plate, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawFieldInline(g, Loc.T("print.field_loai_xe"), _data.VehicleType, labelFont, valueFont, textBrush, rightColX, rightValX, y - lineHeight);
+            if (!string.IsNullOrWhiteSpace(_data.TrailerPlate))
+                DrawField(g, "Rơ moóc", _data.TrailerPlate, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawField(g, "Nhà vận tải", _data.Transporter, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+        }
+        else
+        {
+            // ── MÍA ──
+            DrawField(g, Loc.T("print.field_chu_mia"), _data.SugarcaneOwner, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawField(g, Loc.T("print.field_hop_dong"), _data.ShipmentNo, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawField(g, Loc.T("print.field_so_xe"), _data.Plate, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawFieldInline(g, Loc.T("print.field_loai_xe"), _data.VehicleType, labelFont, valueFont, textBrush, rightColX, rightValX, y - lineHeight);
+            DrawField(g, Loc.T("print.field_cong_thu_hoach"), _data.Transporter, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawFieldInline(g, Loc.T("print.field_cong_boc_xep"), null, labelFont, valueFont, textBrush, rightColX, rightValX, y - lineHeight);
+            DrawField(g, Loc.T("print.field_giong_mia"), _data.SugarcaneVariety, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+            DrawFieldInline(g, Loc.T("print.field_loai_mia"), _data.SugarcaneType, labelFont, valueFont, textBrush, rightColX, rightValX, y - lineHeight);
+            DrawField(g, Loc.T("print.field_hinh_thuc_thu_hoach"), _data.HarvestMethod, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
         }
 
-        // ── STT hàng chờ ──
-        if (_data.QueueSequenceNumber.HasValue)
+        // Ghi chú (chung)
+        DrawField(g, Loc.T("print.field_ghi_chu"), null, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
+
+        // ── Barcode (Code 128) ──
+        var barcodeValue = _data.ShipmentNo ?? _data.QrToken;
+        if (!string.IsNullOrWhiteSpace(barcodeValue))
         {
-            y += 10;
-            using var seqFont = new Font(AgrisTheme.FontFamily, 12F, FontStyle.Bold);
-            g.DrawString(Loc.T("receipt.seq_label", _data.QueueSequenceNumber), seqFont, logoBrush, labelX, y);
+            y += 12;
+            if (!Printing.Code128Renderer.Draw(g, barcodeValue, labelX, y, 280, 45))
+            {
+                // Fallback: vẽ text nếu encode thất bại
+                using var fallbackFont = new Font(AgrisTheme.MonoFamily, 11F, FontStyle.Bold);
+                g.DrawString(barcodeValue, fallbackFont, Brushes.Black, labelX, y);
+            }
+            y += 48;
+
+            // Barcode text below
+            using var bcTextFont = new Font(AgrisTheme.MonoFamily, 9F);
+            g.DrawString(barcodeValue, bcTextFont, Brushes.Black, labelX, y);
         }
 
-        // ── Mã QR text ──
-        if (!string.IsNullOrWhiteSpace(_data.QrToken))
-        {
-            y += 30;
-            using var qrLabelFont = new Font(AgrisTheme.FontFamily, 8F, FontStyle.Italic);
-            using var qrTextBrush = new SolidBrush(AgrisTheme.TextMuted);
-            g.DrawString(Loc.T("receipt.qr_label", _data.QrToken), qrLabelFont, qrTextBrush, labelX, y);
-        }
+        // ── Print timestamp — bottom right ──
+        var printTime = System.DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+        var printLabel = Loc.T("print.dangtai_ngay_in", printTime);
+        using var tsFont = new Font(AgrisTheme.FontFamily, 8.5F, FontStyle.Italic);
+        using var tsBrush = new SolidBrush(AgrisTheme.TextMuted);
+        var tsSz = g.MeasureString(printLabel, tsFont);
+        g.DrawString(printLabel, tsFont, tsBrush,
+            pageWidth - margin - tsSz.Width, pageHeight - margin - tsSz.Height - 4);
     }
 
     private static void DrawField(
@@ -369,72 +391,31 @@ public sealed class TripReceiptPreviewForm : Form
         Font labelFont, Font valueFont, Brush brush,
         int labelX, int valueX, ref int y, int lineHeight)
     {
-        var displayValue = string.IsNullOrWhiteSpace(value) ? Loc.T("receipt.no_value") : value;
+        var displayValue = string.IsNullOrWhiteSpace(value) ? "" : value;
         g.DrawString(label, labelFont, brush, labelX, y);
-        g.DrawString(displayValue, valueFont, brush, valueX, y);
+        g.DrawString(": " + displayValue, valueFont, brush, valueX, y);
         y += lineHeight;
     }
 
-    /// <summary>
-    /// Vẽ khung QR placeholder. Nếu cài thêm QRCoder NuGet thì thay bằng QR thật.
-    /// </summary>
-    private static void DrawQrPlaceholder(Graphics g, int x, int y, int size, string? qrToken)
+    private static void DrawFieldBold(
+        Graphics g, string label, string? value,
+        Font labelFont, Font boldFont, Brush brush,
+        int labelX, int valueX, ref int y, int lineHeight)
     {
-        // Vẽ khung
-        using var framePen = new Pen(Color.Black, 1.5f);
-        g.DrawRectangle(framePen, x, y, size, size);
-
-        if (string.IsNullOrWhiteSpace(qrToken))
-        {
-            using var noQrFont = new Font(AgrisTheme.FontFamily, 8F, FontStyle.Italic);
-            g.DrawString(Loc.T("receipt.no_qr"), noQrFont, Brushes.Gray,
-                new RectangleF(x + 4, y + 20, size - 8, size - 24),
-                new StringFormat { Alignment = StringAlignment.Center });
-            return;
-        }
-
-        // Vẽ pattern giả lập QR (grid checkerboard) để nhìn giống QR code
-        var cellCount = 21; // QR version 1 = 21x21 modules
-        var cellSize = (float)size / cellCount;
-        var hash = qrToken.GetHashCode();
-        var rng = new Random(hash);
-
-        using var blackBrush = new SolidBrush(Color.Black);
-
-        // 3 finder patterns (góc trên-trái, trên-phải, dưới-trái)
-        DrawFinderPattern(g, blackBrush, x, y, cellSize);
-        DrawFinderPattern(g, blackBrush, x + (cellCount - 7) * cellSize, y, cellSize);
-        DrawFinderPattern(g, blackBrush, x, y + (cellCount - 7) * cellSize, cellSize);
-
-        // Random data modules
-        for (var row = 0; row < cellCount; row++)
-        {
-            for (var col = 0; col < cellCount; col++)
-            {
-                // Skip finder pattern areas
-                if ((row < 8 && col < 8) || (row < 8 && col >= cellCount - 8) || (row >= cellCount - 8 && col < 8))
-                    continue;
-
-                if (rng.Next(2) == 1)
-                {
-                    g.FillRectangle(blackBrush,
-                        x + col * cellSize, y + row * cellSize,
-                        cellSize, cellSize);
-                }
-            }
-        }
+        var displayValue = string.IsNullOrWhiteSpace(value) ? "" : value;
+        g.DrawString(label, labelFont, brush, labelX, y);
+        g.DrawString(": " + displayValue, boldFont, brush, valueX, y);
+        y += lineHeight + 2;
     }
 
-    private static void DrawFinderPattern(Graphics g, Brush brush, float x, float y, float cellSize)
+    private static void DrawFieldInline(
+        Graphics g, string label, string? value,
+        Font labelFont, Font valueFont, Brush brush,
+        int labelX, int valueX, int y)
     {
-        // Outer 7x7 border
-        g.FillRectangle(brush, x, y, 7 * cellSize, cellSize);
-        g.FillRectangle(brush, x, y + 6 * cellSize, 7 * cellSize, cellSize);
-        g.FillRectangle(brush, x, y, cellSize, 7 * cellSize);
-        g.FillRectangle(brush, x + 6 * cellSize, y, cellSize, 7 * cellSize);
-
-        // Inner 3x3 block
-        g.FillRectangle(brush, x + 2 * cellSize, y + 2 * cellSize, 3 * cellSize, 3 * cellSize);
+        var displayValue = string.IsNullOrWhiteSpace(value) ? "" : value;
+        g.DrawString(label, labelFont, brush, labelX, y);
+        g.DrawString(": " + displayValue, valueFont, brush, valueX, y);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -480,4 +461,13 @@ public sealed record TripReceiptData(
     string? Station,
     string? CropSeason,
     string? QrToken,
-    int? QueueSequenceNumber);
+    int? QueueSequenceNumber,
+    decimal? ImpurityPercent = null,
+    decimal? CcsValue = null,
+    decimal? BrixValue = null,
+    decimal? PolValue = null,
+    decimal? PolDocValue = null,
+    string? Factory = null,
+    string? FactoryAddress = null,
+    string? VehicleType = null,
+    bool IsMaterial = false);

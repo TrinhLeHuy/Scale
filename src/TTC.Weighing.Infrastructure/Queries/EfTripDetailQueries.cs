@@ -57,6 +57,9 @@ public sealed class EfTripDetailQueries(WeighingDbContext db)
             .Where(s => s.TripId == tripId)
             .OrderBy(s => s.Type).ThenByDescending(s => s.Revision)
             .Select(s => new QualitySampleRow(
+                s.TripId,
+                db.Trips.Where(t => t.Id == s.TripId).Select(t => t.TripNo).FirstOrDefault(),
+                db.Trips.Where(t => t.Id == s.TripId).Select(t => t.TractorPlate).FirstOrDefault(),
                 s.Type, s.Status, s.Revision, s.IsEffective,
                 s.SampleBeforeKg, s.SampleAfterKg, s.ImpurityPercent, s.CcsValue,
                 s.BelowMinimumSampleWarning, s.Source, s.ReceivedAt))
@@ -122,22 +125,22 @@ public sealed class EfTripDetailQueries(WeighingDbContext db)
     }
 
     /// <summary>
-    /// Tự suy checkpoint từ dữ liệu thực tế: WeighEvents, QualitySamples, GateDecisions, Warehouse checkpoints.
-    /// Dùng khi checkpoint_events chưa được ghi tự động bởi handlers.
+    /// Tự suy checkpoint từ dữ liệu thực tế: WeighEvents, QualitySamples.
+    /// Luồng khác nhau theo SourceSystem:
+    ///   FRM (mía): Cân lần 1 → Tạp chất → Chữ đường → Cân lần 2
+    ///   ERP (vật tư): Cân lần 1 → Vào kho → Cân lần 2
     /// </summary>
     private async Task<List<CheckpointRow>> BuildCheckpointsFromDataAsync(Guid tripId, CancellationToken ct)
     {
         var result = new List<CheckpointRow>();
 
-        // Vào cổng
-        var gateIn = await db.GateDecisions
-            .Where(d => d.TripId == tripId && d.Direction == Domain.Enums.GateDirection.In && d.Allowed)
-            .OrderBy(d => d.DecidedAt)
-            .FirstOrDefaultAsync(ct);
-        result.Add(new CheckpointRow(
-            Domain.Enums.CheckpointType.GateIn,
-            gateIn is not null ? Domain.Enums.CheckpointStatus.Done : Domain.Enums.CheckpointStatus.Pending,
-            gateIn?.DecidedAt, gateIn?.DecidedAt, gateIn?.CreatedBy, null));
+        var trip = await db.Trips.FirstOrDefaultAsync(t => t.Id == tripId, ct);
+        var profile = trip is not null
+            ? await db.WorkflowProfiles.FirstOrDefaultAsync(
+                p => p.Id == trip.WorkflowProfileId && p.ProfileVersion == trip.WorkflowProfileVersion, ct)
+            : null;
+
+        var isErp = profile?.SourceSystem == "ERP";
 
         // Cân lần 1
         var gross = await db.WeighEvents
@@ -148,14 +151,38 @@ public sealed class EfTripDetailQueries(WeighingDbContext db)
             gross is not null ? Domain.Enums.CheckpointStatus.Done : Domain.Enums.CheckpointStatus.Pending,
             gross?.MeasuredAt, gross?.MeasuredAt, gross?.CreatedBy, null));
 
-        // Tạp chất
-        var impurity = await db.QualitySamples
-            .Where(s => s.TripId == tripId && s.Type == Domain.Enums.QualitySampleType.Impurity && s.IsEffective)
-            .FirstOrDefaultAsync(ct);
-        result.Add(new CheckpointRow(
-            Domain.Enums.CheckpointType.ImpuritySample,
-            impurity is not null ? Domain.Enums.CheckpointStatus.Done : Domain.Enums.CheckpointStatus.Pending,
-            impurity?.ReceivedAt, impurity?.ReceivedAt, impurity?.ReceivedBy, null));
+        if (isErp)
+        {
+            // Vật tư: Vào kho
+            var warehouseCheckpoint = await db.CheckpointEvents
+                .Where(c => c.TripId == tripId && c.Type == Domain.Enums.CheckpointType.WarehouseIn)
+                .OrderBy(c => c.StartedAt ?? c.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+            result.Add(new CheckpointRow(
+                Domain.Enums.CheckpointType.WarehouseIn,
+                warehouseCheckpoint is not null ? Domain.Enums.CheckpointStatus.Done : Domain.Enums.CheckpointStatus.Pending,
+                warehouseCheckpoint?.StartedAt, warehouseCheckpoint?.CompletedAt,
+                warehouseCheckpoint?.ConfirmedBy, null));
+        }
+        else
+        {
+            // Mía: Tạp chất + Chữ đường
+            var impurity = await db.QualitySamples
+                .Where(s => s.TripId == tripId && s.Type == Domain.Enums.QualitySampleType.Impurity && s.IsEffective)
+                .FirstOrDefaultAsync(ct);
+            result.Add(new CheckpointRow(
+                Domain.Enums.CheckpointType.ImpuritySample,
+                impurity is not null ? Domain.Enums.CheckpointStatus.Done : Domain.Enums.CheckpointStatus.Pending,
+                impurity?.ReceivedAt, impurity?.ReceivedAt, impurity?.ReceivedBy, null));
+
+            var ccs = await db.QualitySamples
+                .Where(s => s.TripId == tripId && s.Type == Domain.Enums.QualitySampleType.Ccs && s.IsEffective)
+                .FirstOrDefaultAsync(ct);
+            result.Add(new CheckpointRow(
+                Domain.Enums.CheckpointType.CcsSample,
+                ccs is not null ? Domain.Enums.CheckpointStatus.Done : Domain.Enums.CheckpointStatus.Pending,
+                ccs?.ReceivedAt, ccs?.ReceivedAt, ccs?.ReceivedBy, null));
+        }
 
         // Cân lần 2
         var tare = await db.WeighEvents
@@ -165,35 +192,6 @@ public sealed class EfTripDetailQueries(WeighingDbContext db)
             Domain.Enums.CheckpointType.SecondWeight,
             tare is not null ? Domain.Enums.CheckpointStatus.Done : Domain.Enums.CheckpointStatus.Pending,
             tare?.MeasuredAt, tare?.MeasuredAt, tare?.CreatedBy, null));
-
-        // Vào kho — check CheckpointEvent WarehouseIn hoặc MeasurementSession
-        var warehouseCheckpoint = await db.CheckpointEvents
-            .Where(c => c.TripId == tripId && c.Type == Domain.Enums.CheckpointType.WarehouseIn)
-            .OrderBy(c => c.StartedAt ?? c.CreatedAt)
-            .FirstOrDefaultAsync(ct);
-        var warehouseSession = warehouseCheckpoint is null
-            ? await db.MeasurementSessions
-                .Where(m => m.TripId == tripId)
-                .OrderBy(m => m.OpenedAt)
-                .FirstOrDefaultAsync(ct)
-            : null;
-        var whDone = warehouseCheckpoint is not null || warehouseSession is not null;
-        result.Add(new CheckpointRow(
-            Domain.Enums.CheckpointType.WarehouseIn,
-            whDone ? Domain.Enums.CheckpointStatus.Done : Domain.Enums.CheckpointStatus.Pending,
-            warehouseCheckpoint?.StartedAt ?? warehouseSession?.OpenedAt,
-            warehouseCheckpoint?.CompletedAt ?? warehouseSession?.ClosedAt,
-            warehouseCheckpoint?.ConfirmedBy, null));
-
-        // Ra cổng
-        var gateOut = await db.GateDecisions
-            .Where(d => d.TripId == tripId && d.Direction == Domain.Enums.GateDirection.Out && d.Allowed)
-            .OrderBy(d => d.DecidedAt)
-            .FirstOrDefaultAsync(ct);
-        result.Add(new CheckpointRow(
-            Domain.Enums.CheckpointType.GateOut,
-            gateOut is not null ? Domain.Enums.CheckpointStatus.Done : Domain.Enums.CheckpointStatus.Pending,
-            gateOut?.DecidedAt, gateOut?.DecidedAt, gateOut?.CreatedBy, null));
 
         return result;
     }
@@ -224,6 +222,25 @@ public sealed class EfTripDetailQueries(WeighingDbContext db)
             blockers.Add("Còn phân bổ chưa được duyệt, chưa gửi kết quả phân bổ.");
 
         return blockers;
+    }
+
+    public async Task<IReadOnlyList<QualitySampleRow>> ListAllSamplesAsync(
+        Guid siteId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var samples = await db.QualitySamples
+            .Where(s => s.ReceivedAt >= fromUtc && s.ReceivedAt < toUtc)
+            .Where(s => db.Trips.Any(t => t.Id == s.TripId && t.SiteId == siteId && t.DeletedAt == null))
+            .OrderByDescending(s => s.ReceivedAt)
+            .Select(s => new QualitySampleRow(
+                s.TripId,
+                db.Trips.Where(t => t.Id == s.TripId).Select(t => t.TripNo).FirstOrDefault(),
+                db.Trips.Where(t => t.Id == s.TripId).Select(t => t.TractorPlate).FirstOrDefault(),
+                s.Type, s.Status, s.Revision, s.IsEffective,
+                s.SampleBeforeKg, s.SampleAfterKg, s.ImpurityPercent, s.CcsValue,
+                s.BelowMinimumSampleWarning, s.Source, s.ReceivedAt))
+            .ToListAsync(ct);
+
+        return samples;
     }
 }
 

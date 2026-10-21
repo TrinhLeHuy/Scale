@@ -20,6 +20,7 @@ public sealed class QualityPresenter(
     RecordImpuritySampleHandler recordImpurity,
     ReceiveCcsResultHandler receiveCcs,
     IClock clock,
+    TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache frmCache,
     TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter digiScaleTickets)
 {
     /// <summary>Độ mới tối đa dùng riêng cho hiển thị cân mẫu. Không dùng làm điều kiện ghi kết quả.</summary>
@@ -63,6 +64,7 @@ public sealed class QualityPresenter(
 
     /// <summary>
     /// Tiếp nhận kết quả chữ đường (CCS). Có thể đến sau khi xe đã ra cổng.
+    /// 
     /// Handler sẽ validate, xác định status, lưu QualitySample.
     /// </summary>
     public Task<ReceiveCcsResultResult> RecordCcsAsync(
@@ -71,13 +73,51 @@ public sealed class QualityPresenter(
 
     /// <summary>Push phiếu tạp chất lên DigiScale (bước 8).</summary>
     public Task<TTC.Weighing.Infrastructure.Adapters.TicketResult> PushTapChatAsync(
-        string lenhDon, string sttCan, string lanDo, DateTime ngay,
-        string klBefore, string klAfter, string tapChatThucTe, CancellationToken ct = default)
-        => digiScaleTickets.PushTapChatAsync(lenhDon, sttCan, lanDo, ngay, klBefore, klAfter, tapChatThucTe, ct);
+        string lenhDonId, string maLenhDon, string sttCan, string lanDo, DateTime ngay,
+        string klBefore, string klAfter, string tapChatThucTe, string? lenhDonBu = null, CancellationToken ct = default)
+        => digiScaleTickets.PushTapChatAsync(lenhDonId, maLenhDon, sttCan, lanDo, ngay, klBefore, klAfter, tapChatThucTe, lenhDonBu, ct);
+
+    /// <summary>Tìm LenhDon theo biển số xe.</summary>
+    public TTC.Weighing.Infrastructure.Adapters.FrmLenhDonInfo? FindLenhDonByPlate(string plate)
+    {
+        var normalized = plate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
+        var activeBu = frmCache.ActiveBusinessUnit;
+
+        return frmCache.AllLenhDon
+            .Where(ld => ld.StatusCodeName == "Đã duyệt")
+            .Where(ld => activeBu is null || string.Equals(ld.BusinessUnit, activeBu, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(ld => ld.NgayCap)
+            .FirstOrDefault(ld =>
+            {
+                if (ld.BienSoXe is null) return false;
+                return ld.BienSoXe.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant() == normalized;
+            });
+    }
+
+    /// <summary>Lấy thông tin FRM lệnh đốn từ trip DB — dùng raw SQL riêng tránh EF concurrent access.</summary>
+    public async Task<(string? LenhDonId, string? MaLenhDon, string? Bu)> GetTripFrmDataAsync(Guid tripId, CancellationToken ct = default)
+    {
+        try
+        {
+            var connStr = frmCache.ConnectionString;
+            if (string.IsNullOrWhiteSpace(connStr)) return (null, null, null);
+
+            await using var conn = new Npgsql.NpgsqlConnection(connStr);
+            await conn.OpenAsync(ct);
+            await using var cmd = new Npgsql.NpgsqlCommand(
+                "SELECT frm_lenh_don_id, frm_ma_lenh_don, frm_lenh_don_bu FROM trips WHERE id = $1", conn);
+            cmd.Parameters.AddWithValue(tripId);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+                return (reader[0] as string, reader[1] as string, reader[2] as string);
+        }
+        catch { }
+        return (null, null, null);
+    }
 
     /// <summary>Push phiếu CCS lên DigiScale (bước 8).</summary>
     public Task<TTC.Weighing.Infrastructure.Adapters.TicketResult> PushCcsAsync(
-        string lenhDon, string sttCan, string lanDo, DateTime ngay,
-        string brix, string ccsDo, string pol, string polDoc, string caLamViec, CancellationToken ct = default)
-        => digiScaleTickets.PushCcsAsync(lenhDon, sttCan, lanDo, ngay, brix, ccsDo, pol, polDoc, caLamViec, ct);
+        string lenhDon, string maLenhDon, string sttCan, string lanDo, DateTime ngay,
+        string brix, string ccsDo, string pol, string polDoc, string caLamViec, string? nhanVienDoCcs = null, string? lenhDonBu = null, CancellationToken ct = default)
+        => digiScaleTickets.PushCcsAsync(lenhDon, maLenhDon, sttCan, lanDo, ngay, brix, ccsDo, pol, polDoc, caLamViec, nhanVienDoCcs, lenhDonBu, ct);
 }

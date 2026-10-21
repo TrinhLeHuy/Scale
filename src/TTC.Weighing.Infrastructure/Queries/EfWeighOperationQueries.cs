@@ -43,6 +43,7 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
             .OrderByDescending(t => t.CreatedAt)
             .Select(t => new
             {
+                TripId = t.Id,
                 t.TripNo,
                 t.TicketNumber,
                 t.ReferenceTripNo,
@@ -113,9 +114,10 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
 
             decimal? net = null;
             if (hasGross && hasTare)
-                net = r.Gross!.NormalizedKg - r.Tare!.NormalizedKg;
+                net = Math.Abs(r.Gross!.NormalizedKg - r.Tare!.NormalizedKg);
 
             result.Add(new WeighedTripRow(
+                TripId: r.TripId,
                 RegNo: r.TripNo,
                 TicketNo: r.TicketNumber,
                 TripNumber: r.ReferenceTripNo,
@@ -123,10 +125,10 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
                 Plate: r.Plate,
                 Trailer: r.Trailer,
                 TimeIn: first?.MeasuredAt,
-                WeightIn: first?.NormalizedKg,
+                WeightIn: first?.NormalizedKg / 1000m,
                 TimeOut: second?.MeasuredAt,
-                WeightOut: second?.NormalizedKg,
-                NetWeight: net,
+                WeightOut: second?.NormalizedKg / 1000m,
+                NetWeight: net / 1000m,
                 Customer: r.Customer,
                 Commodity: r.Commodity,
                 SyncStatus: r.SyncStatus));
@@ -149,6 +151,7 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
             .Where(t => !db.WeighEvents.Any(e => e.TripId == t.Id))
             .OrderByDescending(t => t.CreatedAt)
             .Select(t => new WeighedTripRow(
+                t.Id,
                 t.TripNo,
                 null,
                 t.ReferenceTripNo,

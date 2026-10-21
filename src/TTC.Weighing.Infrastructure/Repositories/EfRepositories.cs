@@ -40,6 +40,24 @@ public sealed class TripRepository(WeighingDbContext db) : ITripRepository
             .Include(t => t.Checkpoints)
             .FirstOrDefaultAsync(t => t.TripNo == tripNo && t.SiteId == siteId && t.DeletedAt == null, ct);
 
+    public Task<Trip?> GetActiveByPlateAsync(string plate, Guid siteId, CancellationToken ct = default)
+    {
+        var normalized = plate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpper();
+
+        return db.Trips
+            .Include(t => t.QrTokens)
+            .Include(t => t.Checkpoints)
+            .Where(t => t.SiteId == siteId
+                && t.DeletedAt == null
+                && t.TractorPlate != null
+                && (t.Lifecycle == TripLifecycle.Registered
+                    || t.Lifecycle == TripLifecycle.InProgress
+                    || t.Lifecycle == TripLifecycle.WeighingCompleted))
+            .OrderByDescending(t => t.CreatedAt)
+            .FirstOrDefaultAsync(t =>
+                t.TractorPlate!.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpper() == normalized, ct);
+    }
+
     public Task<Trip?> GetForUpdateAsync(Guid tripId, int expectedVersion, CancellationToken ct = default)
         => db.Trips
             .Include(t => t.QrTokens)
@@ -69,6 +87,18 @@ public sealed class TripRepository(WeighingDbContext db) : ITripRepository
             .ToDictionaryAsync(x => x.WeighbridgeId, x => x.Count, ct);
 
         return counts;
+    }
+
+    public async Task<string?> FindActiveByLenhDonIdAsync(string lenhDonId, CancellationToken ct = default)
+    {
+        return await db.Trips
+            .Where(t => t.FrmLenhDonId == lenhDonId
+                && t.DeletedAt == null
+                && t.Lifecycle != TripLifecycle.Cancelled
+                && t.Lifecycle != TripLifecycle.Closed)
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => t.TripNo)
+            .FirstOrDefaultAsync(ct);
     }
 }
 
