@@ -47,6 +47,10 @@ public sealed class EfTripRegistrationQueries(WeighingDbContext db) : ITripRegis
         if (filter.ToUtc.HasValue)
             query = query.Where(t => t.CreatedAt < filter.ToUtc.Value);
 
+        // Tách Mía (FRM) / Vật tư (ERP)
+        if (filter.Category.ToSourceSystem() is { } sourceSystem)
+            query = query.Where(t => t.SourceSystem == sourceSystem);
+
         // Project sang anonymous type rồi map sang TripRegistrationRow
         // (EF expression tree không hỗ trợ named arguments trong constructor của record)
         var rows = await query

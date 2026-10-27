@@ -1,0 +1,983 @@
+src\TTC.Weighing.WinForms\Program.cs:209: Lỗi khởi tạo ứng dụng:\n{ex.Message}
+src\TTC.Weighing.WinForms\Program.cs:209: Lỗi hệ thống
+src\TTC.Weighing.WinForms\Program.cs:301: Thiếu ConnectionStrings:WeighingDb. Cấu hình qua appsettings hoặc biến môi trường TTC_WEIGHING_.
+src\TTC.Weighing.WinForms\Program.cs:307: Thiếu Site:Code. Trạm phải được gán nhà máy trước khi vận hành (R-002).
+src\TTC.Weighing.WinForms\Program.cs:333: Người trực cân cục bộ
+src\TTC.Weighing.WinForms\Program.cs:355: === Vùng hiển thị {viewport.Width}x{viewport.Height} ===
+src\TTC.Weighing.WinForms\Program.cs:440: Lỗi không xử lý được. Ứng dụng tạm ngưng thao tác nghiệp vụ.{Environment.NewLine}{Environment.NewLine}{ex?.Message}
+src\TTC.Weighing.WinForms\Program.cs:441: Lỗi hệ thống
+src\TTC.Weighing.Domain\BusinessRules\CcsCalculator.cs:22: Pol phải lớn hơn 0.
+src\TTC.Weighing.Domain\BusinessRules\CcsCalculator.cs:24: Brix phải lớn hơn 0.
+src\TTC.Weighing.Domain\BusinessRules\CcsCalculator.cs:26: Fibre không được âm.
+src\TTC.Weighing.Domain\BusinessRules\CcsCalculator.cs:32: Không tra được tỷ trọng cho Brix = {bxRounded}.
+src\TTC.Weighing.Domain\BusinessRules\CcsCalculator.cs:39: Pol cải chính ≤ 0, kiểm tra lại giá trị Pol và Brix.
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:44: Không có dòng nào để phân bổ.
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:47: Tổng lượng đã đo phải lớn hơn 0 để phân bổ.
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:57: Phương pháp phân bổ không hỗ trợ: {method}
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:65: Mọi dòng phải có tỷ lệ đã duyệt lớn hơn 0.
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:69: Tổng tỷ lệ phải lớn hơn 0.
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:102: Phải có đúng một dòng nhận phần còn lại.
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:106: Mọi dòng số lượng xác định phải có giá trị lớn hơn 0.
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:111: Tổng số lượng xác định ({fixedTotal:N3} kg) vượt tổng đã đo ({total:N3} kg).
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:130: Tổng phân bổ {sum:N3} kg không bằng tổng đã đo {total:N3} kg — phần dư không được biến mất.
+src\TTC.Weighing.Domain\Rules\AllocationRules.cs:133: Có dòng phân bổ âm.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:65: Chuyến và QR còn hiệu lực
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:71: QR ở trạng thái {c.QrStatus}.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:74: QR không thuộc chuyến đang xét.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:77: Chuyến đã bị hủy.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:80: Chuyến đã kết thúc, không mở cổng mới bằng QR này.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:83: Chuyến đang PAUSED, ngừng cấp quyền mở mới (U-13).
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:91: Đúng danh tính xe tại làn
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:96: Chưa xác thực xe tại làn theo D-03. Khi chưa có ANPR nghiệm thu, 
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:97: cần xác nhận của nhân viên tại làn trước khi mở tự động.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:103: Đúng cổng, hướng và đủ checkpoint
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:106: Cổng/làn không khớp cấu hình cho hướng {c.RequestedDirection}.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:109: Chưa đủ checkpoint bắt buộc của giai đoạn này.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:117: Bộ điều khiển và an toàn tại chỗ
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:120: Bộ điều khiển barie không sẵn sàng.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:124: Điều kiện an toàn tại chỗ chưa đạt. Không bỏ qua cảm biến an toàn.
+src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs:128: Còn lệnh mở chưa rõ kết quả. Kiểm tra trạng thái thiết bị và xe trước khi cấp lệnh mới.
+src\TTC.Weighing.Domain\Rules\ImpurityCalculator.cs:26: Khối lượng mẫu trước phải lớn hơn 0.
+src\TTC.Weighing.Domain\Rules\ImpurityCalculator.cs:29: Khối lượng mẫu sau không được âm.
+src\TTC.Weighing.Domain\Rules\ImpurityCalculator.cs:33: Mẫu sau lớn hơn mẫu trước — số đo không hợp lệ, cần lấy lại mẫu.
+src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs:44: Chưa có sự kiện IoT nào trong phiên.
+src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs:49: Sự kiện DELTA có giá trị âm ({negative.ValueKg} kg) — cần xác minh, không tự bỏ qua.
+src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs:67: Chưa có sự kiện IoT nào trong phiên.
+src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs:76: Sự kiện CUMULATIVE thiếu counter_epoch — không xác định được chu kỳ bộ đếm.
+src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs:80: Phiên chứa {epochs.Count} chu kỳ bộ đếm khác nhau — bộ đếm đã reset, cần xác minh lượng thiếu.
+src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs:87: Bộ đếm giảm từ {ordered[i - 1].ValueKg} xuống {ordered[i].ValueKg} kg 
+src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs:88: trong cùng chu kỳ — cần xác minh, không tính max(0, end-start).
+src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs:116: Có sự kiện chiều trả lại nhưng cấu hình chưa nghiệm thu chiều này — cần xác minh.
+src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs:122: Số bao trả lại ({reverse}) lớn hơn số bao đi ({forward}) — cần kiểm đếm thực tế.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:92: Profile không áp dụng nguồn đo IoT.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:95: Thiếu số cân xe hoặc số đo IoT.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:100: IoT khai báo DERIVED_FROM_COUNT nên không phải nguồn cân kg độc lập (B-011).
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:103: Chưa khai báo rõ cơ sở khối lượng của một trong hai nguồn.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:107: Cơ sở khối lượng khác nhau ({i.VehicleNetBasis} so với {i.IotMassBasis}). 
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:108: Cần dữ liệu bao bì hợp lệ để quy về cùng cơ sở, không trừ hằng số.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:115: Chưa có dung sai đã duyệt cho so sánh cân xe với IoT (D-06).
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:125: Lệch {difference:N3} kg, vượt dung sai {tolerance:N3} kg.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:133: Profile không áp dụng đếm bao.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:136: Thiếu số bao đếm được từ AI. Không gán bằng 0 bao.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:139: Thiếu số bao kho đã xác nhận.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:146: Chưa có dung sai số bao đã duyệt (D-06).
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:156: Lệch {difference:N0} bao, vượt dung sai {tolerance} bao.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:169: Profile không yêu cầu đối chiếu với quy cách kho.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:172: Thiếu số cân xe.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:175: Thiếu số lượng kho đã xác nhận làm cơ sở quy đổi.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:180: BOM không có khối lượng danh nghĩa.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:181: BOM chỉ có khối lượng danh nghĩa {i.NominalKgPerUnit} kg/đơn vị, chưa có min/max.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:184: {nominalNote} Chưa dựng được khoảng dung sai, không tự áp ±20 kg (S04 tr.29, D-06).
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:190: Chưa có biên sai số bàn cân đã duyệt cho profile này (D-06).
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:197: Cơ sở khối lượng BOM ({i.BomMassBasis}) khác cân xe ({i.VehicleNetBasis}).
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:218: Cân xe {net:N3} kg ngoài khoảng [{lower:N3}; {upper:N3}] kg.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:229: Nguồn không cung cấp số kế hoạch cho dòng hàng này.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:232: Thiếu số xác nhận thực tế của chuyến.
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:239: đơn vị
+src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs:242: Chuyến này giao {difference:N3} so với kế hoạch — giao một phần là hợp lệ.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:116: QR và chuyến hợp lệ
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:122: QR ở trạng thái {c.QrStatus}.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:125: QR không thuộc chuyến đang cân.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:128: QR không thuộc nhà máy hiện tại.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:131: Checkpoint không được profile cho phép ở bước này.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:134: Chuyến đã {c.TripLifecycle}.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:137: Chuyến đang PAUSED, phải xử lý sự cố trước (U-13).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:145: Thiết bị đúng làn và phiên độc quyền
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:148: Bàn cân/camera/đầu đọc không thuộc đúng làn đã cấu hình.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:151: Phiên cân không sở hữu độc quyền bàn cân này (B-003).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:159: Danh tính xe đã xác thực
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:163: Chưa xác thực danh tính xe theo D-03. QR và AI vị trí không đủ để kết luận (R-039).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:165: Phương thức: {c.IdentityVerificationMethod ?? 
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:171: AI vị trí hợp lệ
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:174: Cấu hình vùng quan sát sai — báo lỗi, không tự giả định vùng mới.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:177: Kết luận AI vị trí = {c.PositionVerdict}, không đạt.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:180: Ngưỡng confidence AI chưa được duyệt (D-05).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:184: Thiếu confidence từ dịch vụ AI.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:188: Confidence {c.PositionConfidence} dưới ngưỡng {c.Thresholds.PositionConfidenceThreshold}.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:191: Ngưỡng độ mới bằng chứng AI chưa được duyệt (D-05).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:194: Bằng chứng AI đã cũ hoặc thiếu dấu thời gian.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:202: Tín hiệu đầu cân hợp lệ
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:205: Trạng thái đầu cân = {c.ScaleStatus}.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:208: Giá trị ngoài khả năng đo đã cấu hình.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:211: Mất gói tín hiệu làm đứt cửa sổ đánh giá.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:214: Ngưỡng độ mới tín hiệu cân chưa được duyệt (D-04).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:217: Tín hiệu cân đã cũ. Không dùng số cuối như đang trực tuyến.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:225: Trọng lượng ổn định liên tục
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:228: Cửa sổ ổn định chưa được cấu hình cho profile này.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:232: Biên dao động chưa được duyệt (D-04). Không áp một ngưỡng cho mọi đầu cân.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:235: Thiếu số liệu dao động trong cửa sổ.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:239: Dao động {c.ObservedDeltaKg} kg vượt biên {c.Thresholds.StabilityDeltaKg} kg.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:243: Ổn định {c.StableDuration.TotalSeconds:F1}s / {c.Thresholds.StabilityWindow.Value.TotalSeconds:F1}s.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:251: Điều kiện nghiệp vụ trước lượt cân
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:254: Chưa có lượt cân trước hợp lệ cho vai trò này.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:259: Mía chưa đo tạp chất, chặn cân lần 2 (S02 tr.21).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:262: Điều kiện chính sách FRM chưa đạt theo hợp đồng đã xác nhận.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:270: Lưu được bằng chứng và không có giao dịch treo
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:273: Không lưu được ảnh/bằng chứng, không phát hành lượt cân.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:277: Còn giao dịch chưa rõ kết quả. Không phát sinh lượt mới bằng cách bấm lại (R-024).
+src\TTC.Weighing.Domain\ValueObjects\WeightMeasurement.cs:41: {NormalizedKg:N3} kg (gốc {RawValue} {RawUom})
+src\TTC.Weighing.Infrastructure\Adapters\DeviceStatusMonitorAdapter.cs:184: Không đọc được payload thiết bị.
+src\TTC.Weighing.Infrastructure\Adapters\DigiScaleTicketAdapter.cs:231: ✅ Đã đẩy lên DigiScale. {Truncate(responseBody)}
+src\TTC.Weighing.Infrastructure\Adapters\DigiScaleTicketAdapter.cs:307: DigiScale không lưu: {itemError ?? 
+src\TTC.Weighing.Infrastructure\Adapters\FrmMasterDataCache.cs:592: FrmCache: loaded from DB — {Vehicles} vehicles, {LenhDon} lệnh đốn
+src\TTC.Weighing.Infrastructure\Adapters\FrmMasterDataCache.cs:695: FrmCache: upserted to DB — {Vehicles} vehicles, {LenhDon} lệnh đốn
+src\TTC.Weighing.Infrastructure\Adapters\FrmSyncAdapter.cs:51: FRM trả về dữ liệu rỗng.
+src\TTC.Weighing.Infrastructure\Adapters\FrmSyncAdapter.cs:82: Lỗi kết nối FRM: {ex.Message}
+src\TTC.Weighing.Infrastructure\Adapters\FrmSyncAdapter.cs:98: FRM không phản hồi trong thời gian cho phép (timeout).
+src\TTC.Weighing.Infrastructure\Adapters\QrScanHandlerAdapter.cs:21: Vui lòng nhập số đăng tài hoặc biển số xe.
+src\TTC.Weighing.Infrastructure\Adapters\QrScanHandlerAdapter.cs:35: Không tìm thấy chuyến nào cho \"{input}\". Kiểm tra lại số đăng tài hoặc biển số.
+src\TTC.Weighing.Infrastructure\Adapters\QrScanHandlerAdapter.cs:53: Mía nhập
+src\TTC.Weighing.Infrastructure\Adapters\QrScanHandlerAdapter.cs:53: Vật tư
+src\TTC.Weighing.Infrastructure\Adapters\SampleScaleGatewayAdapter.cs:31: Thiết bị chưa được tích hợp — trả null (device not ready).
+src\TTC.Weighing.Infrastructure\Adapters\WeighTicketPrintAdapter.cs:38: Chuyến không tồn tại.
+src\TTC.Weighing.Infrastructure\Adapters\WeighTicketPrintAdapter.cs:74: Không tìm thấy phiếu cân gốc để in lại.
+src\TTC.Weighing.Infrastructure\Adapters\WeighTicketPrintAdapter.cs:151: In lại phiếu cân
+src\TTC.Weighing.Infrastructure\Adapters\WeighTicketPrintAdapter.cs:177: Dữ liệu phiếu đã lưu nhưng máy in gặp lỗi: {ex.Message}. Vui lòng in lại.
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:209: Chuyến đang PAUSED (mã sự cố {pauseIssueCode ?? 
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:215: Đối soát {c.CheckType} = {c.Verdict}: {c.Detail}
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:219: Thông điệp {m.Operation} ở trạng thái {m.Status}, cần đối soát thủ công.
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:222: Còn phân bổ chưa được duyệt, chưa gửi kết quả phân bổ.
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:271: Chờ duyệt: {a.ActionType}
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:275: Duyệt hoặc từ chối kèm lý do và biên bản
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:293: Sự cố: {i.IssueCode}
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:297: Kiểm tra, xử lý giao dịch UNKNOWN rồi cho tiếp tục
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:323: Đối soát {m.Verdict}: {m.CheckType}
+src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs:327: Kiểm đếm ngoài hệ thống rồi cân lại; không sửa số đo để khớp đơn
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:88: Mía nhập
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:88: Vật tư
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:127: 📤 Đã đẩy Digi
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:128: ✅ Đã cân đủ
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:129: 🧪 Đã đo CCS
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:130: 🔬 Đã đo tạp chất
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:131: ⚖️ Đã cân lần 1
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:132: ⚖️ Đang cân
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:133: 📋 Đã đăng tài
+src\TTC.Weighing.Infrastructure\Queries\EfWeighOperationQueries.cs:84: Mía nhập
+src\TTC.Weighing.Infrastructure\Queries\EfWeighOperationQueries.cs:84: Vật tư
+src\TTC.Weighing.Infrastructure\Queries\EfWeighPreconditionQuery.cs:27: Không tìm thấy chuyến.
+src\TTC.Weighing.Infrastructure\Queries\EfWeighPreconditionQuery.cs:62: Chữ đường chưa có kết quả hợp lệ — cảnh báo, không chặn cân (R-014).
+src\TTC.Weighing.Infrastructure\Queries\EfWeighPreconditionQuery.cs:65: Chưa đo tạp chất — sẽ chặn lượt cân này (S02 tr.21).
+src\TTC.Weighing.Infrastructure\Queries\EfWeighPreconditionQuery.cs:77: Chưa xác nhận vào kho — chặn cân lần 2 cho vật tư.
+src\TTC.Weighing.Infrastructure\Repositories\FrmPlanLookupAdapter.cs:31: Đang tải dữ liệu FRM, vui lòng thử lại sau vài giây...
+src\TTC.Weighing.Infrastructure\Repositories\FrmPlanLookupAdapter.cs:32: Dữ liệu FRM chưa được tải. Kiểm tra kết nối hoặc bấm Làm mới FRM.
+src\TTC.Weighing.Infrastructure\Repositories\FrmPlanLookupAdapter.cs:105: FrmPlanLookup.NotifyCancellationAsync: tripId={TripId}, ref={Ref}. FRM chưa có endpoint hủy.
+src\TTC.Weighing.Infrastructure\Repositories\FrmPlanLookupAdapter.cs:130: Thu hoạch máy
+src\TTC.Weighing.Infrastructure\Repositories\FrmPlanLookupAdapter.cs:130: Thu hoạch thủ công
+src\TTC.Weighing.Integration\Contracts\IntegrationContracts.cs:39: Operation '{operation}' chưa có hợp đồng API đã xác minh (D-02). Thông điệp giữ ở trạng thái HELD.
+src\TTC.Weighing.WinForms\Controls\CameraAiStatusControl.cs:128: — {accessibleName}: chờ...
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:20: Tìm kiếm...
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:26: A→Z  Sắp xếp tăng dần
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:35: Z→A  Sắp xếp giảm dần
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:44: Chọn Tất cả
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:52: Áp dụng
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:61: Xóa bộ lọc
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:81: Lọc cột
+src\TTC.Weighing.WinForms\Controls\GridScrollBar.cs:33: Lưới phải có cha trước khi gắn thanh cuộn.
+src\TTC.Weighing.WinForms\Controls\TripSearchBox.cs:17: Nhập mã đăng tài hoặc biển số xe...
+src\TTC.Weighing.WinForms\Controls\TripSearchBox.cs:18: Tìm chuyến
+src\TTC.Weighing.WinForms\Development\DatabaseModeServices.cs:134: Nhà máy {siteCode}
+src\TTC.Weighing.WinForms\Development\LayoutInspector.cs:36: kiểm tra
+src\TTC.Weighing.WinForms\Development\LayoutInspector.cs:99: CẮT DỌC   {childPath}: bottom={child.Bottom} vượt vùng cha {clientHeight}
+src\TTC.Weighing.WinForms\Development\LayoutInspector.cs:105: CẮT NGANG {childPath}: right={child.Right} vượt vùng cha {clientWidth}
+src\TTC.Weighing.WinForms\Development\LayoutInspector.cs:110: KHÔNG CHỖ {childPath}: kích thước {child.Width}x{child.Height}
+src\TTC.Weighing.WinForms\Development\LayoutInspector.cs:134: CHỒNG     {path}: {Describe(a)} và {Describe(b)} 
+src\TTC.Weighing.WinForms\Development\LayoutInspector.cs:135: chồng {overlap.Width}x{overlap.Height}px
+src\TTC.Weighing.WinForms\Development\LayoutInspector.cs:172: FAIL  {formName}  ({findings.Count} vấn đề)
+src\TTC.Weighing.WinForms\Development\PreviewDataStore.cs:55: Nhà máy demo
+src\TTC.Weighing.WinForms\Development\PreviewDataStore.cs:56: Cổng chính
+src\TTC.Weighing.WinForms\Development\PreviewDataStore.cs:141: Nhập mía
+src\TTC.Weighing.WinForms\Development\PreviewDataStore.cs:165: Xuất vật tư hàng bao
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:224: Chuyến đang PAUSED (mã sự cố {trip.PauseIssueCode ?? 
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:229: Đối soát {c.CheckType} = {c.Verdict}: {c.Detail}
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:233: Thông điệp {m.Operation} ở trạng thái {m.Status}, cần đối soát thủ công.
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:236: Còn phân bổ chưa được duyệt.
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:274: Chờ duyệt: {approval.ActionType}
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:276: Duyệt hoặc từ chối kèm lý do và biên bản
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:284: Sự cố: {incident.IssueCode}
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:286: Kiểm tra, xử lý giao dịch UNKNOWN rồi cho tiếp tục
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:297: Đối soát {check.Verdict}: {check.CheckType}
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:300: Kiểm đếm ngoài hệ thống rồi cân lại; không sửa số đo để khớp đơn
+src\TTC.Weighing.WinForms\Development\PreviewQueries.cs:409: 📋 Đã đăng tài
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:160: Người trực cân (xem trước)
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:228: Chữ đường đang chờ kết quả — cảnh báo, không chặn cân (R-014).
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:671: Không tìm thấy mã QR trong dữ liệu xem trước.
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:677: Mã QR đã bị thu hồi.
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:683: Mã QR đã hết hạn.
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:689: Xe chưa đăng ký kế hoạch, cần quay lại cổng để lấy QR_chuyến.
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:696: Chuyến không tồn tại.
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:707: Chủ mía demo
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:708: Mía nguyên liệu
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:708: Đường tinh
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:709: Kho chính (demo)
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:711: Mía tươi
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:713: Nguyễn Văn A (demo)
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:738: Chuyến không tồn tại.
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:742: Mía tươi
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:744: Nguyễn Văn A (demo)
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:745: Thủ công
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:746: Trạm 01 (demo)
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:766: Chuyến không tồn tại.
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:800: PDF (Xem trước)
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:801: Máy in A4 (demo)
+src\TTC.Weighing.WinForms\Development\PreviewServices.cs:802: Máy in phiếu cân (demo)
+src\TTC.Weighing.WinForms\Forms\AllocateTripDialog.cs:40: Dialog phân bổ trọng lượng ghép xe
+src\TTC.Weighing.WinForms\Forms\AllocateTripDialog.cs:55: Mã phê duyệt phân bổ
+src\TTC.Weighing.WinForms\Forms\AllocateTripDialog.cs:75: Dòng phân bổ
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:40: Nhập mã đăng tài hoặc biển số xe...
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:41: Nhập số đăng tài hoặc biển số xe
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:64: Số đăng tài
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:65: Biển số
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:66: Khách hàng
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:77: CCS tự động: —
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:93: ✓  Ghi nhận CCS
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:94: In phiếu
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:95: 🔄 Đẩy lại Digi
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:96: Lượt mới (Esc)
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:103: Lịch sử CCS
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:114: Nhập mã đăng tài hoặc biển số để bắt đầu
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:134: Đo chữ đường (CCS)
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:194: Lịch sử CCS
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:202: Từ:
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:208: Bấm vào dòng để xem thông tin chuyến và in lại phiếu
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:219: Số đăng tài
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:220: Biển số
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:225: Trạng thái
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:226: Thời gian
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:415: Đang tra cứu...
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:444: ❌ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:453: Nhập mã đăng tài hoặc biển số trước.
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:453: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:471: Lỗi ghi CCS
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:475: Đã ghi nhận CCS. Trạng thái: {result.Status}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:475: Thành công
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:482: Đang chờ
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:500: GHI CHỮ ĐƯỜNG THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:501: Chuyến: {_txtTripNo.Text}\nBiển số: {_txtPlate.Text}\nBrix: {_numBrix.Value:#,##0.##} | Pol: {_numPol.Value:#,##0.##} | CCS: {_numCcs.Value:#,##0.##}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:502: Lỗi
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:507: GHI CHỮ ĐƯỜNG THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:508: Chuyến: {_txtTripNo.Text}\nBiển số: {_txtPlate.Text}\nCCS: {_numCcs.Value:#,##0.##}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:509: Lỗi push: {pushEx.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:527: Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:527: Lỗi hệ thống
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:551: Nhập mã đăng tài hoặc biển số để bắt đầu
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:553: CCS tự động: —
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:566: CCS tự động: — (nhập Brix + Pol)
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:574: CCS tự động: ❌ {result.InvalidReason}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:579: CCS tự động: {result.CcsValue:#,##0.##} (Pol cc: {result.PolCaiChinh:N4}, g: {result.ApparentDensity:N5})
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:705: Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:736: Đang chờ
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:744: Lỗi tải lịch sử CCS: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:744: Lỗi
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:775: 📋 Xem lại chuyến {tripNo} — bấm In phiếu hoặc Lượt mới (Esc) để nhập mới
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:796: Chọn chuyến trước khi đẩy lại.
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:796: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:809: ⏳ Đang đẩy lại CCS lên DigiScale...
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:830: ✅ Đẩy DigiScale thành công cho {tripNo}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:833: ĐẨY LẠI THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:834: Chuyến: {tripNo}\nBiển số: {plate}\nCCS: {ccs:#,##0.##}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:839: ❌ Đẩy lại thất bại: {pushResult.ErrorMessage}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:842: ĐẨY LẠI THẤT BẠI
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:843: Chuyến: {tripNo}\nBiển số: {plate}\nCCS: {ccs:#,##0.##}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:844: Lỗi không xác định
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:849: ❌ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:851: Lỗi đẩy lại DigiScale:\n{ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:851: Lỗi
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:21: Hồ sơ nghiệp vụ
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:22: Bàn cân
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:23: Thiết bị và ánh xạ làn
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:87: Ngưỡng của hồ sơ nghiệp vụ đang chọn
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:160: giây
+src\TTC.Weighing.WinForms\Forms\DashboardForm.cs:52: lượt cân
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:24: 🔄 Kéo dữ liệu ERP mới nhất
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:25: ▶ Bật tự động
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:29: Chu kỳ (phút)
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:46: Loại GD
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:51: Từ ngày
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:56: Đến ngày
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:79: Tìm kiếm nhanh...
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:82: < Trước
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:114: Quản lý dữ liệu ERP API
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:125: (Tất cả)
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:151: ⏸ Tắt tự động
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:154: 🔄 Tự động kéo dữ liệu mỗi {_numInterval.Value} phút.
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:159: ▶ Bật tự động
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:162: ⏹ Đã tắt tự động kéo dữ liệu.
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:190: Từ ngày:
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:194: Loại GD:
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:203: mỗi
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:205: phút
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:211: Dữ liệu đơn hàng ERP (Order Lines)
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:218: Hiển thị
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:228: dòng/trang
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:243: Số tham chiếu ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:245: Biển số ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:246: Loại GD ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:248: Mã hàng ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:249: Tên hàng ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:252: Vận chuyển ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:253: SL tổng ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:254: SL còn lại ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:255: Ngày GD ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:257: Nguồn ▼
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:277: Nhật ký đồng bộ
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:283: Đang tải dữ liệu từ DB...
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:301: ✅ Sẵn sàng  |  Đơn hàng: {_allData.Count}  |  BU: {_activeBu}  |  Tải từ DB local
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:302: ✅ Tải {_allData.Count} đơn hàng từ DB local (BU: {_activeBu}).
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:306: Chưa có dữ liệu ERP cho BU {_activeBu}. Bấm 'Kéo dữ liệu ERP mới nhất' để kéo từ API.
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:311: ⚠ Lỗi tải từ DB: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:312: ⚠ Lỗi tải từ DB.
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:321: ⏳ Đang kéo dữ liệu...
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:332: Bắt đầu kéo ERP order-lines: BU={inputBu}, {_dtpFrom.Value:dd/MM/yyyy} → {_dtpTo.Value:dd/MM/yyyy}
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:333: , Loại GD={txnTypeCode}
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:333: , Tất cả loại GD
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:349:   Type {typeCode} (theo ngày): {items.Count} đơn hàng
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:373:   Type {typeCode} (không ngày): +{newCount} đơn hàng mới
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:378:   Tổng: {allItems.Count} đơn hàng
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:384: 💾 Đã lưu {allItems.Count} đơn hàng vào DB (UPSERT).
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:388: ⚠ API trả rỗng — giữ nguyên dữ liệu DB cũ.
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:397: ✅ Sẵn sàng  |  Đơn hàng: {_allData.Count}  |  BU: {_activeBu}  |  {_dtpFrom.Value:dd/MM} → {_dtpTo.Value:dd/MM}  |  Lần cuối: {DateTime.Now:HH:mm:ss}
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:401: ❌ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:405: 🔄 Kéo dữ liệu ERP mới nhất
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:520: Số tham chiếu
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:520: Biển số
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:520: Loại GD
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:521: Mã hàng
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:521: Tên hàng
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:521: Vận chuyển
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:522: SL tổng
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:522: SL còn lại
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:522: Ngày GD
+src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs:522: Nguồn
+src\TTC.Weighing.WinForms\Forms\ExceptionQueueForm.cs:32: Hàng chờ ngoại lệ
+src\TTC.Weighing.WinForms\Forms\ExceptionQueueForm.cs:153: Nhật ký xử lý ngoại lệ
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:26: 🔄 Kéo dữ liệu FRM mới nhất
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:27: ▶ Bật tự động
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:31: Chu kỳ (phút)
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:39: Danh sách entities (phân cách bằng dấu phẩy)
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:48: Danh sách BU (phân cách bằng dấu phẩy)
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:59: Thống kê entities
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:74: Tìm kiếm nhanh...
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:77: < Trước
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:89: Quản lý dữ liệu FRM API
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:126: ⏸ Tắt tự động
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:129: 🔄 Tự động kéo dữ liệu mỗi {_numInterval.Value} phút.
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:134: ▶ Bật tự động
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:137: ⏹ Đã tắt tự động kéo dữ liệu.
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:183: mỗi
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:185: phút
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:191: Dữ liệu Lệnh đốn {buLabel}
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:198: Hiển thị
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:208: dòng/trang
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:218: Mã lệnh đốn ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:220: Biển số xe ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:221: Chủ mía ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:222: Loại mía ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:223: Giống mía ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:224: Trạm ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:225: Vụ đầu tư ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:226: Loại xe ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:227: Ưu tiên ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:228: Trạng thái ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:229: Ngày cấp ▼
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:249: Nhật ký đồng bộ
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:261: ⏳ Đang tải...
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:261: ✅ Sẵn sàng
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:263: Chưa tải lần nào
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:264: Lần cuối: {_cache.LastRefreshedAt.ToLocalTime():dd/MM/yyyy HH:mm:ss}
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:270: {loading}  |  Xe: {_cache.VehicleCount} ({uniquePlates} biển số, {withCard} có thẻ)  |  Lệnh đốn: {_cache.AllLenhDon.Count}  |  {refreshed}
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:276: ⏳ Đang kéo dữ liệu...
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:277: Bắt đầu kéo dữ liệu FRM API...
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:290: ✅ Cache xe: Trước: {before}, Sau: {after} records. LenhDon: {_allData.Count}.
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:314:   ⚠ {ent}: lỗi — {ex.Message}
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:322: ❌ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:326: 🔄 Kéo dữ liệu FRM mới nhất
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:439: Mã lệnh đốn
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:439: Biển số xe
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:439: Chủ mía
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:439: Loại mía
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:440: Giống mía
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:440: Trạm
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:440: Vụ đầu tư
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:440: Loại xe
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:440: Ưu tiên
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:440: Trạng thái
+src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs:440: Ngày cấp
+src\TTC.Weighing.WinForms\Forms\GuideForm.cs:31: Hướng dẫn sử dụng
+src\TTC.Weighing.WinForms\Forms\GuideForm.cs:100: Nhập mía
+src\TTC.Weighing.WinForms\Forms\IntegrationMonitorForm.cs:25: Danh sách thông điệp tích hợp
+src\TTC.Weighing.WinForms\Forms\IntegrationMonitorForm.cs:174: Nhật ký tích hợp
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:32: ĐĂNG NHẬP / SIGN IN
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:57: Đăng nhập / Sign In
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:83: Đăng nhập
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:101: Nhập thông tin tài khoản DigiScale / Enter your DigiScale credentials
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:108: Nhập tên đăng nhập / Enter username
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:111: Tên đăng nhập / Username
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:117: Mật khẩu / Password
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:146: Quên mật khẩu? Liên hệ quản trị hệ thống / Forgot password? Contact your administrator
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:159: MẬT KHẨU / PASSWORD
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:162: TÊN ĐĂNG NHẬP / USERNAME
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:189: Đóng / Close
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:236: Vui lòng nhập tên đăng nhập / Please enter username
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:237: Vui lòng nhập mật khẩu / Please enter password
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:250: ❌ Sai tên đăng nhập hoặc mật khẩu / Incorrect credentials
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:260: ❌ Tài khoản không thuộc nhà máy / Account not in this plant
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:272: ❌ Lỗi kết nối / Connection error: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:276: ❌ Hết thời gian chờ / Connection timed out
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:280: ❌ Lỗi / Error: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:293: ❌ Sai tên đăng nhập hoặc mật khẩu / Incorrect credentials
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:300: Đang đăng nhập... / Signing in...
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:475: Hệ thống cân hợp nhất\nmía và vật tư
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:657: Xem trước (dev) ▾
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:669: Đã đo tạp chất (bỏ tick để xem chặn cân lần 2)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:671: Đã xác thực danh tính xe (bỏ tick để xem chặn theo R-039)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:673: Chữ đường đang chờ (chỉ cảnh báo, không chặn cân)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:676: Giả định hợp đồng API đã xác minh (thực tế D-02 chưa duyệt)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:678: Giả định dung sai đã duyệt (thực tế D-06 chưa duyệt)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:681: Bộ điều khiển barie sẵn sàng
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:683: Điều kiện an toàn tại chỗ đạt
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:687: Xem audit trail toàn hệ thống
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:699: Chưa có bản ghi audit.
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:706: Audit trail (xem trước)
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:54: Nhập số đăng tài hoặc biển số xe
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:90: Trạng thái QR
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:102: Trạng thái workflow đo tạp chất
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:114: Số cân mẫu hiện tại
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:125: Tiến trình ổn định
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:134: Khối lượng mẫu trước
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:143: Khối lượng mẫu sau
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:155: In phiếu
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:158: 🔄 Đẩy lại Digi
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:171: Lý do nhập tay (bắt buộc)...
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:173: Lý do nhập tay
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:177: Mã phê duyệt (không bắt buộc)...
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:179: Mã phê duyệt nhập tay
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:202: Lịch sử mẫu chất lượng
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:617: Ngưỡng cảnh báo mẫu nhỏ theo tài liệu là {ImpurityCalculator.DocumentReferenceMinSampleKg} kg. 
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:618: Đây là cảnh báo, không phải lỗi cứng. 
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:619: Cân mẫu tự động ghi khi ổn định ≥ {StableThresholdSeconds} giây.
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:869: Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1120: 📝 Nhập tay tạp chất
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1174: Tạp chất dự kiến: {calc.ImpurityPercent:N4} %
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1303: ⏳ Đang đẩy tạp chất lên DigiScale...
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1327: GHI TẠP CHẤT THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1328: Chuyến: {_txtTripNo.Text}\nBiển số: {_txtPlate.Text}\nTạp chất: {result.ImpurityPercent:N4} %\n\n{debugInfo}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1329: Lỗi
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1334: GHI TẠP CHẤT THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1335: Chuyến: {_txtTripNo.Text}\nBiển số: {_txtPlate.Text}\nTạp chất: {result.ImpurityPercent:N4} %
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1336: Lỗi push: {pushEx.Message}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1479: 📋 Xem lại chuyến {tripNo} — bấm Làm mới (Esc) để nhập mới
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1613: Chọn chuyến trước khi đẩy lại.
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1613: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1643: ⏳ Đang đẩy lại tạp chất lên DigiScale...
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1661: ✅ Đẩy DigiScale thành công cho {tripNo}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1664: ĐẨY LẠI TẠP CHẤT THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1665: Chuyến: {tripNo}\nBiển số: {plate}\nMẫu trước: {beforeKg:N0} kg | Mẫu sau: {afterKg:N0} kg
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1670: ❌ Đẩy lại thất bại: {pushResult.ErrorMessage}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1673: ĐẨY LẠI TẠP CHẤT THẤT BẠI
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1674: Chuyến: {tripNo}\nBiển số: {plate}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1675: Lỗi không xác định
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1680: ❌ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1682: Lỗi đẩy lại DigiScale:\n{ex.Message}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1682: Lỗi
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:289: Số chuyến        : {row.TripNo}
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:290: Chứng từ nguồn   : {row.ReferenceNo ?? 
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:291: Hồ sơ nghiệp vụ  : {row.ProfileCode}
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:292: Biển số          : {row.Plate ?? 
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:294: Cân lần 1        : {Fmt(row.GrossKg)} kg
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:295: Cân lần 2        : {Fmt(row.TareKg)} kg
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:296: Net cân xe       : {Fmt(row.NetKg)} kg
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:297:                    (chênh lệch cân xe, không mặc định là khối lượng sản phẩm tinh)
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:299: Tạp chất         : {Fmt(row.ImpurityPercent, 
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:300: Chữ đường        : {Fmt(row.CcsValue, 
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:301: Kết luận đối soát: {row.OverallVerdict?.ToString() ?? Loc.T(
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:302: Can thiệp tay    : {row.ManualInterventionCount} lần
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:309: In lúc: {DateTime.Now:yyyy-MM-dd HH:mm:ss}
+src\TTC.Weighing.WinForms\Forms\SplashForm.cs:29: Đang khởi động... / Starting...
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:33: Các lần cân
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:34: Mẫu chất lượng
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:35: Phiên đo
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:36: Đối soát
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:37: Phân bổ
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:38: Tích hợp
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:57: Phân bổ trọng lượng ghép xe
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:122: Danh sách blocker của chuyến
+src\TTC.Weighing.WinForms\Forms\TripReceiptPreviewForm.cs:28: Chọn máy in
+src\TTC.Weighing.WinForms\Forms\TripReceiptPreviewForm.cs:36: Số bản in
+src\TTC.Weighing.WinForms\Forms\TripReceiptPreviewForm.cs:335: Khách hàng/NCC
+src\TTC.Weighing.WinForms\Forms\TripReceiptPreviewForm.cs:336: Hàng hóa
+src\TTC.Weighing.WinForms\Forms\TripReceiptPreviewForm.cs:338: Biển số xe
+src\TTC.Weighing.WinForms\Forms\TripReceiptPreviewForm.cs:341: Rơ moóc
+src\TTC.Weighing.WinForms\Forms\TripReceiptPreviewForm.cs:342: Nhà vận tải
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:32: Mở danh sách biển số
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:39: Từ ngày FRM
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:40: Đến ngày FRM
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:49: Đối tác vận chuyển
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:50: Trạm
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:51: Vụ đầu tư
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:52: Hình thức thu hoạch
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:53: Chủ mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:54: Loại mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:55: Giống mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:56: Loại xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:57: Mã thẻ xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:58: Mã hợp đồng
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:59: Tải trọng
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:72: Nhập
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:73: Xuất
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:74: Số TRIP
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:74: Số TRIP / Shipment
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:75: Biển số
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:75: Biển số xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:76: Kiểm tra
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:78: Biển số xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:78: Biển số xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:79: Rơ moóc
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:79: Rơ moóc (nếu có)
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:80: Nhà vận chuyển
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:80: Nhà vận chuyển
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:81: Lái xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:82: Khách hàng/NCC
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:82: Khách hàng/NCC
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:83: Ngày nhận hàng
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:83: Ngày nhận hàng
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:84: Ghi chú
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:90: 📋 Xem thêm thông tin chuyến
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:97: 🔄 Đẩy lại Digi
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:98: Hủy phiếu
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:272: Camera Vào
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:381: Tìm nhanh
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:433: 📋  Xem thêm thông tin chuyến
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:437: Xem thêm thông tin chuyến
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:450: Chủ mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:451: Chủ mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:452: Loại mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:453: Loại mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:454: Giống mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:455: Giống mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:456: Trạm
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:457: Trạm
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:458: Vụ đầu tư
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:459: Vụ đầu tư
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:460: Loại xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:461: Loại xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:462: Tải trọng (T)
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:463: Tải trọng (T)
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:464: Mã thẻ xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:465: Mã thẻ xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:495: Hướng
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:520: Biển số
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:531: Số TRIP
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:535: Biển số xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:613: 📋 Thông tin chi tiết chuyến xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:630: Chủ mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:631: Loại mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:632: Giống mía
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:633: Trạm
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:634: Vụ đầu tư
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:635: Loại xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:636: Tải trọng (T)
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:637: Mã thẻ xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:643: Lưu thay đổi
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:645: Đóng
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:678: 📋 Thông tin chi tiết chuyến vật tư
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:694: Rơ moóc
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:695: Nhà vận chuyển
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:696: Lái xe
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:698: Hàng hóa
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:699: Khách hàng/NCC
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:700: Ngày nhận hàng
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:706: Lưu thay đổi
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:708: Đóng
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:748: Vui lòng nhập Số TRIP hoặc Biển số trước khi kiểm tra.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:749: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:753: Kiểm tra ERP: TRIP={tripNumber}, Biển số={plate}...
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:807:    KH/NCC: {erpLine.VendorName ?? erpLine.CustomerName} | Org: {erpLine.OrganizationCode} | Biển số: {erpLine.PlateNumber ?? 
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:811: ❌ Không tìm thấy đơn hàng trên ERP.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:814: Không tìm thấy đơn hàng cho TRIP={tripNumber}, Biển số={plate} trên ERP.\n\n
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:815: Bạn có muốn cho xe vào và phát QR tạm?
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:816: Không tìm thấy đơn hàng
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:827: 📋 Đã chấp nhận QR tạm. Điền thông tin và bấm Đăng tài (F4).
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:833: ⚠ Lỗi kiểm tra ERP: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:834: Lỗi kết nối ERP:\n{ex.Message}\n\nChỉ cho phép phát QR tạm.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:835: Lỗi ERP
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:873: ✅ Đã tải {plates.Count} biển số xe từ FRM. (Có thẻ: {stats.withCard}, Chỉ XVC: {stats.withoutCard})
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:877: ⚠ Lỗi tải biển số: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:909: 🔍 {_filteredPlates.Length} xe hiệu lực từ {from:dd/MM/yyyy} đến {_dtpFrmTo.Value:dd/MM/yyyy}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1241: ⚠ Không có xe nào hiệu lực trong khung ngày đã chọn.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1450: ✅ Lệnh đốn: {lenhDon.MaLD} | Chủ mía: {lenhDon.KHName} | Loại mía: {lenhDon.LoaiMiaName} | Giống: {lenhDon.GiongMiaName} | Trạm: {lenhDon.TramName} | Loại xe: {lenhDon.LoaixeName}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1459: ⚠ Lệnh đốn {lenhDon.MaLD} đã được đăng tài (số: {existingTrip}).
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1461: XE ĐÃ ĐĂNG TÀI
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1462: Biển số: {plate}\nLệnh đốn: {lenhDon.MaLD}\nSố đăng tài: {existingTrip}\n\nPhải hủy phiếu cũ trước khi đăng tài lại.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1463: Lệnh đốn đã có phiếu đăng tài active
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1471: ❌ Không tìm thấy lệnh đốn cho biển số {plate}. Có thể đăng tài tạm.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1479: ⚠ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1531: Cập nhật thất bại: {failReason}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1532: Lỗi không xác định
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1567: Đã duyệt
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1570: Lệnh đốn chưa duyệt
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1571: Lệnh đốn {ldCheck.MaLD} chưa ở trạng thái duyệt.\n\nTrạng thái hiện tại: {ldCheck.StatusCodeName}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1579: Lệnh đốn hết hạn
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1580: Lệnh đốn {ldCheck.MaLD} đã hết hạn.\n\nNgày hết hạn: {ngayHetHan:dd/MM/yyyy HH:mm}\nThời gian hiện tại: {now:dd/MM/yyyy HH:mm}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1588: Lệnh đốn chưa hiệu lực
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1589: Lệnh đốn {ldCheck.MaLD} có thời gian cấp lớn hơn thời gian hiện tại.\n\nNgày cấp: {ngayCap:dd/MM/yyyy HH:mm}\nThời gian hiện tại: {now:dd/MM/yyyy HH:mm}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1598: Lệnh đốn đã đăng tài
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1599: Lệnh đốn {ldCheck.MaLD} đã được đăng tài.\n\nSố đăng tài: {existingTrip}\n\nMỗi lệnh đốn chỉ được đăng tài 1 lần\n(trừ khi phiếu cũ đã hủy hoặc xóa).
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1611: HỦY
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1611: HẾT HẠN
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1614: Thẻ xe không hợp lệ
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1615: Lệnh đốn có thẻ xe đã Hủy hoặc hết hạn.\n\nThẻ xe: {theXe.MaThe}\nTrạng thái: {theXe.StatusName}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1618: NHÁP
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1621: Thẻ xe chưa duyệt
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1622: Lệnh đốn có thẻ xe chưa được duyệt.\n\nThẻ xe: {theXe.MaThe}\nTrạng thái: {theXe.StatusName}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1634: Xe chưa cân ra
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1635: Xe {plate} đang có chuyến chưa cân ra.\n\nSố đăng tài: {activeTrip}\n\nXe phải cân ra trước khi đăng tài tiếp.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1690: 📤 DigiScale (mía): BU={ldForPush?.BusinessUnit}, LenhDon={lenhDonId}, MaLenhDon={maLenhDon}, SoDangTai={result.TripNo}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1703: ℹ Vật tư: Đăng tài lưu local. Đẩy DigiScale khi cân.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1712: ❌ DigiScale lỗi: {pushEx.Message}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1720: ℹ Thẻ xe tạm — không push DigiScale đăng tài (không có lệnh đốn)
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1727: ℹ Vật tư tạm — không push DigiScale đăng tài
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:1963: Thu hoạch
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2013: Chọn chuyến trước khi đẩy lại.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2013: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2025: ℹ Vật tư: Đăng tài chỉ lưu local. Đẩy DigiScale khi cân (oracle-tickets).
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2026: Vật tư không đẩy phiếu đăng tài lên DigiScale.\nPhiếu cân vật tư sẽ đẩy khi cân xong.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2027: Thông tin
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2039: ⏳ Đang đẩy lại đăng tài lên DigiScale: {tripNo}...
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2049: ✅ Đẩy lại DigiScale thành công: {tripNo}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2051: ĐẨY LẠI ĐĂNG TÀI THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2052: Số đăng tài: {tripNo}\nBiển số: {plate}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2057: ❌ Đẩy lại thất bại: {pushResult.ErrorMessage}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2059: ĐẨY LẠI ĐĂNG TÀI THẤT BẠI
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2060: Số đăng tài: {tripNo}\nBiển số: {plate}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2061: Lỗi
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2066: ❌ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2067: Lỗi đẩy lại DigiScale:\n{ex.Message}
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2067: Lỗi
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2123: ✅ ĐĂNG TÀI THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2123: ⚠ ĐĂNG TÀI — CHƯA ĐẨY DIGI
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2144: ĐĂNG TÀI THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2144: ĐĂNG TÀI — CHƯA ĐẨY DIGI
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2154: Số đăng tài:  {tripNo}\n
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2155: Biển số:       {plate}\n
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2156: Lệnh đốn:    {lenhDon}\n
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2157: Loại QR:       {qrType}\n\n
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2507:  | Thẻ: {plan.CardCode ?? 
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2508:  | Trạm: {plan.Station ?? 
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2509:  | ĐTVC: {plan.OwnerOrCustomer ?? 
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2510:  | Vụ: {plan.CropSeason ?? 
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2511:  | HĐVC: {plan.ContractCode ?? 
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2515: ⚠ Xe chưa có thẻ xe trong FRM — chỉ có thông tin từ danh mục xe vận chuyển. Các trường Trạm, ĐTVC, Vụ ĐT trống.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2521: ⛔ Xe {plan.VehiclePlate} chưa đến thời hạn hiệu lực thẻ ({plan.ValidFrom.Value.ToLocalTime():dd/MM/yyyy HH:mm}). Không thể đăng tài.
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2523: Cảnh báo
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2528: ⚠ Thẻ xe {plan.CardCode} đã hết hạn ({plan.ValidTo.Value.ToLocalTime():dd/MM/yyyy HH:mm}).
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2617: KÉO
+src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs:2617: MÁY KÉO
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:34: Nhập số đăng tài hoặc biển số xe...
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:35: Tìm chuyến
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:50: Số đăng tài
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:51: Biển số xe
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:52: Rơ moóc
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:54: Nhà vận tải
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:55: Lái xe
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:57: TG vào kho
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:62: SL thực tế
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:74: Danh sách hàng
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:77: Danh sách xe trong kho
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:79: Đã ra
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:84: Xác nhận vào kho
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:85: Xác nhận ra kho
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:86: Làm mới
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:101: Kho vận — Xác nhận vào/ra kho
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:155: Chi tiết chuyến xe
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:165: Số đăng tài
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:166: Biển số xe
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:167: Rơ moóc
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:169: Lái xe
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:171: TG vào kho
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:173: SL thực tế
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:194: Thông báo
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:200: Mã hàng
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:201: Tên hàng
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:207: Danh sách hàng
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:222: Từ ngày:
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:236: Số đăng tài
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:238: Biển số
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:239: Lái xe
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:240: Nhà vận tải
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:241: Chủ hàng
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:242: SL thực tế
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:243: Tình trạng
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:256: Đang tìm chuyến: {input}...
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:272: ✅ Chuyến {result.TripNo} — {result.Plate}
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:276: ⚠ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:284: Chưa chọn chuyến.
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:284: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:289: ✅ Xe {_txtPlate.Text} đã vào kho lúc {_txtTimeIn.Text}
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:309: 💾 Đã ghi nhận vào kho (CheckpointEvent).
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:313: ⚠ Lỗi ghi DB: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:331: Xe {_txtPlate.Text} đã vào kho thành công.
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:332: Xác nhận
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:339: Chưa chọn chuyến.
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:339: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:344: ✅ Xe {_txtPlate.Text} đã ra kho lúc {_txtTimeOut.Text}
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:355: Xe {_txtPlate.Text} đã ra kho thành công.
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:356: Xác nhận
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:453: Đã ra
+src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs:462: ⚠ Lỗi tải danh sách xe: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:44: Nhập số đăng tài hoặc biển số xe
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:56: 🔵 CÂN VÀO
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:123: Xác nhận (F5)
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:125: 🔄 Đẩy lại Digi
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:142: Mía cây
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:143: Mía khúc
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:144: Mía cháy
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:145: Tùy chọn 4
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:146: Tùy chọn 5
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:147: Ghi chú cân
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:147: Ghi chú...
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:224: tấn
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:233: TL cân vào ({unit})
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:234: TL cân ra ({unit})
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:235: TL hàng ({unit})
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:242: TL cân vào
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:243: TL cân vào ({newUnit})
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:244: TL cân ra
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:245: TL cân ra ({newUnit})
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:246: TL hàng
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:247: TL hàng ({newUnit})
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:487: Cam Vào
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:523: Loại mía (*)
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:550: Ghi chú
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:600: 🟠 CÂN RA
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:605: 🔵 CÂN VÀO
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1199: mía
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1499: CÂN LẦN 2 THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1499: CÂN LẦN 1 THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1500: Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nTrọng lượng: {FormatWeight(result.NormalizedKg ?? 0)} {WeightUnitLabel}
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1502: Lỗi push
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1507: ✅ Đã đẩy DigiScale
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1558: ✅ Đã đẩy oracle-tickets
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1565: CÂN LẦN 2 VẬT TƯ — ĐÃ ĐẨY DIGISCALE
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1566: Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nShipment: {shipmentForErp}\nTrọng lượng: {FormatWeight(result.NormalizedKg ?? 0)} {WeightUnitLabel}
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1575: CÂN LẦN 2 VẬT TƯ — LỖI ĐẨY DIGISCALE
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1576: Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\n\n{erpPushResult.ErrorMessage}
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1577: Lỗi
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1582: ⚠ Không tìm thấy ERP order. Lưu local.
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1596: CÂN LẦN 1 VẬT TƯ THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1597: Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nTrọng lượng: {FormatWeight(result.NormalizedKg ?? 0)} {WeightUnitLabel}\n\nĐẩy DigiScale khi cân lần 2.
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1604: ⚠ Lỗi push: {pushEx.Message[..Math.Min(80, pushEx.Message.Length)]}
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1725: Không có chính sách
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1778: Chọn chuyến trước khi đẩy lại.
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1778: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1801: Không tìm thấy ERP order-line.\nKhông thể đẩy lại.
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1824: ĐẨY LẠI VẬT TƯ THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1824: ĐẨY LẠI VẬT TƯ THẤT BẠI
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1825: Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nShipment: {shipmentForErp}\nTrọng lượng: {netKg:N0} kg
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1826: Lỗi
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1862: ĐẨY LẠI THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1862: ĐẨY LẠI THẤT BẠI
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1863: Số đăng tài: {_txtRegNo.Text}\nBiển số: {_txtPlate.Text}\nTrọng lượng: {weightTon:N3} tấn
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1864: Lỗi
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1869: Lỗi đẩy lại DigiScale:\n{ex.Message}
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1869: Lỗi
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:1996: điều chỉnh
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:2151: ✋ Nhập tay: {rawWeight:N0} {rawUom} → Bấm Xác nhận (F5) để chốt cân
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:2156: Không có simulated scale. Hãy kết nối thiết bị cân.
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:2156: Lỗi
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:2373: mía
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:2374: Mía
+src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs:2417: 📋 Xem chuyến {regNo} — bấm In phiếu (F6) hoặc Đẩy lại Digi
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:19: Phiếu cân mía — {data.SoDangTai}
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:44: Lỗi in: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:44: Lỗi
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:110: PHIẾU CÂN MÍA
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:120: Phiếu cân số:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:123: Ngày {d.Ngay.Value:dd} tháng {d.Ngay.Value:MM} năm {d.Ngay.Value:yyyy}
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:127: Số đăng tài:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:128: Tên chủ mía:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:129: Hợp đồng số:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:132: Lệnh đốn:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:133: Số xe:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:136: Công TH:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:137: Công BX:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:140: Giống mía:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:141: Loại mía:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:144: Hình thức TH:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:153: Trọng lượng xỉ:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:153: {d.TrongLuongXi:N3} tấn
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:155: Thời gian cân xỉ:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:158: Trọng lượng bì:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:158: {d.TrongLuongBi:N3} tấn
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:160: Thời gian cân bì:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:163: Tạp chất TT:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:165: Ghi chú:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:170: {d.TrongLuongThanhToan:N3} tấn
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:170: Chờ chính sách
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:171: TL thanh toán:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:181: Mía cháy
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:182: Mía cây
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:183: Mía khúc
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:186: Ngày in: {DateTime.Now:dd/MM/yyyy HH:mm}
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:203: ĐĐ ĐƠN VỊ NHẬN HÀNG\n(Ký, Ghi rõ họ tên)
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:203: ĐĐ ĐƠN VỊ GIAO HÀNG\n(Ký, Ghi rõ họ tên)
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:203: NGƯỜI CÂN\n(Ký, Ghi rõ họ tên)
+src\TTC.Weighing.WinForms\Helpers\DigiScalePopup.cs:14: ⚠ {title} — CHƯA ĐẨY DIGI
+src\TTC.Weighing.WinForms\Helpers\DigiScalePopup.cs:35: {title} — CHƯA ĐẨY DIGI
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:33: Không lấy được danh sách máy in.{Environment.NewLine}{ex.Message}
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:34: Lỗi máy in
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:43: Không tìm thấy máy in nào. Vui lòng kiểm tra cài đặt máy in.
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:44: Không có máy in
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:67: Lỗi khi in phiếu cân.{Environment.NewLine}{ex.Message}
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:69: Dữ liệu cân không bị ảnh hưởng. Bạn có thể in lại sau.
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:70: Lỗi in
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:80:  (BẢN IN LẠI)
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:82: In phiếu thành công.{reprintNote}{Environment.NewLine}Số phiếu: {result.TicketNumber}
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:83: In phiếu cân
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:90: In phiếu thất bại: {result.ErrorMessage}
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:92: Dữ liệu cân không bị ảnh hưởng. Bạn có thể in lại sau.
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:93: Lỗi in
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:115: Chọn máy in
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:123: Số bản in
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:129: Mẫu phiếu
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:139: In lại phiếu cân (BẢN IN LẠI)
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:139: In phiếu cân
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:150: Máy in:
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:151: Số bản in:
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:152: Mẫu phiếu:
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:159: {p.Name}  (không sẵn sàng)
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:187: ⚠ Phiếu sẽ được đánh dấu BẢN IN LẠI và ghi audit log.
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:206: In phiếu cân
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:213: Hủy
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:221: Hủy in
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:243: Vui lòng chọn máy in.
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:243: Thiếu thông tin
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:252: Vui lòng nhập mã mẫu phiếu.
+src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs:252: Thiếu thông tin
+src\TTC.Weighing.WinForms\Localization\AppLanguage.cs:48: Tiếng Việt
+src\TTC.Weighing.WinForms\Localization\AppLanguage.cs:52: Tiếng Việt
+src\TTC.Weighing.WinForms\Localization\Loc.cs:23: Loc chưa được khởi tạo. Gọi Loc.Initialize(...) khi khởi động app.
+src\TTC.Weighing.WinForms\Presenters\QualityPresenter.cs:87: Đã duyệt
+src\TTC.Weighing.WinForms\Presenters\TripRegistrationPresenter.cs:168: Đã duyệt
+src\TTC.Weighing.WinForms\Presenters\TripRegistrationPresenter.cs:203: Đã duyệt
+src\TTC.Weighing.WinForms\Presenters\TripRegistrationPresenter.cs:220: Đã duyệt
+src\TTC.Weighing.WinForms\Presenters\TripRegistrationPresenter.cs:250: Đã duyệt
+src\TTC.Weighing.WinForms\Presenters\TripRegistrationPresenter.cs:279: Không tìm thấy chuyến.
+src\TTC.Weighing.WinForms\Presenters\TripRegistrationPresenter.cs:284: Chuyến đang ở trạng thái {trip.Lifecycle}, không thể chỉnh sửa.
+src\TTC.Weighing.WinForms\Presenters\WeighOperationPresenter.cs:173: Đã duyệt
+src\TTC.Weighing.WinForms\Services\DigiScaleAuthService.cs:43: API trả về response rỗng.
+src\TTC.Weighing.WinForms\Theme\ThemedControls.cs:144: Ág
+src\TTC.Weighing.WinForms\Theme\ThemedControls.cs:252: Ág
+src\TTC.Weighing.Application\UseCases\Gate\GateHandlers.cs:48: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Gate\GateHandlers.cs:51: Không có quyền đánh giá qua cổng.
+src\TTC.Weighing.Application\UseCases\Gate\GateHandlers.cs:54: Dữ liệu chuyến đã thay đổi. Tải lại rồi đánh giá lại.
+src\TTC.Weighing.Application\UseCases\Gate\GateHandlers.cs:59: Không tìm thấy hồ sơ nghiệp vụ của chuyến.
+src\TTC.Weighing.Application\UseCases\Gate\GateHandlers.cs:171: Điều kiện qua cổng
+src\TTC.Weighing.Application\UseCases\Gate\GateHandlers.cs:203: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Gate\GateHandlers.cs:206: Không có quyền xác nhận xe qua cổng.
+src\TTC.Weighing.Application\UseCases\Gate\GateHandlers.cs:210: Không tìm thấy lệnh mở tương ứng.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:43: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:46: Không có quyền gửi kết quả.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:49: Chuyến đang PAUSED, không gửi kết quả từ dữ liệu chưa tin cậy.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:53: Chưa đạt đối soát, chưa đủ điều kiện gửi kết quả chính thức.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:58: Còn phân bổ chưa được duyệt, chưa gửi kết quả phân bổ.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:67: Thông điệp đã tồn tại ở trạng thái {existing.Status}, không tạo bản trùng.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:94: Hợp đồng API chưa được xác minh (D-02). Thông điệp giữ ở HELD.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:171: Không tìm thấy thông điệp cần xử lý.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:175: Không tìm thấy chuyến của thông điệp.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:178: Không có quyền giải quyết thông điệp tích hợp.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:181: Phải ghi căn cứ đối soát khi giải quyết UNKNOWN.
+src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs:184: Chỉ được kết luận Acknowledged hoặc Failed sau khi đối soát.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:43: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:46: Không có quyền mở phiên đo tại nhà máy này.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:50: Chuyến không cho phép thao tác: {trip.Lifecycle} / {trip.ExecutionStatus}.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:53: Mã hàng bắt buộc — phiên kho khóa mã hàng cho dữ liệu AI.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:56: Phải khai báo thiết bị được phép ghi vào phiên.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:60: Chế độ CUMULATIVE bắt buộc khai báo counter_epoch.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:68: Thiết bị {deviceId} đang thuộc phiên đo của chuyến {busy.TripId}.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:134: Phiên đo không tồn tại.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:138: Không có quyền đóng phiên đo.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:141: Phiên đo đã đóng.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:154: Thiếu sự kiện tại sequence {firstMissing} — dữ liệu phiên chưa đầy đủ.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:173: Số đo IoT không dùng được.
+src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs:202: Số đếm bao không dùng được.
+src\TTC.Weighing.Application\UseCases\Quality\QualityHandlers.cs:45: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Quality\QualityHandlers.cs:48: Không có quyền ghi kết quả tạp chất.
+src\TTC.Weighing.Application\UseCases\Quality\QualityHandlers.cs:55: Không có quyền nhập tay kết quả tạp chất.
+src\TTC.Weighing.Application\UseCases\Quality\QualityHandlers.cs:58: Nhập tay phải có lý do.
+src\TTC.Weighing.Application\UseCases\Quality\QualityHandlers.cs:63: Chuyến không cho phép thao tác: {trip.Lifecycle} / {trip.ExecutionStatus}.
+src\TTC.Weighing.Application\UseCases\Quality\QualityHandlers.cs:153: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Quality\QualityHandlers.cs:156: Không có quyền tiếp nhận chữ đường.
+src\TTC.Weighing.Application\UseCases\Quality\QualityHandlers.cs:161: Chuyến đã hủy, không tiếp nhận kết quả mới.
+src\TTC.Weighing.Application\UseCases\Reconcile\AllocateTripHandler.cs:45: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Reconcile\AllocateTripHandler.cs:48: Không có quyền phân bổ.
+src\TTC.Weighing.Application\UseCases\Reconcile\AllocateTripHandler.cs:51: Phân bổ bắt buộc có phê duyệt hợp lệ.
+src\TTC.Weighing.Application\UseCases\Reconcile\AllocateTripHandler.cs:55: Phê duyệt phân bổ chưa được cấp.
+src\TTC.Weighing.Application\UseCases\Reconcile\AllocateTripHandler.cs:60: Không tìm thấy hồ sơ nghiệp vụ của chuyến.
+src\TTC.Weighing.Application\UseCases\Reconcile\AllocateTripHandler.cs:66: Chưa có đủ hai lượt cân hiệu lực để phân bổ.
+src\TTC.Weighing.Application\UseCases\Reconcile\AllocateTripHandler.cs:76: Net cân xe {net.VehicleNetKg:N3} kg là ngoại lệ (âm hoặc bằng 0), 
+src\TTC.Weighing.Application\UseCases\Reconcile\AllocateTripHandler.cs:77: phải xử lý theo quy trình được duyệt trước khi phân bổ.
+src\TTC.Weighing.Application\UseCases\Reconcile\ReconcileTripHandler.cs:45: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Reconcile\ReconcileTripHandler.cs:48: Không có quyền thực hiện đối soát.
+src\TTC.Weighing.Application\UseCases\Reconcile\ReconcileTripHandler.cs:53: Không tìm thấy hồ sơ nghiệp vụ của chuyến.
+src\TTC.Weighing.Application\UseCases\Trips\CancelTripHandler.cs:43: Chuyến không tồn tại hoặc đã bị thay đổi bởi người khác (version mismatch). Vui lòng tải lại.
+src\TTC.Weighing.Application\UseCases\Trips\CancelTripHandler.cs:47: Không có quyền hủy đăng tài tại nhà máy này.
+src\TTC.Weighing.Application\UseCases\Trips\CancelTripHandler.cs:51: Không thể hủy chuyến ở trạng thái {trip.Lifecycle}. Chỉ hủy được khi chuyến chưa hoàn thành.
+src\TTC.Weighing.Application\UseCases\Trips\CancelTripHandler.cs:58: Chuyến đã bắt đầu cân (có phiên cân đã Committed). Không thể hủy.
+src\TTC.Weighing.Application\UseCases\Trips\CancelTripHandler.cs:62: Lý do hủy là bắt buộc.
+src\TTC.Weighing.Application\UseCases\Trips\CheckPlanHandler.cs:30: Không có quyền tra cứu tại nhà máy này.
+src\TTC.Weighing.Application\UseCases\Trips\QueueTripHandler.cs:59: Không tìm thấy chuyến.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:83: Không có quyền đăng tài tại nhà máy này.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:90: Không tìm thấy hồ sơ nghiệp vụ.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:93: Hồ sơ {profile.Code} chưa được duyệt cho vận hành.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:96: Hồ sơ {profile.Code} không còn hiệu lực.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:101: Loại xe (VehicleType) bắt buộc cho hồ sơ mía nhập.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:279: Không có quyền tra QR tại nhà máy này.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:285: QR không tồn tại trong hệ thống.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:290: QR ở trạng thái {token.Status} hoặc đã hết hạn.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:293: QR không thuộc nhà máy hiện tại.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:299: QR xe nội bộ chưa được gán chuyến đang hoạt động.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:303: Không tìm thấy chuyến liên kết QR.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:306: Chuyến đã {trip.Lifecycle}.
+src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs:309: Chuyến đang PAUSED (mã sự cố {trip.PauseIssueCode ?? 
+src\TTC.Weighing.Application\UseCases\Trips\UpdateSugarcaneTypeHandler.cs:36: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Trips\UpdateSugarcaneTypeHandler.cs:39: Chuyến đã hủy.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:56: Phiên cân {cmd.SessionId} không tồn tại.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:59: Phiên cân không ở trạng thái mở.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:62: Chuyến {session.TripId} không tồn tại.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:65: Không có quyền chốt cân tại nhà máy này.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:70: Profile không hiệu lực hoặc chưa được duyệt cho vận hành.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:74: Bàn cân không tồn tại.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:78: Không nhận được tín hiệu đầu cân.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:82: Không nhận được bằng chứng AI vị trí.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:149: Không lưu được bằng chứng, không phát hành lượt cân.
+src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs:236: Điều kiện chốt cân
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:44: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:47: Không có quyền nhập tay số cân.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:59: Chuyến đang PAUSED. Xử lý sự cố trước, nhập tay không phải cách bỏ qua lỗi.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:62: Còn giao dịch chưa rõ kết quả, phải đối soát trước.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:65: Chuyến đã {trip.Lifecycle}.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:69: Bàn cân không tồn tại.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:74: Không tìm thấy hồ sơ nghiệp vụ của chuyến.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:164: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:167: Không có quyền yêu cầu cân lại.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:170: Cân lại bắt buộc có lý do.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:174: Chưa có lượt cân hiệu lực nào để cân lại.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:193: Kết quả đã gửi hệ thống đích. Cân lại phải tạo yêu cầu điều chỉnh liên kết bản trước (R-037); 
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:194: thiếu API điều chỉnh thì giữ chờ xử lý.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:243: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:246: Không có quyền tạm ngưng.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:285: Chuyến không tồn tại.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:288: Không có quyền cho tiếp tục.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:291: Chuyến không ở trạng thái PAUSED.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:296: Còn thông điệp UNKNOWN chưa giải quyết. Tra cứu hoặc đối soát với hệ thống đích trước.
+src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs:300: Người xử lý phải xác nhận đã kiểm tra kết nối, vị trí xe và các số liệu liên quan.
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:47: Chuyến không tồn tại hoặc đã thay đổi phiên bản. Tải lại dữ liệu.
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:50: Không có quyền mở phiên cân tại nhà máy này.
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:53: Chuyến không cho phép thao tác: {trip.Lifecycle} / {trip.ExecutionStatus}.
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:57: Bàn cân không tồn tại hoặc đang ngừng sử dụng.
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:60: Bàn cân không thuộc nhà máy của chuyến.
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:74: {\"reason\":\"Phiên cũ tự động giải phóng khi mở phiên mới (chưa có camera kiểm soát).\"}
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:83: Không tìm thấy profile hiệu lực của chuyến.
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:86: Profile chưa được duyệt cho vận hành.
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:89: Checkpoint {cmd.Checkpoint} không thuộc profile {profile.Code}.
+src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs:93: Profile {profile.Code} không khai báo vai trò cân cho phân đoạn {cmd.SegmentIndex}.

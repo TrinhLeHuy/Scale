@@ -1,0 +1,1 @@
+﻿id,trip_id,lane_id,gate_id,direction,identity_evidence,identity_verified_by,conditions_json,allowed,deny_reason,decided_at,created_at,created_by,updated_at,updated_by,deleted_at,version

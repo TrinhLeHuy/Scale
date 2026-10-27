@@ -35,6 +35,10 @@ public sealed record RegisterTripCommand(
     string? FrmMaLenhDon = null,
     string? FrmLenhDonBu = null,
     string? FrmLoaiXeCode = null,
+    // Nhà vận chuyển (ERP) — đẩy oracle-tickets khi cân xong
+    string? Transporter = null,
+    // Kho (tên tổ chức kho ERP) — đẩy oracle-tickets khi cân xong
+    string? WarehouseName = null,
     // Điều khiển
     string? CorrelationId = null,
     bool IssueTemporaryQrOnly = false,
@@ -49,7 +53,14 @@ public sealed record RegisterTripResult(
     QrTokenType? QrType,
     Guid? AssignedWeighbridgeId,
     Guid? AssignedWarehouseId,
-    string? FailureReason);
+    string? FailureReason,
+    bool RejectedByUpstream = false);
+
+/// <summary>
+/// Đẩy đăng tài lên hệ thống chính (DigiScale) TRƯỚC khi lưu. Nhận số đăng tài vừa sinh;
+/// trả null nếu hệ thống chính đã nhận, hoặc lý do lỗi nếu từ chối → đăng tài KHÔNG được lưu.
+/// </summary>
+public delegate Task<string?> PublishRegistrationBeforeSave(string tripNo, CancellationToken ct);
 
 /// <summary>
 /// R-005 — Đăng tài và phát QR. Thiếu dữ liệu kế hoạch thì chỉ phát QR tạm,
@@ -75,8 +86,13 @@ public sealed class RegisterTripHandler(
     /// <summary>Profile code mía nhập — bắt buộc VehicleType (Req 2.1).</summary>
     internal const string InboundSugarcaneProfileCode = "CANE_IN";
 
+    /// <param name="publishBeforeSave">
+    /// Tùy chọn. Gọi sau khi mọi kiểm tra đã đạt và đã có số đăng tài, nhưng TRƯỚC khi ghi bất kỳ dữ liệu nào
+    /// (chuyến, QR, hàng chờ). Từ chối → trả lỗi, không lưu gì. Số đăng tài đã cấp thì bỏ qua (sequence không lùi).
+    /// </param>
     public async Task<RegisterTripResult> HandleAsync(
-        RegisterTripCommand cmd, CancellationToken ct = default)
+        RegisterTripCommand cmd, CancellationToken ct = default,
+        PublishRegistrationBeforeSave? publishBeforeSave = null)
     {
         // 1. Kiểm tra quyền
         if (!user.HasPermission(RequiredPermission, cmd.SiteId))
@@ -106,6 +122,21 @@ public sealed class RegisterTripHandler(
 
         // 5. Sinh TripNo
         var tripNo = await tripNumbers.NextAsync(cmd.SiteId, profile.Code, ct);
+
+        // 5b. Đẩy hệ thống chính trước — lỗi thì dừng, chưa ghi chuyến/QR/hàng chờ.
+        if (publishBeforeSave is not null)
+        {
+            var upstreamError = await publishBeforeSave(tripNo, ct);
+            if (upstreamError is not null)
+            {
+                await audit.LogAsync("TRIP_REGISTER_REJECTED_UPSTREAM", null, user.UserId, null,
+                    $"{{\"tripNo\":\"{tripNo}\",\"plate\":\"{cmd.TractorPlate}\",\"reference\":\"{cmd.ReferenceTripNo}\"}}",
+                    upstreamError, cmd.CorrelationId ?? Guid.NewGuid().ToString("N"), ct);
+                await uow.SaveChangesAsync(ct);
+
+                return new(false, null, tripNo, null, null, null, null, null, upstreamError, RejectedByUpstream: true);
+            }
+        }
 
         // 6. Xếp hàng cho luồng Registered
         int? queueSeqNumber = null;
@@ -140,6 +171,8 @@ public sealed class RegisterTripHandler(
             FrmMaLenhDon = cmd.FrmMaLenhDon,
             FrmLenhDonBu = cmd.FrmLenhDonBu,
             FrmLoaiXeCode = cmd.FrmLoaiXeCode,
+            Transporter = string.IsNullOrWhiteSpace(cmd.Transporter) ? null : cmd.Transporter.Trim(),
+            WarehouseName = string.IsNullOrWhiteSpace(cmd.WarehouseName) ? null : cmd.WarehouseName.Trim(),
             Version = 1,
             CreatedAt = clock.UtcNow,
             CreatedBy = user.UserId

@@ -91,6 +91,9 @@ public class QualitySampleConfiguration : IEntityTypeConfiguration<QualitySample
         b.Property(x => x.SampleAfterKg).HasPrecision(15, 3);
         b.Property(x => x.ImpurityPercent).HasPrecision(9, 4);
         b.Property(x => x.CcsValue).HasPrecision(9, 4);
+        b.Property(x => x.BrixValue).HasPrecision(9, 4);
+        b.Property(x => x.PolValue).HasPrecision(9, 4);
+        b.Property(x => x.PolCorrected).HasPrecision(9, 4);
 
         b.HasOne<QualitySample>().WithMany().HasForeignKey(x => x.SupersedesId);
 

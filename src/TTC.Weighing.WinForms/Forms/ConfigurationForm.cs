@@ -1,4 +1,4 @@
-using TTC.Weighing.Application.Abstractions;
+﻿using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Domain.Entities;
 using TTC.Weighing.WinForms.Controls;
@@ -36,7 +36,7 @@ public sealed class ConfigurationForm : Form
 
         Text = Loc.T("config.title");
         MinimumSize = new Size(1060, 760);
-        BackColor = Color.FromArgb(243, 245, 248);
+        BackColor = TTC.Weighing.WinForms.Theme.AgrisTheme.Canvas;
         DoubleBuffered = true;
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
 

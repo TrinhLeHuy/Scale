@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
@@ -20,6 +20,7 @@ using TTC.Weighing.WinForms.Development;
 using TTC.Weighing.WinForms.Forms;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Presenters;
+using TTC.Weighing.WinForms.Services;
 
 // Tránh nhập nhằng giữa namespace TTC.Weighing.Application và System.Windows.Forms.Application.
 using WinFormsApp = System.Windows.Forms.Application;
@@ -31,6 +32,9 @@ internal static class Program
     /// <summary>Mã BU của tài khoản đăng nhập. Null = admin/super → thấy tất cả dữ liệu.</summary>
     internal static string? ActiveOrganizationUnitCode { get; set; }
 
+    /// <summary>Tên đơn vị/nhà máy của tài khoản đăng nhập (Portal) — in trên đầu phiếu.</summary>
+    internal static string? ActiveOrganizationUnitName { get; set; }
+
     /// <summary>Tên người dùng đăng nhập — dùng cho NhanVienCanVao, NhanVienDoCCS, etc.</summary>
     internal static string LoggedInUserName { get; set; } = "Admin";
 
@@ -39,6 +43,15 @@ internal static class Program
 
     /// <summary>Access token DigiScale (Bearer) — set sau login, dùng cho ERP API.</summary>
     internal static string? DigiScaleAccessToken { get; set; }
+
+    /// <summary>Vai trò DigiScale của tài khoản đăng nhập (claim role trong token).</summary>
+    internal static string? LoggedInRole { get; set; }
+
+    /// <summary>Quyền DigiScale của tài khoản đăng nhập (claim permission trong token).</summary>
+    internal static IReadOnlyCollection<string> LoggedInPermissions { get; set; } = [];
+
+    /// <summary>Cấu hình ứng dụng — dùng cho các form cần đọc tham số luồng mía / API phê duyệt.</summary>
+    internal static IConfiguration? AppConfiguration { get; private set; }
 
     [STAThread]
     private static int Main(string[] args)
@@ -51,6 +64,7 @@ internal static class Program
             .AddJsonFile("appsettings.Development.json", optional: true)
             .AddEnvironmentVariables("TTC_WEIGHING_")
             .Build();
+        AppConfiguration = configuration;
 
         // ── Localization: khởi tạo trước UI. Ngôn ngữ mặc định lấy từ cấu hình,
         //    sau khi đăng nhập sẽ đổi theo culture/ngôn ngữ của tài khoản (từ web portal). ──
@@ -58,6 +72,9 @@ internal static class Program
             configuration.GetValue<string>("App:Language") ?? "vi");
         var localizer = new Localizer(defaultLanguage);
         Loc.Initialize(localizer);
+
+        // Thông báo nghiệp vụ từ Domain/Application/Infrastructure đi qua cùng bộ ngôn ngữ.
+        TTC.Weighing.Domain.Common.DomainText.Resolver = localizer.TryT;
 
         var services = new ServiceCollection();
         services.AddSingleton<ILocalizer>(localizer);
@@ -152,7 +169,24 @@ internal static class Program
                 mainForm.SetLoggedInUser(loginForm.AuthenticatedUser ?? "Admin");
                 LoggedInUserName = loginForm.AuthenticatedUser ?? "Admin";
                 LoggedInUserAccount = loginForm.LoginResult?.UserName ?? loginForm.AuthenticatedUser ?? "admin";
+                ApiCallLogContext.Actor = LoggedInUserAccount;
                 DigiScaleAccessToken = loginForm.LoginResult?.AccessToken;
+                LoggedInRole = loginForm.LoginResult?.Role;
+                LoggedInPermissions = loginForm.LoginResult?.Permissions ?? [];
+
+                // Quy tắc cân (ngưỡng tạp chất/CCS/Fibre...) — kéo từ Portal theo đơn vị đăng nhập, không hardcode.
+                if (loginForm.LoginResult?.OrganizationUnitId is { Length: > 0 } orgUnitId)
+                {
+                    var token = loginForm.LoginResult.AccessToken;
+                    PortalScaleRules.Configure(ct => provider
+                        .GetRequiredService<TTC.Weighing.Infrastructure.Adapters.DigiScaleScaleRulesAdapter>()
+                        .GetAsync(orgUnitId, token, ct));
+                    _ = Task.Run(() => PortalScaleRules.RefreshAsync());
+                }
+                else
+                {
+                    PortalScaleRules.Configure(null);
+                }
 
             // Hiển thị tên BU (công ty) trên brand bar nếu có.
             if (loginForm.LoginResult is { OrganizationUnitCode.Length: > 0 } lr)
@@ -160,7 +194,9 @@ internal static class Program
                 mainForm.SetOrganizationUnit(lr.OrganizationUnitCode, lr.OrganizationUnitName);
                 // Set org unit vào SiteContext để filter dữ liệu theo BU
                 ActiveOrganizationUnitCode = lr.OrganizationUnitCode;
+                ActiveOrganizationUnitName = string.IsNullOrWhiteSpace(lr.OrganizationUnitName) ? null : lr.OrganizationUnitName.Trim();
                 Infrastructure.Queries.OrganizationUnitFilter.CurrentOrgUnit = lr.OrganizationUnitCode;
+                Infrastructure.Integration.ApiCallLogContext.OrgUnit = lr.OrganizationUnitCode;
 
                 // Set BU cho FRM cache để kéo đúng data theo account
                 var frmCache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
@@ -179,7 +215,9 @@ internal static class Program
                 // Admin offline — fallback config DefaultBusinessUnit
                 var defaultBu = configuration?.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit");
                 ActiveOrganizationUnitCode = defaultBu;
+                ActiveOrganizationUnitName = null;
                 Infrastructure.Queries.OrganizationUnitFilter.CurrentOrgUnit = defaultBu;
+                Infrastructure.Integration.ApiCallLogContext.OrgUnit = defaultBu;
 
                 var frmCache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
                 frmCache.ActiveBusinessUnit = defaultBu;
@@ -226,16 +264,17 @@ internal static class Program
 
         AddProductionServices(services, configuration);
 
-        AddUseCases(services);
+        AddUseCases(services, configuration);
         AddForms(services);
     }
 
-    private static void AddUseCases(IServiceCollection services)
+    private static void AddUseCases(IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<RegisterTripHandler>();
         services.AddScoped<QueueTripHandler>();
         services.AddScoped<CheckPlanHandler>();
         services.AddScoped<CancelTripHandler>();
+        services.AddScoped<DeleteTripHandler>();
         services.AddScoped<ResolveQrHandler>();
 
         services.AddScoped<OpenWeighSessionHandler>();
@@ -244,6 +283,12 @@ internal static class Program
         services.AddScoped<RequestReweighHandler>();
         services.AddScoped<PauseResumeHandler>();
 
+        services.AddSingleton(new SugarcaneQualityOptions
+        {
+            MaxImpurityWeighings = configuration.GetValue<int?>("SugarcaneFlow:Quality:MaxImpurityWeighings") ?? 3,
+            // Cân lần 1 tối thiểu lấy từ Quy tắc cân trên Portal (không hardcode).
+            MinSampleKgProvider = () => SugarcaneFlowSettings.Current.MinSampleKg
+        });
         services.AddScoped<RecordImpuritySampleHandler>();
         services.AddScoped<ReceiveCcsResultHandler>();
 
@@ -283,6 +328,7 @@ internal static class Program
         services.AddTransient<GuideForm>();
         services.AddTransient<FrmSyncForm>();
         services.AddTransient<ErpSyncForm>();
+        services.AddTransient<ApiLogForm>();
         services.AddTransient<WarehouseForm>();
     }
 
@@ -390,7 +436,7 @@ internal static class Program
     private static Type[] ScreenTypes() =>
     [
         typeof(DashboardForm), typeof(TripRegistrationForm), typeof(WeighOperationForm),
-        typeof(QualityForm), typeof(TripDetailForm),
+        typeof(QualityForm), typeof(CcsForm), typeof(ApiLogForm), typeof(TripDetailForm),
         typeof(ExceptionQueueForm), typeof(IntegrationMonitorForm), typeof(ConfigurationForm),
         typeof(ReportForm)
     ];

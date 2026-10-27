@@ -43,8 +43,27 @@ public class WeighingDbContext(DbContextOptions<WeighingDbContext> options) : Db
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(WeighingDbContext).Assembly);
+
+        // Xóa mềm (deleted_at) cho kết quả đo và lượt cân: bản đã xóa không còn hiện ở lịch sử, không còn
+        // được tính là "đã đo tạp chất" / "đã cân" ở bất kỳ màn hình hay điều kiện chốt cân nào.
+        modelBuilder.Entity<QualitySample>().HasQueryFilter(s => s.DeletedAt == null);
+        modelBuilder.Entity<WeighEvent>().HasQueryFilter(e => e.DeletedAt == null);
+
+        // Mỗi nhà máy (BU của tài khoản đăng nhập) chỉ thấy chuyến của mình — áp cho MỌI màn hình / truy vấn EF,
+        // kể cả truy vấn con (db.Trips.Any(...)). Admin / tổng công ty (TTCBH) thấy tất cả.
+        // Tham chiếu thuộc tính của DbContext để EF đọc lại giá trị ở mỗi lần truy vấn.
+        modelBuilder.Entity<Trip>().HasQueryFilter(t => AllOrgUnits || t.OrganizationUnitCode == CurrentOrgUnit);
+        modelBuilder.Entity<IntegrationMessage>().HasQueryFilter(m =>
+            AllOrgUnits || Set<Trip>().Any(t => t.Id == m.TripId));
+
         base.OnModelCreating(modelBuilder);
     }
+
+    /// <summary>BU của tài khoản đăng nhập (đặt sau đăng nhập).</summary>
+    private string? CurrentOrgUnit => Queries.OrganizationUnitFilter.CurrentOrgUnit;
+
+    /// <summary>Không lọc BU: chưa đăng nhập theo đơn vị (admin) hoặc tổng công ty.</summary>
+    private bool AllOrgUnits => Queries.OrganizationUnitFilter.SeesAllUnits;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {

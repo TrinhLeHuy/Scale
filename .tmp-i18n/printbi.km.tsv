@@ -1,0 +1,23 @@
+print.none	គ្មាន
+print.field_shipment	Shipment
+print.field_customer	អតិថិជន/អ្នកផ្គត់ផ្គង់
+print.field_commodity	ទំនិញ
+print.field_warehouse	ឃ្លាំង
+print.field_plate	ស្លាកលេខរថយន្ត
+print.field_trailer	រ៉ឺម៉ក
+print.field_transporter	អ្នកដឹកជញ្ជូន
+print.weigh_title	សន្លឹកថ្លឹងអំពៅ
+print.weigh_form_title	សន្លឹកថ្លឹងអំពៅ — {0}
+print.weigh_ticket_no	លេខសន្លឹកថ្លឹង
+print.unit_ton	តោន
+print.weigh_gross	ទម្ងន់ចូល
+print.weigh_gross_time	ពេលថ្លឹងចូល
+print.weigh_tare	ទម្ងន់ចេញ
+print.weigh_tare_time	ពេលថ្លឹងចេញ
+print.weigh_tc_paid	កាកសំណល់
+print.weigh_ccs_paid	CCS ទូទាត់
+print.weigh_paid_weight	ទម្ងន់ទូទាត់
+print.weigh_waiting_policy	រង់ចាំគោលនយោបាយ
+print.sig_receiver	តំណាងអង្គភាពទទួល
+print.sig_deliverer	តំណាងអង្គភាពប្រគល់
+print.sig_sign_note	(ហត្ថលេខា និងឈ្មោះ)

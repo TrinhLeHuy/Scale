@@ -1,0 +1,23 @@
+print.none	Không có
+print.field_shipment	Shipment
+print.field_customer	Khách hàng/NCC
+print.field_commodity	Hàng hóa
+print.field_warehouse	Kho
+print.field_plate	Biển số xe
+print.field_trailer	Rơ moóc
+print.field_transporter	Nhà vận tải
+print.weigh_title	PHIẾU CÂN MÍA
+print.weigh_form_title	Phiếu cân mía — {0}
+print.weigh_ticket_no	Phiếu cân số
+print.unit_ton	tấn
+print.weigh_gross	Trọng lượng xỉ
+print.weigh_gross_time	Thời gian cân xỉ
+print.weigh_tare	Trọng lượng bì
+print.weigh_tare_time	Thời gian cân bì
+print.weigh_tc_paid	Tạp chất thanh toán
+print.weigh_ccs_paid	CCS thanh toán
+print.weigh_paid_weight	Trọng lượng thanh toán
+print.weigh_waiting_policy	Chờ chính sách
+print.sig_receiver	ĐĐ ĐƠN VỊ NHẬN HÀNG
+print.sig_deliverer	ĐĐ ĐƠN VỊ GIAO HÀNG
+print.sig_sign_note	(Ký, ghi rõ họ tên)

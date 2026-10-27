@@ -3,6 +3,7 @@ using System.Text;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Domain.Enums;
 using TTC.Weighing.WinForms.Controls;
+using TTC.Weighing.WinForms.Helpers;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
@@ -30,7 +31,12 @@ public sealed class ReportForm : Form
     private readonly Button _btnPreviewTicket =
         GridBuilder.SecondaryButton(Loc.T("report.btn_preview"), new Size(160, 34));
 
-    private readonly DataGridView _grid = GridBuilder.ReadOnlyGrid("Báo cáo lượt cân");
+    private readonly DataGridView _grid = GridBuilder.ReadOnlyGrid(Loc.T("report.section_report"));
+
+    // ── Tách Mía / Vật tư + xuất Excel ──
+    private readonly TripCategorySwitch _category = new("report.weigh");
+    private readonly Button _btnExportExcel = GridBuilder.ExportExcelButton();
+    private readonly Label _lblRowCount = new();
 
     public ReportForm(IReportQueries reports, ISiteContext siteContext, TripEventBus eventBus)
     {
@@ -100,11 +106,77 @@ public sealed class ReportForm : Form
         return FormLayout.TitledCard(Loc.T("report.section_filter"), table);
     }
 
+    /// <summary>Thẻ báo cáo: tiêu đề theo nhóm, ghi chú, thanh công cụ (Mía/Vật tư | Xuất Excel), lưới.</summary>
     private Card BuildReportCard()
-        => FormLayout.TitledCard(
-            Loc.T("report.section_report"),
-            _grid,
-            Loc.T("report.report_notice"));
+    {
+        var card = new Card { Dock = DockStyle.Fill, Padding = new Padding(1) };
+        var header = GridBuilder.SectionHeader(Loc.T("report.section_report"));
+        var notice = GridBuilder.Notice(Loc.T("report.report_notice"));
+
+        _lblRowCount.AutoSize = true;
+        _lblRowCount.Font = AgrisTheme.Body(9F, FontStyle.Bold);
+        _lblRowCount.ForeColor = AgrisTheme.TextSecondary;
+        _lblRowCount.Margin = new Padding(0, 10, 8, 0);
+
+        _btnExportExcel.Click += async (_, _) => await ExportExcelAsync();
+
+        _category.CategoryChanged += async (_, _) =>
+        {
+            GridBuilder.ApplyCategoryHeader(card, header, Loc.T("report.section_report"), _category.Category);
+            ApplyCategoryColumns();
+            await SearchAsync();
+        };
+
+        GridBuilder.ApplyCategoryHeader(card, header, Loc.T("report.section_report"), _category.Category);
+        ApplyCategoryColumns();
+
+        var toolbar = new GridToolbar([_category], [_lblRowCount, _btnExportExcel]);
+
+        _grid.Dock = DockStyle.Fill;
+        card.Controls.Add(_grid);
+        card.Controls.Add(toolbar);
+        card.Controls.Add(notice);
+        card.Controls.Add(header);
+        return card;
+    }
+
+    /// <summary>Tạp chất / chữ đường chỉ có nghĩa với mía — ẩn khi xem vật tư (và không xuất ra Excel).</summary>
+    private void ApplyCategoryColumns()
+    {
+        var isSugarcane = _category.Category == TripCategory.Sugarcane;
+        _grid.Columns[nameof(WeighReportRow.ImpurityPercent)]!.Visible = isSugarcane;
+        _grid.Columns[nameof(WeighReportRow.CcsValue)]!.Visible = isSugarcane;
+    }
+
+    private async Task ExportExcelAsync()
+    {
+        var rows = _grid.DataSource as IReadOnlyList<WeighReportRow> ?? [];
+        var filters = new List<string>
+        {
+            Loc.T("export.filter_category", _category.CategoryLabel),
+            Loc.T("export.filter_range", _dtpFrom.Value.ToString("dd/MM/yyyy"), _dtpTo.Value.ToString("dd/MM/yyyy"))
+        };
+        if (!string.IsNullOrWhiteSpace(_txtProfileCode.Text))
+            filters.Add($"{Loc.T("report.filter_profile")}: {_txtProfileCode.Text.Trim()}");
+        if (!string.IsNullOrWhiteSpace(_txtPlate.Text))
+            filters.Add($"{Loc.T("report.filter_plate")}: {_txtPlate.Text.Trim()}");
+
+        try
+        {
+            await ExportHelper.ExportGridAsync(
+                this, _grid, rows,
+                new ExportHelper.ExportRequest(
+                    $"{Loc.T("report.section_report")} - {_category.CategoryLabel}",
+                    $"bao-cao-luot-can_{_category.FileSuffix}",
+                    filters,
+                    _category.CategoryLabel),
+                busyControl: _btnExportExcel);
+        }
+        catch (Exception ex)
+        {
+            ShowError(Loc.T("export.error"), ex);
+        }
+    }
 
     private async Task SearchAsync()
     {
@@ -118,12 +190,14 @@ public sealed class ReportForm : Form
                 ProfileCode = string.IsNullOrWhiteSpace(_txtProfileCode.Text)
                     ? null : _txtProfileCode.Text.Trim(),
                 PlateContains = string.IsNullOrWhiteSpace(_txtPlate.Text)
-                    ? null : _txtPlate.Text.Trim()
+                    ? null : _txtPlate.Text.Trim(),
+                Category = _category.Category
             };
 
             var rows = await _reports.ListWeighReportAsync(_siteId, filter, _cts.Token);
 
             GridBuilder.BindAndColorize(_grid, rows, r => r.OverallVerdict?.ToString());
+            _lblRowCount.Text = Loc.T("grid.row_count", rows.Count.ToString("N0"));
         }
         catch (OperationCanceledException)
         {

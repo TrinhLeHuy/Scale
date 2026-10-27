@@ -214,8 +214,8 @@ public sealed class WarehouseForm : Form
         var bottomCard = new Card { Dock = DockStyle.Fill, Padding = new Padding(1) };
         var filterPanel = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 42,
-            FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(4, 2, 4, 2)
+            Dock = DockStyle.Top, Height = 54,
+            FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(8, 6, 8, 6)
         };
         filterPanel.Controls.Add(_rbInWarehouse);
         filterPanel.Controls.Add(_rbExited);
@@ -465,8 +465,14 @@ public sealed class WarehouseForm : Form
 
     private void AppendNotification(string message)
     {
+        // Tác vụ nền có thể xong sau khi tab đã đóng → khung thông báo đã dispose, bỏ qua.
+        if (IsDisposed || _rtbNotification.IsDisposed) return;
         if (_rtbNotification.InvokeRequired)
-        { _rtbNotification.Invoke(() => AppendNotification(message)); return; }
+        {
+            try { _rtbNotification.BeginInvoke(() => AppendNotification(message)); }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
+            return;
+        }
         _rtbNotification.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
         _rtbNotification.ScrollToCaret();
     }

@@ -35,6 +35,10 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
         if (filter.ToUtc.HasValue)
             query = query.Where(t => t.CreatedAt < filter.ToUtc.Value);
 
+        // Tách Mía (FRM) / Vật tư (ERP)
+        if (filter.Category.ToSourceSystem() is { } sourceSystem)
+            query = query.Where(t => t.SourceSystem == sourceSystem);
+
         // Chỉ lấy chuyến đã có ít nhất một lượt cân hiệu lực
         query = query.Where(t =>
             db.WeighEvents.Any(e => e.TripId == t.Id && e.IsEffective));
@@ -96,8 +100,9 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
             var hasGross = r.Gross is not null;
             var hasTare = r.Tare is not null;
 
-            // FirstWeightOnly: chỉ có Gross chưa có Tare
-            if (filter.FirstWeightOnly && (!hasGross || hasTare))
+            // FirstWeightOnly: mới có đúng 1 lượt cân (Gross HOẶC Tare).
+            // Vật tư xuất (04/06) cân lần 1 là Tare (xe rỗng vào) nên không được bắt buộc Gross.
+            if (filter.FirstWeightOnly && hasGross == hasTare)
                 continue;
 
             // CompletedOnly: phải có cả Gross và Tare
@@ -138,12 +143,17 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
     }
 
     public async Task<IReadOnlyList<WeighedTripRow>> ListPendingAsync(
-        Guid siteId, CancellationToken ct = default)
+        Guid siteId, TripCategory category = TripCategory.All, CancellationToken ct = default)
     {
-        var rows = await db.Trips
+        var query = db.Trips
             .AsNoTracking()
             .Where(t => t.SiteId == siteId && t.DeletedAt == null)
-            .FilterByOrgUnit()
+            .FilterByOrgUnit();
+
+        if (category.ToSourceSystem() is { } sourceSystem)
+            query = query.Where(t => t.SourceSystem == sourceSystem);
+
+        var rows = await query
             .Where(t => t.Lifecycle == TripLifecycle.TempRegistered
                 || t.Lifecycle == TripLifecycle.Registered
                 || t.Lifecycle == TripLifecycle.InProgress)

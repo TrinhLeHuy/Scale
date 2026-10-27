@@ -1,0 +1,1 @@
+﻿id,gate_decision_id,trip_id,command_id,issued_at,expires_at,state,controller_feedback,passage_event_ref,passage_confirmed_at,passage_confirmed_by,created_at,created_by,updated_at,updated_by,deleted_at,version

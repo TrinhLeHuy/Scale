@@ -1,4 +1,4 @@
-using TTC.Weighing.Infrastructure.Adapters;
+﻿using TTC.Weighing.Infrastructure.Adapters;
 using TTC.Weighing.WinForms.Controls;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
@@ -23,12 +23,12 @@ public sealed class FrmSyncForm : Form
         Padding = new Padding(12)
     };
 
-    private readonly Button _btnRefresh = GridBuilder.PrimaryButton("🔄 Kéo dữ liệu FRM mới nhất", new Size(280, 40));
-    private readonly Button _btnAutoSync = GridBuilder.SecondaryButton("▶ Bật tự động", new Size(160, 40));
+    private readonly Button _btnRefresh = GridBuilder.PrimaryButton(Loc.T("frm.btn_pull"), new Size(280, 40));
+    private readonly Button _btnAutoSync = GridBuilder.SecondaryButton(Loc.T("frm.btn_auto_on"), new Size(160, 40));
     private readonly NumericUpDown _numInterval = new()
     {
         Minimum = 1, Maximum = 120, Value = 5, Width = 60,
-        Font = AgrisTheme.Body(10F), AccessibleName = "Chu kỳ (phút)"
+        Font = AgrisTheme.Body(10F), AccessibleName = Loc.T("frm.interval_accessible")
     };
     private readonly System.Windows.Forms.Timer _autoTimer = new();
     private bool _autoEnabled;
@@ -36,7 +36,7 @@ public sealed class FrmSyncForm : Form
     {
         Font = AgrisTheme.Mono(9F),
         Text = "brix,tram,thua-dat,xe-van-chuyen,vu-dau-tu,giong-mia,vung-dia-ly,hop-dong-van-chuyen,the-xe,LenhDon",
-        AccessibleName = "Danh sách entities (phân cách bằng dấu phẩy)"
+        AccessibleName = Loc.T("frm.entities_accessible")
     };
     private readonly TextBox _txtBUs = new()
     {
@@ -45,48 +45,33 @@ public sealed class FrmSyncForm : Form
         ReadOnly = true,
         BackColor = AgrisTheme.ReadOnlyBg,
         ForeColor = AgrisTheme.ReadOnlyText,
-        AccessibleName = "Danh sách BU (phân cách bằng dấu phẩy)"
+        AccessibleName = Loc.T("frm.bu_list_accessible")
     };
+    // Log hiển thị câu đã dịch (Lào/Khmer) → dùng font UI theo ngôn ngữ, không dùng Consolas (thiếu glyph).
     private readonly RichTextBox _rtbLog = new()
     {
         Dock = DockStyle.Fill,
         ReadOnly = true,
-        Font = AgrisTheme.Mono(9F),
+        Font = AgrisTheme.Body(9F),
         BackColor = AgrisTheme.SurfaceMuted,
         BorderStyle = BorderStyle.None
     };
 
-    private readonly DataGridView _dgvStats = GridBuilder.ReadOnlyGrid("Thống kê entities");
+    private readonly DataGridView _dgvStats = GridBuilder.ReadOnlyGrid(Loc.T("frm.stats_grid"));
 
-    // ── Grid dữ liệu LenhDon (mới nhất trước, phân trang, tìm kiếm) ──
-    private readonly DataGridView _dgvData = new()
-    {
-        Dock = DockStyle.Fill,
-        AllowUserToAddRows = false,
-        AllowUserToDeleteRows = false,
-        ReadOnly = true,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
-        RowHeadersVisible = false,
-        BackgroundColor = AgrisTheme.Surface,
-        Font = AgrisTheme.Mono(8.5F)
-    };
-    private readonly TextBox _txtSearch = new() { PlaceholderText = "Tìm kiếm nhanh...", Width = 250, Font = AgrisTheme.Body(9F) };
-    private readonly ComboBox _cboPageSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 70 };
-    private readonly Label _lblPageInfo = new() { AutoSize = true, Font = AgrisTheme.Body(9F), Margin = new Padding(8, 6, 8, 0) };
-    private readonly Button _btnPrevPage = new() { Text = "< Trước", Width = 70, Height = 26 };
-    private readonly Button _btnNextPage = new() { Text = "Sau >", Width = 70, Height = 26 };
+    // ── Bảng Lệnh đốn (mới nhất trước): tìm kiếm, lọc theo cột, phân trang — control dùng chung ──
+    private readonly DataExplorerGrid<FrmLenhDonInfo> _explorer;
     private List<FrmLenhDonInfo> _allData = [];
-    private List<FrmLenhDonInfo> _filteredData = [];
-    private int _currentPage = 1;
-    private int _pageSize = 10;
-    private readonly Dictionary<int, HashSet<string>> _columnFilters = new();
 
     public FrmSyncForm(FrmMasterDataCache cache)
     {
         _cache = cache;
+        RebuildCardIndex();
+        _explorer = new DataExplorerGrid<FrmLenhDonInfo>(
+            Loc.T("frm.section_data", _cache.ActiveBusinessUnit ?? "FRM"), "frm.lenh_don", BuildColumns(),
+            Loc.T("frm.search_placeholder"), Loc.T("frm.empty"));
 
-        Text = "Quản lý dữ liệu FRM API";
+        Text = Loc.T("frm.title");
         MinimumSize = new Size(700, 500);
         BackColor = AgrisTheme.Canvas;
         DoubleBuffered = true;
@@ -98,8 +83,7 @@ public sealed class FrmSyncForm : Form
         _allData = _cache.AllLenhDon.OrderByDescending(ld => ld.NgayCap).ToList();
 
         // BU đã filter từ DB/API — không cần auto-filter cột BU trên grid
-
-        ApplyFilter();
+        _explorer.SetData(_allData);
 
         _btnRefresh.Click += async (_, _) => await RefreshAsync();
         _autoTimer.Tick += async (_, _) => await RefreshAsync();
@@ -112,7 +96,8 @@ public sealed class FrmSyncForm : Form
     private void ReloadFromCache()
     {
         _allData = _cache.AllLenhDon.OrderByDescending(ld => ld.NgayCap).ToList();
-        ApplyFilter();
+        RebuildCardIndex();
+        _explorer.SetData(_allData, keepPage: true);
         UpdateStatus();
     }
 
@@ -123,18 +108,18 @@ public sealed class FrmSyncForm : Form
         {
             _autoTimer.Interval = (int)_numInterval.Value * 60_000;
             _autoTimer.Start();
-            _btnAutoSync.Text = "⏸ Tắt tự động";
+            _btnAutoSync.Text = Loc.T("frm.btn_auto_off");
             _btnAutoSync.BackColor = AgrisTheme.Warning;
             _numInterval.Enabled = false;
-            AppendLog($"🔄 Tự động kéo dữ liệu mỗi {_numInterval.Value} phút.");
+            AppendLog(Loc.T("frm.auto_started", _numInterval.Value));
         }
         else
         {
             _autoTimer.Stop();
-            _btnAutoSync.Text = "▶ Bật tự động";
+            _btnAutoSync.Text = Loc.T("frm.btn_auto_on");
             _btnAutoSync.BackColor = AgrisTheme.Surface;
             _numInterval.Enabled = true;
-            AppendLog("⏹ Đã tắt tự động kéo dữ liệu.");
+            AppendLog(Loc.T("frm.auto_stopped"));
         }
     }
 
@@ -180,73 +165,18 @@ public sealed class FrmSyncForm : Form
         btnPanel.Controls.Add(_btnRefresh);
         btnPanel.Controls.Add(new Label { Text = "  ", AutoSize = true, Margin = new Padding(4, 12, 0, 0) });
         btnPanel.Controls.Add(_btnAutoSync);
-        btnPanel.Controls.Add(new Label { Text = "mỗi", AutoSize = true, Margin = new Padding(8, 12, 4, 0), Font = AgrisTheme.Body(9F) });
+        btnPanel.Controls.Add(new Label { Text = Loc.T("frm.every"), AutoSize = true, Margin = new Padding(8, 12, 4, 0), Font = AgrisTheme.Body(9F) });
         btnPanel.Controls.Add(_numInterval);
-        btnPanel.Controls.Add(new Label { Text = "phút", AutoSize = true, Margin = new Padding(4, 12, 0, 0), Font = AgrisTheme.Body(9F) });
+        btnPanel.Controls.Add(new Label { Text = Loc.T("frm.minutes"), AutoSize = true, Margin = new Padding(4, 12, 0, 0), Font = AgrisTheme.Body(9F) });
         root.Controls.Add(btnPanel, 0, 2);
 
-        // Data grid: LenhDon
-        var dataCard = new Card { Dock = DockStyle.Fill, Padding = new Padding(1) };
-        var buLabel = _cache.ActiveBusinessUnit ?? "FRM";
-        var dataHeader = GridBuilder.SectionHeader($"Dữ liệu Lệnh đốn {buLabel}");
-
-        var searchBar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top, Height = 32, FlowDirection = FlowDirection.LeftToRight,
-            Padding = new Padding(4, 2, 4, 2)
-        };
-        searchBar.Controls.Add(new Label { Text = "Hiển thị", AutoSize = true, Margin = new Padding(0, 6, 4, 0) });
-        _cboPageSize.Items.AddRange(new object[] { "10", "20", "50", "100" });
-        _cboPageSize.SelectedIndex = 0;
-        _cboPageSize.SelectedIndexChanged += (_, _) =>
-        {
-            _pageSize = int.Parse(_cboPageSize.Text);
-            _currentPage = 1;
-            RefreshDataGrid();
-        };
-        searchBar.Controls.Add(_cboPageSize);
-        searchBar.Controls.Add(new Label { Text = "dòng/trang", AutoSize = true, Margin = new Padding(4, 6, 12, 0) });
-        searchBar.Controls.Add(_txtSearch);
-        _txtSearch.TextChanged += (_, _) => { _currentPage = 1; ApplyFilter(); };
-        searchBar.Controls.Add(_lblPageInfo);
-        _btnPrevPage.Click += (_, _) => { if (_currentPage > 1) { _currentPage--; RefreshDataGrid(); } };
-        _btnNextPage.Click += (_, _) => { var maxPage = (_filteredData.Count + _pageSize - 1) / _pageSize; if (_currentPage < maxPage) { _currentPage++; RefreshDataGrid(); } };
-        searchBar.Controls.Add(_btnPrevPage);
-        searchBar.Controls.Add(_btnNextPage);
-
-        _dgvData.Columns.AddRange(
-            new DataGridViewTextBoxColumn { HeaderText = "Mã lệnh đốn ▼", Width = 150, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "BU ▼", Width = 70, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Biển số xe ▼", Width = 110, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Chủ mía ▼", Width = 180, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Loại mía ▼", Width = 90, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Giống mía ▼", Width = 90, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Trạm ▼", Width = 130, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Vụ đầu tư ▼", Width = 120, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Loại xe ▼", Width = 80, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Ưu tiên ▼", Width = 70, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Trạng thái ▼", Width = 85, SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Ngày cấp ▼", Width = 140, SortMode = DataGridViewColumnSortMode.Programmatic });
-
-        _dgvData.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-        _dgvData.ColumnHeaderMouseClick += OnDataGridHeaderClick;
-
-        _dgvData.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(245, 250, 245);
-        _dgvData.DefaultCellStyle.Padding = new Padding(4, 2, 4, 2);
-        _dgvData.ColumnHeadersDefaultCellStyle.BackColor = AgrisTheme.BrandGreen;
-        _dgvData.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
-        _dgvData.ColumnHeadersDefaultCellStyle.Font = new Font(AgrisTheme.FontFamily, 9F, FontStyle.Bold);
-        _dgvData.EnableHeadersVisualStyles = false;
-        _dgvData.ColumnHeadersHeight = 32;
-
-        dataCard.Controls.Add(_dgvData);
-        dataCard.Controls.Add(searchBar);
-        dataCard.Controls.Add(dataHeader);
-        root.Controls.Add(dataCard, 0, 3);
+        // Bảng Lệnh đốn (tiêu đề + tìm kiếm + lọc cột + phân trang)
+        _explorer.Margin = new Padding(0, 0, 0, 10);
+        root.Controls.Add(_explorer, 0, 3);
 
         // Log
         var logCard = new Card { Dock = DockStyle.Fill, Padding = new Padding(1) };
-        var logHeader = GridBuilder.SectionHeader("Nhật ký đồng bộ");
+        var logHeader = GridBuilder.SectionHeader(Loc.T("frm.section_log"));
         logCard.Controls.Add(_rtbLog);
         logCard.Controls.Add(logHeader);
         root.Controls.Add(logCard, 0, 4);
@@ -284,8 +214,8 @@ public sealed class FrmSyncForm : Form
 
             // Load LenhDon data vào grid
             _allData = _cache.AllLenhDon.OrderByDescending(ld => ld.NgayCap).ToList();
-            _currentPage = 1;
-            ApplyFilter();
+            RebuildCardIndex();
+            _explorer.SetData(_allData);
 
             AppendLog($"✅ Cache xe: Trước: {before}, Sau: {after} records. LenhDon: {_allData.Count}.");
 
@@ -327,175 +257,154 @@ public sealed class FrmSyncForm : Form
             _btnRefresh.Enabled = true;
         }
     }
-
-    private void OnDataGridHeaderClick(object? sender, DataGridViewCellMouseEventArgs e)
-    {
-        if (e.ColumnIndex < 0) return;
-
-        // Collect unique values for this column from ALL data (not just filtered)
-        var colIdx = e.ColumnIndex;
-        var values = _allData
-            .Select(ld => GetFieldByIndex(ld, colIdx))
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Distinct()
-            .OrderBy(v => v)
-            .ToArray()!;
-
-        _columnFilters.TryGetValue(colIdx, out var currentFilter);
-
-        // Position popup under the header
-        var headerRect = _dgvData.GetCellDisplayRectangle(colIdx, -1, true);
-        var screenPos = _dgvData.PointToScreen(new Point(headerRect.Left, headerRect.Bottom));
-
-        using var popup = new ColumnFilterPopup(values, currentFilter);
-
-        // Đảm bảo popup không vượt ra ngoài màn hình
-        var screen = Screen.FromPoint(screenPos).WorkingArea;
-        var popupX = screenPos.X;
-        var popupY = screenPos.Y;
-        if (popupX + popup.Width > screen.Right)
-            popupX = screen.Right - popup.Width;
-        if (popupY + popup.Height > screen.Bottom)
-            popupY = screenPos.Y - popup.Height - headerRect.Height;
-        if (popupX < screen.Left) popupX = screen.Left;
-        if (popupY < screen.Top) popupY = screen.Top;
-
-        popup.Location = new Point(popupX, popupY);
-
-        if (popup.ShowDialog(this) != DialogResult.OK) return;
-
-        // Apply sort
-        if (popup.SortAscending.HasValue)
-        {
-            _allData = popup.SortAscending.Value
-                ? _allData.OrderBy(ld => GetFieldByIndex(ld, colIdx)).ToList()
-                : _allData.OrderByDescending(ld => GetFieldByIndex(ld, colIdx)).ToList();
-        }
-
-        // Apply column filter
-        if (popup.SelectedValues is null)
-            _columnFilters.Remove(colIdx);
-        else
-            _columnFilters[colIdx] = popup.SelectedValues;
-
-        _currentPage = 1;
-        ApplyFilter();
-    }
-
-    private static string? GetFieldByIndex(FrmLenhDonInfo ld, int idx) => idx switch
-    {
-        0 => ld.MaLD,
-        1 => ld.BusinessUnit,
-        2 => ld.BienSoXe,
-        3 => ld.KHName,
-        4 => ld.LoaiMiaName,
-        5 => ld.GiongMiaName,
-        6 => ld.TramName,
-        7 => ld.VudautuName,
-        8 => ld.LoaixeName,
-        9 => ld.UuTien,
-        10 => ld.StatusCodeName,
-        11 => ld.NgayCap,
-        _ => null
-    };
-
-    private void ApplyFilter()
-    {
-        var search = _txtSearch.Text.Trim().ToUpperInvariant();
-
-        // Text search filter
-        _filteredData = string.IsNullOrWhiteSpace(search)
-            ? _allData.ToList()
-            : _allData.Where(ld =>
-                (ld.MaLD?.ToUpperInvariant().Contains(search) == true) ||
-                (ld.BienSoXe?.ToUpperInvariant().Contains(search) == true) ||
-                (ld.KHName?.ToUpperInvariant().Contains(search) == true) ||
-                (ld.LoaiMiaName?.ToUpperInvariant().Contains(search) == true) ||
-                (ld.TramName?.ToUpperInvariant().Contains(search) == true) ||
-                (ld.GiongMiaName?.ToUpperInvariant().Contains(search) == true) ||
-                (ld.BusinessUnit?.ToUpperInvariant().Contains(search) == true) ||
-                (ld.StatusCodeName?.ToUpperInvariant().Contains(search) == true))
-            .ToList();
-
-        // Column filters (checkbox)
-        foreach (var (colIdx, allowedValues) in _columnFilters)
-        {
-            _filteredData = _filteredData
-                .Where(ld => allowedValues.Contains(GetFieldByIndex(ld, colIdx) ?? ""))
-                .ToList();
-        }
-
-        // Visual: highlight headers that have active filters
-        UpdateHeaderFilterIndicators();
-
-        RefreshDataGrid();
-    }
+    // ═══════════════════════════════════════════════════════════
+    //  Cột bảng Lệnh đốn — một nguồn duy nhất cho tiêu đề, giá trị, lọc, sắp xếp
+    // ═══════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Column header names — base names without indicators.
+    /// Thứ tự theo cách tra cứu: định danh + trạng thái + <b>tình trạng đăng tài</b> + ngày cấp
+    /// → thẻ xe / hợp đồng vận chuyển (điều kiện DigiScale DT-03, DT-04) → xe, chủ mía → mía → trạm/vụ
+    /// → xe/ưu tiên → cờ thẻ tạm / mía cháy / thu hoạch máy → hợp đồng đầu tư → BU.
     /// </summary>
-    private static readonly string[] BaseHeaders =
+    private ExplorerColumn<FrmLenhDonInfo>[] BuildColumns() =>
     [
-        "Mã lệnh đốn", "BU", "Biển số xe", "Chủ mía", "Loại mía",
-        "Giống mía", "Trạm", "Vụ đầu tư", "Loại xe", "Ưu tiên", "Trạng thái", "Ngày cấp"
+        new(() => Loc.T("frm.col_ma_ld"), ld => ld.MaLD, 150, ExplorerColumnKind.Code),
+        new(() => Loc.T("frm.col_status"), ld => ld.StatusCodeName, 130, ExplorerColumnKind.Badge, StatusTone),
+        new(() => Loc.T("frm.col_ready"), Readiness, 200, ExplorerColumnKind.Badge, ReadinessTone),
+        new(() => Loc.T("frm.col_ngay_cap"), ld => ld.NgayCap, 145, ExplorerColumnKind.Date),
+        // ── Thẻ xe + hợp đồng vận chuyển: lệnh đốn → Thẻ xe → Hợp đồng vận chuyển ──
+        new(() => Loc.T("frm.col_the_xe"), ld => ld.Thexename, 230, ExplorerColumnKind.Code),
+        new(() => Loc.T("frm.col_ma_the"), ld => CardOf(ld)?.MaThe, 120, ExplorerColumnKind.Code),
+        new(() => Loc.T("frm.col_card_status"), CardStatus, 150, ExplorerColumnKind.Badge, CardStatusTone),
+        new(() => Loc.T("frm.col_transport_contract"), TransportContract, 170, ExplorerColumnKind.Code),
+        new(() => Loc.T("frm.col_transporter"), ld => CardOf(ld)?.DoiTacVanChuyenName, 200),
+        new(() => Loc.T("field.plate"), ld => ld.BienSoXe, 120),
+        new(() => Loc.T("field.sugarcane_owner"), ld => ld.KHName, 230),
+        new(() => Loc.T("field.sugarcane_type"), ld => ld.LoaiMiaName, 115),
+        new(() => Loc.T("field.sugarcane_variety"), ld => ld.GiongMiaName, 115),
+        new(() => Loc.T("frm.col_tram"), ld => ld.TramName, 150),
+        new(() => Loc.T("frm.col_vu_dau_tu"), ld => ld.VudautuName, 130),
+        new(() => Loc.T("frm.col_loai_xe"), ld => ld.LoaixeName, 105),
+        new(() => Loc.T("frm.col_uu_tien"), ld => ld.UuTien, 95),
+        new(() => Loc.T("frm.col_so_xe_tam"), ld => ld.SoXeTam, 115),
+        new(() => Loc.T("frm.col_the_xe_tam"), ld => YesNo(ld.TheXeTam), 110, ExplorerColumnKind.Badge, FlagTone(BadgeTone.Info)),
+        new(() => Loc.T("frm.col_mia_chay"), ld => YesNo(ld.MiaChay), 105, ExplorerColumnKind.Badge, FlagTone(BadgeTone.Warning)),
+        new(() => Loc.T("frm.col_loai_mia_chay"), ld => ld.LoaiMiaChayName, 130),
+        new(() => Loc.T("frm.col_thu_hoach_may"), ld => YesNo(ld.ThuHoachMay), 125, ExplorerColumnKind.Badge, FlagTone(BadgeTone.Brand)),
+        new(() => Loc.T("frm.col_loai_hop_dong"), ld => ld.LoaiHopDongName, 180),
+        new(() => "BU", ld => ld.BusinessUnit, 90)
     ];
 
+    // ═══════════════════════════════════════════════════════════
+    //  Thẻ xe của lệnh đốn (tra danh mục thẻ FRM đã kéo về)
+    // ═══════════════════════════════════════════════════════════
+
+    /// <summary>Thẻ xe FRM theo mã thẻ — dựng lại mỗi lần nạp dữ liệu.</summary>
+    private Dictionary<string, FrmVehicleInfo> _cardsByCode = new(StringComparer.OrdinalIgnoreCase);
+
+    private void RebuildCardIndex()
+    {
+        var index = new Dictionary<string, FrmVehicleInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var v in _cache.AllVehicles)
+            if (!string.IsNullOrWhiteSpace(v.MaThe))
+                index.TryAdd(v.MaThe.Trim(), v);
+        _cardsByCode = index;
+    }
+
     /// <summary>
-    /// Cập nhật indicator trên header cột: ▼ mặc định, 🔽 khi có filter active.
+    /// Thẻ xe của lệnh đốn. Tên thẻ trên lệnh đốn dạng "{HĐ vận chuyển}-{xe}-{mã thẻ}"
+    /// (ví dụ "2026VC0006-70R-020.10-T260000047") → khớp theo mã thẻ ở cuối. Null nếu chưa có trên FRM.
     /// </summary>
-    private void UpdateHeaderFilterIndicators()
+    private FrmVehicleInfo? CardOf(FrmLenhDonInfo ld)
     {
-        for (var i = 0; i < _dgvData.Columns.Count && i < BaseHeaders.Length; i++)
-        {
-            var hasFilter = _columnFilters.ContainsKey(i);
-            _dgvData.Columns[i].HeaderText = hasFilter
-                ? $"{BaseHeaders[i]} 🔽"
-                : $"{BaseHeaders[i]} ▼";
-
-            // Highlight header background khi có filter
-            if (hasFilter)
-            {
-                _dgvData.Columns[i].HeaderCell.Style.BackColor = Color.FromArgb(255, 235, 156); // vàng nhạt
-                _dgvData.Columns[i].HeaderCell.Style.ForeColor = AgrisTheme.TextPrimary;
-            }
-            else
-            {
-                _dgvData.Columns[i].HeaderCell.Style.BackColor = AgrisTheme.BrandGreen;
-                _dgvData.Columns[i].HeaderCell.Style.ForeColor = Color.White;
-            }
-        }
+        var name = ld.Thexename?.Trim();
+        if (string.IsNullOrEmpty(name)) return null;
+        if (_cardsByCode.TryGetValue(name, out var exact)) return exact;
+        var last = name[(name.LastIndexOf('-') + 1)..];
+        return _cardsByCode.TryGetValue(last, out var byCode) ? byCode : null;
     }
 
-    private void RefreshDataGrid()
+    /// <summary>Hợp đồng vận chuyển: theo thẻ FRM; chưa có thẻ thì lấy mã HĐ ở đầu tên thẻ lệnh đốn.</summary>
+    private string? TransportContract(FrmLenhDonInfo ld)
     {
-        var totalPages = Math.Max(1, (_filteredData.Count + _pageSize - 1) / _pageSize);
-        if (_currentPage > totalPages) _currentPage = totalPages;
-
-        var pageData = _filteredData
-            .Skip((_currentPage - 1) * _pageSize)
-            .Take(_pageSize)
-            .ToList();
-
-        _dgvData.SuspendLayout();
-        _dgvData.Rows.Clear();
-        foreach (var ld in pageData)
-        {
-            _dgvData.Rows.Add(
-                ld.MaLD, ld.BusinessUnit, ld.BienSoXe, ld.KHName, ld.LoaiMiaName, ld.GiongMiaName,
-                ld.TramName, ld.VudautuName, ld.LoaixeName, ld.UuTien, ld.StatusCodeName, ld.NgayCap);
-        }
-        _dgvData.ResumeLayout();
-
-        _lblPageInfo.Text = $"{(_currentPage - 1) * _pageSize + 1}-{Math.Min(_currentPage * _pageSize, _filteredData.Count)} / {_filteredData.Count} (Trang {_currentPage}/{totalPages})";
-        _btnPrevPage.Enabled = _currentPage > 1;
-        _btnNextPage.Enabled = _currentPage < totalPages;
+        var card = CardOf(ld);
+        return Blank(card?.HopDongVanChuyenName) ?? Blank(card?.MaHopDong)
+            ?? Presenters.TripRegistrationPresenter.TransportContractOf(ld.Thexename);
     }
+
+    /// <summary>Trạng thái thẻ xe: thẻ tạm / trạng thái FRM / chưa có trên FRM (chưa phát hành, còn Nháp).</summary>
+    private string? CardStatus(FrmLenhDonInfo ld)
+    {
+        if (ld.IsTemporaryCard) return Loc.T("frm.card_temp");
+        if (string.IsNullOrWhiteSpace(ld.Thexename)) return null;
+        return Blank(CardOf(ld)?.StatusName) ?? Loc.T("frm.card_missing");
+    }
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static BadgeTone CardStatusTone(string status)
+    {
+        if (status == Loc.T("frm.card_missing")) return BadgeTone.Warning;
+        if (status == Loc.T("frm.card_temp")) return BadgeTone.Info;
+        var s = status.ToUpperInvariant();
+        if (s.Contains("HỦY") || s.Contains("HUỶ") || s.Contains("CANCEL") || s.Contains("HẾT HẠN") || s.Contains("NHÁP"))
+            return BadgeTone.Danger;
+        return BadgeTone.Success;
+    }
+
+    /// <summary>
+    /// Tình trạng đăng tài dự kiến — cùng điều kiện app + DigiScale kiểm tra khi bấm Đăng tài:
+    /// lệnh đốn Đã duyệt; thẻ xe tạm (DigiScale chưa nhận); thẻ chưa có trên FRM (DT-03/DT-04); thẻ đã hủy.
+    /// </summary>
+    private string Readiness(FrmLenhDonInfo ld)
+    {
+        if (!Presenters.TripRegistrationPresenter.IsApproved(ld)) return Loc.T("frm.ready_not_approved");
+        if (ld.IsTemporaryCard) return Loc.T("frm.ready_temp");
+        if (string.IsNullOrWhiteSpace(ld.Thexename)) return Loc.T("frm.ready_ok");
+
+        var card = CardOf(ld);
+        if (card is null) return Loc.T("frm.ready_card_missing");
+        return CardStatusTone(card.StatusName ?? "") == BadgeTone.Danger
+            ? Loc.T("frm.ready_card_cancelled")
+            : Loc.T("frm.ready_ok");
+    }
+
+    private static BadgeTone ReadinessTone(string value)
+        => value == Loc.T("frm.ready_ok") ? BadgeTone.Success
+            : value == Loc.T("frm.ready_not_approved") ? BadgeTone.Neutral
+            : value == Loc.T("frm.ready_temp") ? BadgeTone.Info
+            : BadgeTone.Danger;
+
+    /// <summary>Trạng thái lệnh đốn: Đã duyệt xanh, Nháp vàng, Hủy đỏ, đã tính tiền / khác xanh dương.</summary>
+    private static BadgeTone StatusTone(string status)
+    {
+        var s = status.ToUpperInvariant();
+        if (s.Contains("HỦY") || s.Contains("HUỶ") || s.Contains("CANCEL")) return BadgeTone.Danger;
+        if (s.Contains("NHÁP") || s.Contains("DRAFT")) return BadgeTone.Warning;
+        if (s.Contains("ĐÃ DUYỆT") || s.Contains("APPROVED")) return BadgeTone.Success;
+        return BadgeTone.Info;
+    }
+
+    /// <summary>Cờ Có/Không: "Có" tô màu nhấn, "Không" trung tính.</summary>
+    private static Func<string, BadgeTone> FlagTone(BadgeTone yesTone)
+        => value => value == Loc.T("frm.yes") ? yesTone : BadgeTone.Neutral;
+
+    /// <summary>Có / Không cho cờ FRM; null (dữ liệu cũ chưa làm mới FRM) → để trống.</summary>
+    private static string? YesNo(bool? value) => value switch
+    {
+        true => Loc.T("frm.yes"),
+        false => Loc.T("frm.no"),
+        null => null
+    };
 
     private void AppendLog(string message)
     {
+        // Kéo dữ liệu / timer tự động có thể xong sau khi tab đã đóng → log đã dispose, bỏ qua.
+        if (IsDisposed || _rtbLog.IsDisposed) return;
         if (_rtbLog.InvokeRequired)
         {
-            _rtbLog.Invoke(() => AppendLog(message));
+            try { _rtbLog.BeginInvoke(() => AppendLog(message)); }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
             return;
         }
         _rtbLog.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");

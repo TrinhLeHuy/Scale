@@ -1,5 +1,6 @@
-using TTC.Weighing.Infrastructure.Adapters;
+﻿using TTC.Weighing.Infrastructure.Adapters;
 using TTC.Weighing.WinForms.Controls;
+using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
 
 namespace TTC.Weighing.WinForms.Forms;
@@ -21,12 +22,12 @@ public sealed class ErpSyncForm : Form
         TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(12)
     };
 
-    private readonly Button _btnRefresh = GridBuilder.PrimaryButton("🔄 Kéo dữ liệu ERP mới nhất", new Size(280, 40));
-    private readonly Button _btnAutoSync = GridBuilder.SecondaryButton("▶ Bật tự động", new Size(160, 40));
+    private readonly Button _btnRefresh = GridBuilder.PrimaryButton(Loc.T("erp.btn_pull"), new Size(280, 40));
+    private readonly Button _btnAutoSync = GridBuilder.SecondaryButton(Loc.T("erp.btn_auto_on"), new Size(160, 40));
     private readonly NumericUpDown _numInterval = new()
     {
         Minimum = 1, Maximum = 120, Value = 10, Width = 60,
-        Font = AgrisTheme.Body(10F), AccessibleName = "Chu kỳ (phút)"
+        Font = AgrisTheme.Body(10F), AccessibleName = Loc.T("erp.interval_accessible")
     };
     private readonly System.Windows.Forms.Timer _autoTimer = new();
     private bool _autoEnabled;
@@ -43,50 +44,32 @@ public sealed class ErpSyncForm : Form
     private readonly ComboBox _cboTxnType = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList, Width = 320, DropDownWidth = 380,
-        Font = AgrisTheme.Body(9F), AccessibleName = "Loại GD"
+        Font = AgrisTheme.Body(9F), AccessibleName = Loc.T("erp.txn_type")
     };
     private readonly DateTimePicker _dtpFrom = new()
     {
         Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy", Width = 130,
-        AccessibleName = "Từ ngày"
+        AccessibleName = Loc.T("erp.date_from")
     };
     private readonly DateTimePicker _dtpTo = new()
     {
         Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy", Width = 130,
-        AccessibleName = "Đến ngày"
+        AccessibleName = Loc.T("erp.date_to")
     };
 
+    // Log hiển thị câu đã dịch (Lào/Khmer) → dùng font UI theo ngôn ngữ, không dùng Consolas (thiếu glyph).
     private readonly RichTextBox _rtbLog = new()
     {
         Dock = DockStyle.Fill, ReadOnly = true,
-        Font = AgrisTheme.Mono(9F), BackColor = AgrisTheme.SurfaceMuted,
+        Font = AgrisTheme.Body(9F), BackColor = AgrisTheme.SurfaceMuted,
         BorderStyle = BorderStyle.None
     };
 
-    // ── Grid dữ liệu ERP (mới nhất trước, phân trang, tìm kiếm) ──
-    private readonly DataGridView _dgvData = new()
-    {
-        Dock = DockStyle.Fill,
-        AllowUserToAddRows = false,
-        AllowUserToDeleteRows = false,
-        ReadOnly = true,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
-        RowHeadersVisible = false,
-        BackgroundColor = AgrisTheme.Surface,
-        Font = AgrisTheme.Mono(8.5F)
-    };
-    private readonly TextBox _txtSearch = new() { PlaceholderText = "Tìm kiếm nhanh...", Width = 250, Font = AgrisTheme.Body(9F) };
-    private readonly ComboBox _cboPageSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 70 };
-    private readonly Label _lblPageInfo = new() { AutoSize = true, Font = AgrisTheme.Body(9F), Margin = new Padding(8, 6, 8, 0) };
-    private readonly Button _btnPrevPage = new() { Text = "< Trước", Width = 70, Height = 26 };
-    private readonly Button _btnNextPage = new() { Text = "Sau >", Width = 70, Height = 26 };
+    // ── Bảng dữ liệu ERP (mới nhất trước): tìm kiếm, lọc theo cột, phân trang — control dùng chung ──
+    private readonly DataExplorerGrid<ErpOrderLine> _explorer = new(
+        Loc.T("erp.section_data"), "erp.order_lines", Columns, Loc.T("erp.search_placeholder"), Loc.T("erp.empty"));
 
     private List<ErpOrderLine> _allData = [];
-    private List<ErpOrderLine> _filteredData = [];
-    private int _currentPage = 1;
-    private int _pageSize = 10;
-    private readonly Dictionary<int, HashSet<string>> _columnFilters = new();
     private readonly string _activeBu = Program.ActiveOrganizationUnitCode ?? "TTCS";
 
     /// <summary>Chỉ giữ lại đơn hàng thuộc BU của tài khoản đang đăng nhập.</summary>
@@ -111,7 +94,7 @@ public sealed class ErpSyncForm : Form
     public ErpSyncForm(ErpOrderLineAdapter adapter)
     {
         _adapter = adapter;
-        Text = "Quản lý dữ liệu ERP API";
+        Text = Loc.T("erp.title");
         MinimumSize = new Size(900, 550);
         BackColor = AgrisTheme.Canvas;
         DoubleBuffered = true;
@@ -119,18 +102,8 @@ public sealed class ErpSyncForm : Form
         _dtpFrom.Value = DateTime.Today.AddDays(-7);
         _dtpTo.Value = DateTime.Today;
 
-        // Loại GD filter
-        _cboTxnType.Items.AddRange(new object[]
-        {
-            "(Tất cả)",
-            "01 - Purchasing Order for Receiving",
-            "02 - InterOrg Intransit Shipped",
-            "03 - InterOrg Intransit for Receiving",
-            "04 - Transfer Order for Ship Confirm",
-            "05 - Transfer Order for Receiving",
-            "06 - Sales Order for Ship Confirm"
-        });
-        _cboTxnType.SelectedIndex = 0;
+        // Loại GD filter: không hardcode — "(Tất cả)" + các loại thực tế có trong dữ liệu đã kéo về.
+        RefreshTxnTypeOptions();
 
         BuildLayout();
 
@@ -148,18 +121,18 @@ public sealed class ErpSyncForm : Form
         {
             _autoTimer.Interval = (int)_numInterval.Value * 60_000;
             _autoTimer.Start();
-            _btnAutoSync.Text = "⏸ Tắt tự động";
+            _btnAutoSync.Text = Loc.T("erp.btn_auto_off");
             _btnAutoSync.BackColor = AgrisTheme.Warning;
             _numInterval.Enabled = false;
-            AppendLog($"🔄 Tự động kéo dữ liệu mỗi {_numInterval.Value} phút.");
+            AppendLog(Loc.T("erp.auto_started", _numInterval.Value));
         }
         else
         {
             _autoTimer.Stop();
-            _btnAutoSync.Text = "▶ Bật tự động";
+            _btnAutoSync.Text = Loc.T("erp.btn_auto_on");
             _btnAutoSync.BackColor = AgrisTheme.Surface;
             _numInterval.Enabled = true;
-            AppendLog("⏹ Đã tắt tự động kéo dữ liệu.");
+            AppendLog(Loc.T("erp.auto_stopped"));
         }
     }
 
@@ -187,11 +160,11 @@ public sealed class ErpSyncForm : Form
         configPanel.Controls.Add(new Label { Text = "BU:", AutoSize = true, Margin = new Padding(0, 8, 4, 0), Font = AgrisTheme.Body(9F) });
         _txtBU.Width = 100;
         configPanel.Controls.Add(_txtBU);
-        configPanel.Controls.Add(new Label { Text = "Từ ngày:", AutoSize = true, Margin = new Padding(12, 8, 4, 0), Font = AgrisTheme.Body(9F) });
+        configPanel.Controls.Add(new Label { Text = Loc.T("reg.filter_from"), AutoSize = true, Margin = new Padding(12, 8, 4, 0), Font = AgrisTheme.Body(9F) });
         configPanel.Controls.Add(_dtpFrom);
         configPanel.Controls.Add(new Label { Text = "→", AutoSize = true, Margin = new Padding(4, 8, 4, 0), Font = AgrisTheme.Body(9F) });
         configPanel.Controls.Add(_dtpTo);
-        configPanel.Controls.Add(new Label { Text = "Loại GD:", AutoSize = true, Margin = new Padding(12, 8, 4, 0), Font = AgrisTheme.Body(9F) });
+        configPanel.Controls.Add(new Label { Text = Loc.T("erp.label_txn_type"), AutoSize = true, Margin = new Padding(12, 8, 4, 0), Font = AgrisTheme.Body(9F) });
         configPanel.Controls.Add(_cboTxnType);
         root.Controls.Add(configPanel, 0, 1);
 
@@ -200,87 +173,25 @@ public sealed class ErpSyncForm : Form
         btnPanel.Controls.Add(_btnRefresh);
         btnPanel.Controls.Add(new Label { Text = "  ", AutoSize = true, Margin = new Padding(4, 12, 0, 0) });
         btnPanel.Controls.Add(_btnAutoSync);
-        btnPanel.Controls.Add(new Label { Text = "mỗi", AutoSize = true, Margin = new Padding(8, 12, 4, 0), Font = AgrisTheme.Body(9F) });
+        btnPanel.Controls.Add(new Label { Text = Loc.T("erp.every"), AutoSize = true, Margin = new Padding(8, 12, 4, 0), Font = AgrisTheme.Body(9F) });
         btnPanel.Controls.Add(_numInterval);
-        btnPanel.Controls.Add(new Label { Text = "phút", AutoSize = true, Margin = new Padding(4, 12, 0, 0), Font = AgrisTheme.Body(9F) });
+        btnPanel.Controls.Add(new Label { Text = Loc.T("erp.minutes"), AutoSize = true, Margin = new Padding(4, 12, 0, 0), Font = AgrisTheme.Body(9F) });
         _btnAutoSync.Click += (_, _) => ToggleAutoSync();
         root.Controls.Add(btnPanel, 0, 2);
 
-        // Data grid card
-        var dataCard = new Card { Dock = DockStyle.Fill, Padding = new Padding(1) };
-        var dataHeader = GridBuilder.SectionHeader("Dữ liệu đơn hàng ERP (Order Lines)");
-
-        var searchBar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top, Height = 32, FlowDirection = FlowDirection.LeftToRight,
-            Padding = new Padding(4, 2, 4, 2)
-        };
-        searchBar.Controls.Add(new Label { Text = "Hiển thị", AutoSize = true, Margin = new Padding(0, 6, 4, 0) });
-        _cboPageSize.Items.AddRange(new object[] { "10", "20", "50", "100" });
-        _cboPageSize.SelectedIndex = 0;
-        _cboPageSize.SelectedIndexChanged += (_, _) =>
-        {
-            _pageSize = int.Parse(_cboPageSize.Text);
-            _currentPage = 1;
-            RefreshDataGrid();
-        };
-        searchBar.Controls.Add(_cboPageSize);
-        searchBar.Controls.Add(new Label { Text = "dòng/trang", AutoSize = true, Margin = new Padding(4, 6, 12, 0) });
-        searchBar.Controls.Add(_txtSearch);
-        _txtSearch.TextChanged += (_, _) => { _currentPage = 1; ApplyFilter(); };
-        searchBar.Controls.Add(_lblPageInfo);
-        _btnPrevPage.Click += (_, _) => { if (_currentPage > 1) { _currentPage--; RefreshDataGrid(); } };
-        _btnNextPage.Click += (_, _) =>
-        {
-            var maxPage = Math.Max(1, (_filteredData.Count + _pageSize - 1) / _pageSize);
-            if (_currentPage < maxPage) { _currentPage++; RefreshDataGrid(); }
-        };
-        searchBar.Controls.Add(_btnPrevPage);
-        searchBar.Controls.Add(_btnNextPage);
-
-        _dgvData.Columns.AddRange(
-            new DataGridViewTextBoxColumn { HeaderText = "Shipment ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Số tham chiếu ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Trip ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Biển số ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Loại GD ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Action ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Mã hàng ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Tên hàng ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Org Code ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "NCC / KH ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Vận chuyển ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "SL tổng ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "SL còn lại ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Ngày GD ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "BU ▼", SortMode = DataGridViewColumnSortMode.Programmatic },
-            new DataGridViewTextBoxColumn { HeaderText = "Nguồn ▼", SortMode = DataGridViewColumnSortMode.Programmatic });
-
-        _dgvData.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-        _dgvData.ColumnHeaderMouseClick += OnDataGridHeaderClick;
-
-        _dgvData.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(245, 250, 245);
-        _dgvData.DefaultCellStyle.Padding = new Padding(4, 2, 4, 2);
-        _dgvData.ColumnHeadersDefaultCellStyle.BackColor = AgrisTheme.BrandGreen;
-        _dgvData.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
-        _dgvData.ColumnHeadersDefaultCellStyle.Font = new Font(AgrisTheme.FontFamily, 9F, FontStyle.Bold);
-        _dgvData.EnableHeadersVisualStyles = false;
-        _dgvData.ColumnHeadersHeight = 32;
-
-        dataCard.Controls.Add(_dgvData);
-        dataCard.Controls.Add(searchBar);
-        dataCard.Controls.Add(dataHeader);
-        root.Controls.Add(dataCard, 0, 3);
+        // Bảng dữ liệu (tiêu đề + tìm kiếm + lọc cột + phân trang)
+        _explorer.Margin = new Padding(0, 0, 0, 10);
+        root.Controls.Add(_explorer, 0, 3);
 
         // Log
         var logCard = new Card { Dock = DockStyle.Fill, Padding = new Padding(1) };
-        var logHeader = GridBuilder.SectionHeader("Nhật ký đồng bộ");
+        var logHeader = GridBuilder.SectionHeader(Loc.T("erp.section_log"));
         logCard.Controls.Add(_rtbLog);
         logCard.Controls.Add(logHeader);
         root.Controls.Add(logCard, 0, 4);
 
         Controls.Add(root);
-        _lblStatus.Text = "Đang tải dữ liệu từ DB...";
+        _lblStatus.Text = Loc.T("erp.status_loading_db");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -294,298 +205,186 @@ public sealed class ErpSyncForm : Form
         {
             var items = await _adapter.LoadFromDbAsync();
             _allData = FilterByActiveBu(items);
-            ApplyFilter();
+            RefreshTxnTypeOptions();
+            _explorer.SetData(_allData);
 
             if (_allData.Count > 0)
             {
-                _lblStatus.Text = $"✅ Sẵn sàng  |  Đơn hàng: {_allData.Count}  |  BU: {_activeBu}  |  Tải từ DB local";
-                AppendLog($"✅ Tải {_allData.Count} đơn hàng từ DB local (BU: {_activeBu}).");
+                _lblStatus.Text = Loc.T("erp.status_ready_db", _allData.Count, _activeBu);
+                AppendLog(Loc.T("erp.log_loaded_db", _allData.Count, _activeBu));
             }
             else
             {
-                _lblStatus.Text = $"Chưa có dữ liệu ERP cho BU {_activeBu}. Bấm 'Kéo dữ liệu ERP mới nhất' để kéo từ API.";
+                _lblStatus.Text = Loc.T("erp.status_no_data", _activeBu);
             }
         }
         catch (Exception ex)
         {
-            AppendLog($"⚠ Lỗi tải từ DB: {ex.Message}");
-            _lblStatus.Text = "⚠ Lỗi tải từ DB.";
+            AppendLog(Loc.T("erp.log_load_db_error", ex.Message));
+            _lblStatus.Text = Loc.T("erp.status_load_db_error");
         }
     }
 
-    private static readonly string[] ALL_TXN_TYPES = ["01", "02", "03", "04", "05", "06"];
+    /// <summary>
+    /// Nạp lại combo Loại GD: "(Tất cả)" + các mã loại GD thực tế có trong dữ liệu (mọi nguồn Oracle / WMS...).
+    /// Giữ lựa chọn hiện tại nếu còn.
+    /// </summary>
+    private void RefreshTxnTypeOptions()
+    {
+        var current = _cboTxnType.SelectedItem as TxnTypeOption;
+        var options = _allData
+            .Where(i => !string.IsNullOrWhiteSpace(i.TransactionTypeCode))
+            .GroupBy(i => i.TransactionTypeCode!.Trim())
+            .Select(g => new TxnTypeOption(g.Key,
+                $"{g.Key} - {g.Select(i => i.TransactionTypeName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? ""}".TrimEnd(' ', '-')))
+            .OrderBy(o => o.Code, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _cboTxnType.BeginUpdate();
+        _cboTxnType.Items.Clear();
+        _cboTxnType.Items.Add(new TxnTypeOption(null, Loc.T("erp.txn_all")));
+        foreach (var o in options) _cboTxnType.Items.Add(o);
+        var keep = current?.Code is null ? null : options.FirstOrDefault(o => o.Code == current.Code);
+        _cboTxnType.SelectedItem = keep ?? _cboTxnType.Items[0];
+        _cboTxnType.EndUpdate();
+    }
+
+    private sealed record TxnTypeOption(string? Code, string Text)
+    {
+        public override string ToString() => Text;
+    }
 
     private async Task RefreshAsync()
     {
         _btnRefresh.Enabled = false;
-        _btnRefresh.Text = "⏳ Đang kéo dữ liệu...";
+        _btnRefresh.Text = Loc.T("erp.btn_pulling");
         var inputBu = _txtBU.Text.Trim();
         DateTime? fromDate = _dtpFrom.Value.Date;
         DateTime? toDate = _dtpTo.Value.Date.AddDays(1);
 
-        // Parse transaction type code từ combo: "01 - ..." → "01", "(Tất cả)" → null → kéo tất cả types
-        string? txnTypeCode = null;
-        var txnSel = _cboTxnType.SelectedItem?.ToString();
-        if (txnSel is not null && txnSel.Length >= 2 && char.IsDigit(txnSel[0]))
-            txnTypeCode = txnSel[..2];
+        // "(Tất cả)" → không gửi transactionTypeCode → API trả mọi loại GD và mọi nguồn (Oracle, WMS...).
+        var txnTypeCode = (_cboTxnType.SelectedItem as TxnTypeOption)?.Code;
 
-        AppendLog($"Bắt đầu kéo ERP order-lines: BU={inputBu}, {_dtpFrom.Value:dd/MM/yyyy} → {_dtpTo.Value:dd/MM/yyyy}" +
-            (txnTypeCode is not null ? $", Loại GD={txnTypeCode}" : ", Tất cả loại GD"));
+        AppendLog(Loc.T("erp.log_pull_start", inputBu,
+            _dtpFrom.Value.ToString("dd/MM/yyyy"), _dtpTo.Value.ToString("dd/MM/yyyy"),
+            txnTypeCode is not null ? Loc.T("erp.log_txn_filter", txnTypeCode) : Loc.T("erp.log_txn_all")));
 
         try
         {
             var allItems = new List<ErpOrderLine>();
-            var seen = new HashSet<string>(); // track shipment+bu để tránh trùng
-            var typesToFetch = txnTypeCode is not null ? new[] { txnTypeCode } : ALL_TXN_TYPES;
+            var seen = new HashSet<string>(); // theo ID bản ghi DigiScale — không gộp dòng / nguồn khác nhau
 
             // Lần 1: kéo theo khung ngày
-            foreach (var typeCode in typesToFetch)
+            try
             {
-                try
-                {
-                    var items = await _adapter.GetAllOrderLinesAsync(inputBu, fromDate, toDate, typeCode);
-                    if (items.Count > 0)
-                    {
-                        AppendLog($"  Type {typeCode} (theo ngày): {items.Count} đơn hàng");
-                        foreach (var item in items)
-                        {
-                            var key = $"{item.ShipmentNumber}|{item.BusinessUnit}";
-                            if (seen.Add(key)) allItems.Add(item);
-                        }
-                    }
-                }
-                catch (Exception ex) { AppendLog($"  ⚠ Type {typeCode}: {ex.Message}"); }
+                var items = await _adapter.GetAllOrderLinesAsync(inputBu, fromDate, toDate, txnTypeCode);
+                foreach (var item in items)
+                    if (seen.Add(item.StorageKey)) allItems.Add(item);
+                AppendLog(Loc.T("erp.log_type_by_date", txnTypeCode ?? Loc.T("erp.txn_all"), items.Count));
             }
+            catch (Exception ex) { AppendLog($"  ⚠ {txnTypeCode ?? Loc.T("erp.txn_all")}: {ex.Message}"); }
 
             // Lần 2: kéo KHÔNG filter ngày (để lấy PO/data chưa có transactionDate)
-            foreach (var typeCode in typesToFetch)
+            try
             {
-                try
-                {
-                    var items = await _adapter.GetAllOrderLinesAsync(inputBu, null, null, typeCode);
-                    var newCount = 0;
-                    foreach (var item in items)
-                    {
-                        var key = $"{item.ShipmentNumber}|{item.BusinessUnit}";
-                        if (seen.Add(key)) { allItems.Add(item); newCount++; }
-                    }
-                    if (newCount > 0)
-                        AppendLog($"  Type {typeCode} (không ngày): +{newCount} đơn hàng mới");
-                }
-                catch (Exception ex) { AppendLog($"  ⚠ Type {typeCode} (no-date): {ex.Message}"); }
+                var items = await _adapter.GetAllOrderLinesAsync(inputBu, null, null, txnTypeCode);
+                var newCount = 0;
+                foreach (var item in items)
+                    if (seen.Add(item.StorageKey)) { allItems.Add(item); newCount++; }
+                if (newCount > 0)
+                    AppendLog(Loc.T("erp.log_type_no_date", txnTypeCode ?? Loc.T("erp.txn_all"), newCount));
             }
+            catch (Exception ex) { AppendLog($"  ⚠ {txnTypeCode ?? Loc.T("erp.txn_all")} (no-date): {ex.Message}"); }
 
-            AppendLog($"  Tổng: {allItems.Count} đơn hàng");
+            // Thống kê theo nguồn để thấy rõ đã có WMS / Oracle...
+            foreach (var g in allItems.GroupBy(i => string.IsNullOrWhiteSpace(i.Type) ? "—" : i.Type!))
+                AppendLog($"  • {g.Key}: {g.Count()}");
+
+            AppendLog(Loc.T("erp.log_total", allItems.Count));
 
             // Lưu DB 1 lần sau khi gom tất cả BU
             if (allItems.Count > 0)
             {
                 await _adapter.SaveToDbAsync(allItems);
-                AppendLog($"💾 Đã lưu {allItems.Count} đơn hàng vào DB (UPSERT).");
+                AppendLog(Loc.T("erp.log_saved", allItems.Count));
             }
             else
             {
-                AppendLog("⚠ API trả rỗng — giữ nguyên dữ liệu DB cũ.");
+                AppendLog(Loc.T("erp.log_api_empty"));
             }
 
             // Reload toàn bộ từ DB (mới nhất trước, kèm cả data cũ chưa bị đè)
             var dbItems = await _adapter.LoadFromDbAsync();
             _allData = FilterByActiveBu(dbItems);
-            _currentPage = 1;
-            ApplyFilter();
+            RefreshTxnTypeOptions();
+            _explorer.SetData(_allData);
 
-            _lblStatus.Text = $"✅ Sẵn sàng  |  Đơn hàng: {_allData.Count}  |  BU: {_activeBu}  |  {_dtpFrom.Value:dd/MM} → {_dtpTo.Value:dd/MM}  |  Lần cuối: {DateTime.Now:HH:mm:ss}";
+            _lblStatus.Text = Loc.T("erp.status_ready_pulled", _allData.Count, _activeBu,
+                _dtpFrom.Value.ToString("dd/MM"), _dtpTo.Value.ToString("dd/MM"), DateTime.Now.ToString("HH:mm:ss"));
         }
         catch (Exception ex)
         {
-            AppendLog($"❌ Lỗi: {ex.Message}");
+            AppendLog(Loc.T("erp.log_error", ex.Message));
         }
         finally
         {
-            _btnRefresh.Text = "🔄 Kéo dữ liệu ERP mới nhất";
+            _btnRefresh.Text = Loc.T("erp.btn_pull");
             _btnRefresh.Enabled = true;
         }
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  Column filter + search + pagination (giống FrmSyncForm)
+    //  Cột bảng ERP — một nguồn duy nhất cho tiêu đề, giá trị, lọc, sắp xếp
     // ═══════════════════════════════════════════════════════════
 
-    private void OnDataGridHeaderClick(object? sender, DataGridViewCellMouseEventArgs e)
-    {
-        if (e.ColumnIndex < 0) return;
-
-        var colIdx = e.ColumnIndex;
-        var values = _allData
-            .Select(item => GetFieldByIndex(item, colIdx))
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Distinct()
-            .OrderBy(v => v)
-            .ToArray()!;
-
-        _columnFilters.TryGetValue(colIdx, out var currentFilter);
-
-        var headerRect = _dgvData.GetCellDisplayRectangle(colIdx, -1, true);
-        var screenPos = _dgvData.PointToScreen(new Point(headerRect.Left, headerRect.Bottom));
-
-        using var popup = new ColumnFilterPopup(values, currentFilter);
-
-        // Đảm bảo popup không vượt ra ngoài màn hình
-        var screen = Screen.FromPoint(screenPos).WorkingArea;
-        var popupX = screenPos.X;
-        var popupY = screenPos.Y;
-        if (popupX + popup.Width > screen.Right)
-            popupX = screen.Right - popup.Width;
-        if (popupY + popup.Height > screen.Bottom)
-            popupY = screenPos.Y - popup.Height - headerRect.Height;
-        if (popupX < screen.Left) popupX = screen.Left;
-        if (popupY < screen.Top) popupY = screen.Top;
-
-        popup.Location = new Point(popupX, popupY);
-
-        if (popup.ShowDialog(this) != DialogResult.OK) return;
-
-        if (popup.SortAscending.HasValue)
-        {
-            _allData = popup.SortAscending.Value
-                ? _allData.OrderBy(item => GetFieldByIndex(item, colIdx)).ToList()
-                : _allData.OrderByDescending(item => GetFieldByIndex(item, colIdx)).ToList();
-        }
-
-        if (popup.SelectedValues is null)
-            _columnFilters.Remove(colIdx);
-        else
-            _columnFilters[colIdx] = popup.SelectedValues;
-
-        _currentPage = 1;
-        ApplyFilter();
-    }
-
-    private static string? GetFieldByIndex(ErpOrderLine item, int idx) => idx switch
-    {
-        0 => item.ShipmentNumber,
-        1 => item.ReferenceNumber,
-        2 => item.TripNumber,
-        3 => item.PlateNumber,
-        4 => item.TransactionTypeName,
-        5 => item.ActionCodeRequest,
-        6 => item.ItemNumber ?? item.ItemCode,
-        7 => item.ItemDescription ?? item.ItemName,
-        8 => item.OrganizationCode,
-        9 => item.VendorName ?? item.CustomerName,
-        10 => item.Transporter ?? item.DriverName,
-        11 => item.TotalQuantity?.ToString("N0"),
-        12 => item.RemainingQuantity?.ToString("N0"),
-        13 => item.TransactionDate,
-        14 => item.BusinessUnit,
-        15 => item.Source,
-        _ => null
-    };
-
-    private void ApplyFilter()
-    {
-        var search = _txtSearch.Text.Trim().ToUpperInvariant();
-
-        _filteredData = string.IsNullOrWhiteSpace(search)
-            ? _allData.ToList()
-            : _allData.Where(item =>
-                (item.ShipmentNumber?.ToUpperInvariant().Contains(search) == true) ||
-                (item.ReferenceNumber?.ToUpperInvariant().Contains(search) == true) ||
-                (item.TripNumber?.ToUpperInvariant().Contains(search) == true) ||
-                (item.PlateNumber?.ToUpperInvariant().Contains(search) == true) ||
-                (item.TransactionTypeName?.ToUpperInvariant().Contains(search) == true) ||
-                (item.ActionCodeRequest?.ToUpperInvariant().Contains(search) == true) ||
-                (item.ItemName?.ToUpperInvariant().Contains(search) == true) ||
-                (item.ItemDescription?.ToUpperInvariant().Contains(search) == true) ||
-                (item.CustomerName?.ToUpperInvariant().Contains(search) == true) ||
-                (item.VendorName?.ToUpperInvariant().Contains(search) == true) ||
-                (item.Transporter?.ToUpperInvariant().Contains(search) == true) ||
-                (item.Source?.ToUpperInvariant().Contains(search) == true) ||
-                (item.BusinessUnit?.ToUpperInvariant().Contains(search) == true))
-            .ToList();
-
-        foreach (var (colIdx, allowedValues) in _columnFilters)
-        {
-            _filteredData = _filteredData
-                .Where(item => allowedValues.Contains(GetFieldByIndex(item, colIdx) ?? ""))
-                .ToList();
-        }
-
-        UpdateHeaderFilterIndicators();
-        RefreshDataGrid();
-    }
-
-    private static readonly string[] BaseHeaders =
+    /// <summary>
+    /// Thứ tự theo cách tra cứu: định danh (Shipment, Trip, xe, nguồn) → nghiệp vụ (loại GD, hàng, KH/NCC)
+    /// → vận chuyển → số lượng → thời gian → mã kỹ thuật. Shipment/Trip/Action/Org Code/BU là mã ERP, giữ nguyên.
+    /// </summary>
+    private static readonly ExplorerColumn<ErpOrderLine>[] Columns =
     [
-        "Shipment", "Số tham chiếu", "Trip", "Biển số", "Loại GD", "Action",
-        "Mã hàng", "Tên hàng", "Org Code", "NCC / KH", "Vận chuyển",
-        "SL tổng", "SL còn lại", "Ngày GD", "BU", "Nguồn"
+        new(() => Loc.T("col.shipment"), i => i.ShipmentNumber, 130, ExplorerColumnKind.Code),
+        new(() => "Trip", i => i.TripNumber, 130, ExplorerColumnKind.Code),
+        new(() => Loc.T("col.plate"), i => i.PlateNumber, 120),
+        new(() => Loc.T("col.source"), i => i.Type ?? i.Source, 100, ExplorerColumnKind.Badge, SourceTone),
+        new(() => Loc.T("erp.col_txn_type"), i => i.TransactionTypeName, 210),
+        new(() => "Action", i => i.ActionCodeRequest, 105, ExplorerColumnKind.Badge, ActionTone),
+        new(() => Loc.T("erp.col_item_name"), i => i.ItemDescription ?? i.ItemName, 190),
+        new(() => Loc.T("field.item_code"), i => i.ItemNumber ?? i.ItemCode, 110, ExplorerColumnKind.Code),
+        new(() => Loc.T("erp.col_vendor_customer"), i => i.VendorName ?? i.CustomerName, 260),
+        // Nhà vận chuyển = ERP transporter (không còn lẫn tên tài xế).
+        new(() => Loc.T("erp.col_transporter"), i => i.EffectiveTransporter, 190),
+        new(() => Loc.T("erp.col_driver"), i => i.DriverName, 150),
+        // Kho = tên tổ chức kho ERP (organizationName) — lưu khi đăng tài, đẩy oracle-tickets khi cân xong.
+        new(() => Loc.T("erp.col_warehouse"), i => i.EffectiveWarehouse, 230),
+        new(() => Loc.T("erp.col_total_qty"), i => i.TotalQuantity, 105, ExplorerColumnKind.Number),
+        new(() => Loc.T("erp.col_remaining_qty"), i => i.RemainingQuantity, 115, ExplorerColumnKind.Number),
+        new(() => Loc.T("erp.col_txn_date"), i => i.TransactionDate, 145, ExplorerColumnKind.Date),
+        new(() => Loc.T("erp.col_reference"), i => i.ReferenceNumber, 120, ExplorerColumnKind.Code),
+        new(() => "Org Code", i => i.OrganizationCode, 100, ExplorerColumnKind.Code),
+        new(() => "BU", i => i.BusinessUnit, 100)
     ];
 
-    private void UpdateHeaderFilterIndicators()
+    private static BadgeTone SourceTone(string source) =>
+        source.Contains("WMS", StringComparison.OrdinalIgnoreCase) ? BadgeTone.Info
+        : source.Contains("Oracle", StringComparison.OrdinalIgnoreCase) ? BadgeTone.Success
+        : BadgeTone.Neutral;
+
+    private static BadgeTone ActionTone(string action) => action.ToUpperInvariant() switch
     {
-        for (var i = 0; i < _dgvData.Columns.Count && i < BaseHeaders.Length; i++)
-        {
-            var hasFilter = _columnFilters.ContainsKey(i);
-            _dgvData.Columns[i].HeaderText = hasFilter
-                ? $"{BaseHeaders[i]} 🔽"
-                : $"{BaseHeaders[i]} ▼";
-
-            if (hasFilter)
-            {
-                _dgvData.Columns[i].HeaderCell.Style.BackColor = Color.FromArgb(255, 235, 156);
-                _dgvData.Columns[i].HeaderCell.Style.ForeColor = AgrisTheme.TextPrimary;
-            }
-            else
-            {
-                _dgvData.Columns[i].HeaderCell.Style.BackColor = AgrisTheme.BrandGreen;
-                _dgvData.Columns[i].HeaderCell.Style.ForeColor = Color.White;
-            }
-        }
-    }
-
-    private void RefreshDataGrid()
-    {
-        var totalPages = Math.Max(1, (_filteredData.Count + _pageSize - 1) / _pageSize);
-        if (_currentPage > totalPages) _currentPage = totalPages;
-
-        var pageData = _filteredData
-            .Skip((_currentPage - 1) * _pageSize)
-            .Take(_pageSize)
-            .ToList();
-
-        _dgvData.SuspendLayout();
-        _dgvData.Rows.Clear();
-        foreach (var item in pageData)
-        {
-            _dgvData.Rows.Add(
-                item.ShipmentNumber, item.ReferenceNumber, item.TripNumber, item.PlateNumber,
-                item.TransactionTypeName, item.ActionCodeRequest,
-                item.ItemNumber ?? item.ItemCode,
-                item.ItemDescription ?? item.ItemName,
-                item.OrganizationCode,
-                item.VendorName ?? item.CustomerName ?? "",
-                item.Transporter ?? item.DriverName ?? "",
-                item.TotalQuantity?.ToString("N0"),
-                item.RemainingQuantity?.ToString("N0"),
-                item.TransactionDate,
-                item.BusinessUnit,
-                item.Source);
-        }
-        _dgvData.ResumeLayout();
-
-        _lblPageInfo.Text = _filteredData.Count > 0
-            ? $"{(_currentPage - 1) * _pageSize + 1}-{Math.Min(_currentPage * _pageSize, _filteredData.Count)} / {_filteredData.Count} (Trang {_currentPage}/{totalPages})"
-            : "0 / 0 (Trang 0/0)";
-        _btnPrevPage.Enabled = _currentPage > 1;
-        _btnNextPage.Enabled = _currentPage < totalPages;
-    }
+        "CONFIRM" => BadgeTone.Brand,
+        "RECEIVE" => BadgeTone.Success,
+        _ => BadgeTone.Neutral
+    };
 
     private void AppendLog(string message)
     {
+        // Kéo dữ liệu / timer tự động có thể xong sau khi tab đã đóng → log đã dispose, bỏ qua.
+        if (IsDisposed || _rtbLog.IsDisposed) return;
         if (_rtbLog.InvokeRequired)
         {
-            _rtbLog.Invoke(() => AppendLog(message));
+            try { _rtbLog.BeginInvoke(() => AppendLog(message)); }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
             return;
         }
         _rtbLog.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");

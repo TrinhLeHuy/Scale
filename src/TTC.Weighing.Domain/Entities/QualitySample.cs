@@ -31,6 +31,15 @@ public class QualitySample : AuditableEntity
     /// <summary>Kết quả chữ đường do nguồn có thẩm quyền cung cấp. Không tự tính trong phần mềm cân.</summary>
     public decimal? CcsValue { get; set; }
 
+    /// <summary>Số đọc Brix (Bx) dùng tính CCS — lưu để xem lại / đẩy lại DigiScale.</summary>
+    public decimal? BrixValue { get; set; }
+
+    /// <summary>Số đọc máy Pol.</summary>
+    public decimal? PolValue { get; set; }
+
+    /// <summary>Pol cải chính (Poldoc gửi DigiScale).</summary>
+    public decimal? PolCorrected { get; set; }
+
     /// <summary>Nguồn kết quả: DEVICE, MANUAL, FRM, LAB.</summary>
     public string Source { get; set; } = "DEVICE";
 

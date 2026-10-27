@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -6,6 +6,7 @@ using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Application.UseCases.Trips;
 using TTC.Weighing.Infrastructure.Adapters;
+using TTC.Weighing.Infrastructure.Integration;
 using TTC.Weighing.Infrastructure.Persistence;
 using TTC.Weighing.Infrastructure.Queries;
 using TTC.Weighing.Infrastructure.Repositories;
@@ -75,7 +76,13 @@ public static class DependencyInjection
         services.AddScoped<CheckPlanHandler>();
         services.AddScoped<QueueTripHandler>();
         services.AddScoped<CancelTripHandler>();
+        services.AddScoped<DeleteTripHandler>();
         services.AddScoped<RegisterTripHandler>();
+
+        // Nhật ký API đẩy / kéo (DigiScale, FRM, ERP, Portal) — handler gắn vào mọi HttpClient tích hợp bên dưới
+        services.AddSingleton<ApiCallLogStore>();
+        services.AddSingleton<TripPolicyStore>();
+        services.AddSingleton<IApiCallLogQueries>(sp => sp.GetRequiredService<ApiCallLogStore>());
 
         // FRM/ERP lookup — cache dữ liệu master FRM (the-xe, xe-van-chuyen) vào bộ nhớ
         var frmTimeoutSeconds = configuration?.GetValue<int?>("FrmPlanLookup:TimeoutSeconds") ?? 30;
@@ -92,7 +99,7 @@ public static class DependencyInjection
                     baseUrl += '/';
                 client.BaseAddress = new Uri(baseUrl);
             }
-        });
+        }).AddHttpMessageHandler(sp => new ApiCallLoggingHandler(sp.GetRequiredService<ApiCallLogStore>(), "FrmMasterDataCache"));
         services.AddSingleton(sp =>
         {
             // Resolve từ HttpClientFactory
@@ -112,6 +119,7 @@ public static class DependencyInjection
         services.AddScoped<IQrScanHandler, QrScanHandlerAdapter>();
         services.AddScoped<IWeighTicketPrintService, WeighTicketPrintAdapter>();
         services.AddScoped<ISampleScaleGateway, SampleScaleGatewayAdapter>();
+        services.AddScoped<ICcsInstrumentReader, UnconfiguredCcsInstrumentReader>();
         services.AddScoped<IDeviceStatusMonitor, DeviceStatusMonitorAdapter>();
         services.AddScoped<IWeighTicketRepository, EfWeighTicketRepository>();
 
@@ -130,7 +138,7 @@ public static class DependencyInjection
             var baseUrl = configuration?.GetValue<string>("FrmSync:BaseUrl");
             if (!string.IsNullOrWhiteSpace(baseUrl))
                 client.BaseAddress = new Uri(baseUrl);
-        });
+        }).AddHttpMessageHandler(sp => new ApiCallLoggingHandler(sp.GetRequiredService<ApiCallLogStore>(), "FrmSyncAdapter"));
 
         // DigiScale ticket sync — đẩy phiếu cân/đăng tài/tạp chất/CCS lên DigiScale
         services.AddHttpClient<DigiScaleTicketAdapter>(client =>
@@ -142,7 +150,31 @@ public static class DependencyInjection
                 if (!baseUrl.EndsWith('/')) baseUrl += '/';
                 client.BaseAddress = new Uri(baseUrl);
             }
-        });
+        }).AddHttpMessageHandler(sp => new ApiCallLoggingHandler(sp.GetRequiredService<ApiCallLogStore>(), "DigiScaleTicketAdapter"));
+
+        // Quy tắc cân (ngưỡng tạp chất/CCS/Fibre...) — kéo từ Portal DigiScale theo đơn vị
+        services.AddHttpClient<DigiScaleScaleRulesAdapter>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+            var baseUrl = configuration?.GetValue<string>("FrmPlanLookup:BaseUrl");
+            if (!string.IsNullOrWhiteSpace(baseUrl))
+            {
+                if (!baseUrl.EndsWith('/')) baseUrl += '/';
+                client.BaseAddress = new Uri(baseUrl);
+            }
+        }).AddHttpMessageHandler(sp => new ApiCallLoggingHandler(sp.GetRequiredService<ApiCallLogStore>(), "DigiScaleScaleRulesAdapter"));
+
+        // Chính sách thu mua — gọi thẳng API PhieuCan của FRM (IsQuetCS = Yes)
+        services.AddHttpClient<FrmPolicyAdapter>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(configuration?.GetValue<int?>("FrmPolicyApi:TimeoutSeconds") ?? 60);
+            var baseUrl = configuration?.GetValue<string>("FrmPolicyApi:BaseUrl");
+            if (!string.IsNullOrWhiteSpace(baseUrl))
+            {
+                if (!baseUrl.EndsWith('/')) baseUrl += '/';
+                client.BaseAddress = new Uri(baseUrl);
+            }
+        }).AddHttpMessageHandler(sp => new ApiCallLoggingHandler(sp.GetRequiredService<ApiCallLogStore>(), "FrmPolicyAdapter"));
 
         // ERP order-lines — kéo đơn hàng ERP từ DigiScale
         services.AddHttpClient<ErpOrderLineAdapter>(client =>
@@ -154,7 +186,7 @@ public static class DependencyInjection
                 if (!baseUrl.EndsWith('/')) baseUrl += '/';
                 client.BaseAddress = new Uri(baseUrl);
             }
-        });
+        }).AddHttpMessageHandler(sp => new ApiCallLoggingHandler(sp.GetRequiredService<ApiCallLogStore>(), "ErpOrderLineAdapter"));
 
         return services;
     }

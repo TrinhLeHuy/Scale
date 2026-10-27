@@ -1,0 +1,6 @@
+reg.erp_date_from	From date (ERP)
+reg.erp_date_to	To date (ERP)
+reg.erp_trip_list	TRIP list in date range
+reg.erp_date_range	ERP date range
+reg.erp_date_invalid	⚠ Invalid ERP date range: start date is after end date.
+reg.erp_none_in_range	No ERP orders from {0} to {1}. Pull the latest ERP data or widen the date range.

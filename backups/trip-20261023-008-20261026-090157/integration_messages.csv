@@ -1,0 +1,1 @@
+﻿id,trip_id,trip_revision,destination,operation,business_key,shipment_no,payload_ref,payload_hash,interface_reference,status,attempts,last_attempt_at,masked_response,business_error_code,business_error_message,external_document_ref,superseded_by_id,auto_retry_allowed,created_at,created_by,updated_at,updated_by,deleted_at,version

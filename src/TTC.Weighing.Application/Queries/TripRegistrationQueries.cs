@@ -26,6 +26,9 @@ public sealed record TripRegistrationFilter
     public DateTimeOffset? FromUtc { get; init; }
     public DateTimeOffset? ToUtc { get; init; }
     public TripGridTab Tab { get; init; } = TripGridTab.InFactory;
+
+    /// <summary>Tách lưới Mía / Vật tư.</summary>
+    public TripCategory Category { get; init; } = TripCategory.All;
 }
 
 /// <summary>

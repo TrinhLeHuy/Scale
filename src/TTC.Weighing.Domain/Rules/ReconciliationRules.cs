@@ -1,3 +1,4 @@
+using TTC.Weighing.Domain.Common;
 using TTC.Weighing.Domain.Enums;
 
 namespace TTC.Weighing.Domain.Rules;
@@ -89,30 +90,31 @@ public static class ReconciliationRules
         const ReconciliationCheckType type = ReconciliationCheckType.VehicleNetVsIotMass;
 
         if (!i.IotApplicable)
-            return Na(type, "Profile không áp dụng nguồn đo IoT.");
+            return Na(type, DomainText.T("rule.recon_iot_na", "Profile không áp dụng nguồn đo IoT."));
 
         if (i.VehicleNetKg is null || i.IotMassKg is null)
-            return Missing(type, "Thiếu số cân xe hoặc số đo IoT.");
+            return Missing(type, DomainText.T("rule.recon_missing_vehicle_or_iot", "Thiếu số cân xe hoặc số đo IoT."));
 
         // IoT quy đổi từ số bao không phải phép đo độc lập — không dùng để xác nhận lẫn nhau.
         if (i.IotMassOrigin != MassOrigin.Measured)
             return Missing(type,
-                "IoT khai báo DERIVED_FROM_COUNT nên không phải nguồn cân kg độc lập (B-011).");
+                DomainText.T("rule.recon_iot_derived", "IoT khai báo DERIVED_FROM_COUNT nên không phải nguồn cân kg độc lập (B-011)."));
 
         if (i.VehicleNetBasis == MassBasis.Unknown || i.IotMassBasis == MassBasis.Unknown)
-            return Missing(type, "Chưa khai báo rõ cơ sở khối lượng của một trong hai nguồn.");
+            return Missing(type, DomainText.T("rule.recon_basis_unknown", "Chưa khai báo rõ cơ sở khối lượng của một trong hai nguồn."));
 
         if (i.VehicleNetBasis != i.IotMassBasis)
             return Missing(type,
-                $"Cơ sở khối lượng khác nhau ({i.VehicleNetBasis} so với {i.IotMassBasis}). " +
-                "Cần dữ liệu bao bì hợp lệ để quy về cùng cơ sở, không trừ hằng số.");
+                DomainText.T("rule.recon_basis_mismatch",
+                    "Cơ sở khối lượng khác nhau ({0} so với {1}). Cần dữ liệu bao bì hợp lệ để quy về cùng cơ sở, không trừ hằng số.",
+                    i.VehicleNetBasis, i.IotMassBasis));
 
         var difference = i.VehicleNetKg.Value - i.IotMassKg.Value;
 
         if (i.Tolerance.VehicleVsIotToleranceKg is null)
             return new(type, ReconciliationVerdict.Pending,
                 i.VehicleNetKg, i.IotMassKg, null, null, difference, "kg",
-                "Chưa có dung sai đã duyệt cho so sánh cân xe với IoT (D-06).");
+                DomainText.T("rule.recon_iot_tolerance_missing", "Chưa có dung sai đã duyệt cho so sánh cân xe với IoT (D-06)."));
 
         var tolerance = i.Tolerance.VehicleVsIotToleranceKg.Value;
         var passed = Math.Abs(difference) <= tolerance;
@@ -122,7 +124,7 @@ public static class ReconciliationRules
             i.VehicleNetKg, i.IotMassKg,
             i.IotMassKg - tolerance, i.IotMassKg + tolerance,
             difference, "kg",
-            passed ? null : $"Lệch {difference:N3} kg, vượt dung sai {tolerance:N3} kg.");
+            passed ? null : DomainText.T("rule.recon_kg_exceeds", "Lệch {0:N3} kg, vượt dung sai {1:N3} kg.", difference, tolerance));
     }
 
     private static ReconciliationCheckResult CheckAiBagCountVsWarehouseCount(ReconciliationInput i)
@@ -130,20 +132,20 @@ public static class ReconciliationRules
         const ReconciliationCheckType type = ReconciliationCheckType.AiBagCountVsWarehouseCount;
 
         if (!i.BagCountApplicable)
-            return Na(type, "Profile không áp dụng đếm bao.");
+            return Na(type, DomainText.T("rule.recon_bag_na", "Profile không áp dụng đếm bao."));
 
         if (i.AiBagCount is null)
-            return Missing(type, "Thiếu số bao đếm được từ AI. Không gán bằng 0 bao.");
+            return Missing(type, DomainText.T("rule.recon_missing_ai_bags", "Thiếu số bao đếm được từ AI. Không gán bằng 0 bao."));
 
         if (i.WarehouseConfirmedQuantity is null)
-            return Missing(type, "Thiếu số bao kho đã xác nhận.");
+            return Missing(type, DomainText.T("rule.recon_missing_wh_bags", "Thiếu số bao kho đã xác nhận."));
 
         var difference = i.AiBagCount.Value - i.WarehouseConfirmedQuantity.Value;
 
         if (i.Tolerance.BagCountTolerance is null)
             return new(type, ReconciliationVerdict.Pending,
                 i.AiBagCount, i.WarehouseConfirmedQuantity, null, null, difference, "bao",
-                "Chưa có dung sai số bao đã duyệt (D-06).");
+                DomainText.T("rule.recon_bag_tolerance_missing", "Chưa có dung sai số bao đã duyệt (D-06)."));
 
         var tolerance = i.Tolerance.BagCountTolerance.Value;
         var passed = Math.Abs(difference) <= tolerance;
@@ -153,7 +155,7 @@ public static class ReconciliationRules
             i.AiBagCount, i.WarehouseConfirmedQuantity,
             i.WarehouseConfirmedQuantity - tolerance, i.WarehouseConfirmedQuantity + tolerance,
             difference, "bao",
-            passed ? null : $"Lệch {difference:N0} bao, vượt dung sai {tolerance} bao.");
+            passed ? null : DomainText.T("rule.recon_bag_exceeds", "Lệch {0:N0} bao, vượt dung sai {1} bao.", difference, tolerance));
     }
 
     /// <summary>
@@ -166,35 +168,35 @@ public static class ReconciliationRules
         const ReconciliationCheckType type = ReconciliationCheckType.VehicleNetVsNominalRange;
 
         if (!i.WarehouseConfirmationRequired)
-            return Na(type, "Profile không yêu cầu đối chiếu với quy cách kho.");
+            return Na(type, DomainText.T("rule.recon_bom_na", "Profile không yêu cầu đối chiếu với quy cách kho."));
 
         if (i.VehicleNetKg is null)
-            return Missing(type, "Thiếu số cân xe.");
+            return Missing(type, DomainText.T("rule.recon_missing_vehicle", "Thiếu số cân xe."));
 
         if (i.WarehouseConfirmedQuantity is null)
-            return Missing(type, "Thiếu số lượng kho đã xác nhận làm cơ sở quy đổi.");
+            return Missing(type, DomainText.T("rule.recon_missing_wh_qty", "Thiếu số lượng kho đã xác nhận làm cơ sở quy đổi."));
 
         if (i.MinKgPerUnit is null || i.MaxKgPerUnit is null)
         {
             var nominalNote = i.NominalKgPerUnit is null
-                ? "BOM không có khối lượng danh nghĩa."
-                : $"BOM chỉ có khối lượng danh nghĩa {i.NominalKgPerUnit} kg/đơn vị, chưa có min/max.";
+                ? DomainText.T("rule.recon_bom_no_nominal", "BOM không có khối lượng danh nghĩa.")
+                : DomainText.T("rule.recon_bom_nominal_only", "BOM chỉ có khối lượng danh nghĩa {0} kg/đơn vị, chưa có min/max.", i.NominalKgPerUnit);
 
             return Missing(type,
-                $"{nominalNote} Chưa dựng được khoảng dung sai, không tự áp ±20 kg (S04 tr.29, D-06).");
+                DomainText.T("rule.recon_bom_no_range", "{0} Chưa dựng được khoảng dung sai, không tự áp ±20 kg (S04 tr.29, D-06).", nominalNote));
         }
 
         if (i.Tolerance.ScaleMarginKg is null)
             return new(type, ReconciliationVerdict.Pending,
                 i.VehicleNetKg, null, null, null, null, "kg",
-                "Chưa có biên sai số bàn cân đã duyệt cho profile này (D-06).");
+                DomainText.T("rule.recon_scale_margin_missing", "Chưa có biên sai số bàn cân đã duyệt cho profile này (D-06)."));
 
         if (i.BomMassBasis != MassBasis.Unknown &&
             i.VehicleNetBasis != MassBasis.Unknown &&
             i.BomMassBasis != i.VehicleNetBasis)
         {
             return Missing(type,
-                $"Cơ sở khối lượng BOM ({i.BomMassBasis}) khác cân xe ({i.VehicleNetBasis}).");
+                DomainText.T("rule.recon_bom_basis_mismatch", "Cơ sở khối lượng BOM ({0}) khác cân xe ({1}).", i.BomMassBasis, i.VehicleNetBasis));
         }
 
         var referenceCount = i.WarehouseConfirmedQuantity.Value;
@@ -215,7 +217,7 @@ public static class ReconciliationRules
             nominalKg is null ? null : net - nominalKg, "kg",
             passed
                 ? null
-                : $"Cân xe {net:N3} kg ngoài khoảng [{lower:N3}; {upper:N3}] kg.");
+                : DomainText.T("rule.recon_out_of_range", "Cân xe {0:N3} kg ngoài khoảng [{1:N3}; {2:N3}] kg.", net, lower, upper));
     }
 
     /// <summary>
@@ -226,10 +228,10 @@ public static class ReconciliationRules
         const ReconciliationCheckType type = ReconciliationCheckType.TripActualVsSourcePlan;
 
         if (i.PlannedQuantity is null)
-            return Na(type, "Nguồn không cung cấp số kế hoạch cho dòng hàng này.");
+            return Na(type, DomainText.T("rule.recon_plan_na", "Nguồn không cung cấp số kế hoạch cho dòng hàng này."));
 
         if (i.WarehouseConfirmedQuantity is null)
-            return Missing(type, "Thiếu số xác nhận thực tế của chuyến.");
+            return Missing(type, DomainText.T("rule.recon_missing_actual", "Thiếu số xác nhận thực tế của chuyến."));
 
         var difference = i.WarehouseConfirmedQuantity.Value - i.PlannedQuantity.Value;
 
@@ -239,7 +241,7 @@ public static class ReconciliationRules
             i.WarehouseConfirmedUom ?? "đơn vị",
             difference == 0
                 ? null
-                : $"Chuyến này giao {difference:N3} so với kế hoạch — giao một phần là hợp lệ.");
+                : DomainText.T("rule.recon_partial_delivery", "Chuyến này giao {0:N3} so với kế hoạch — giao một phần là hợp lệ.", difference));
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -23,11 +23,15 @@ public sealed class DigiScaleTicketAdapter
     /// <summary>BU hiện tại — set từ bên ngoài (Program.cs / FrmMasterDataCache).</summary>
     public string? ActiveBusinessUnit { get; set; }
 
-    public DigiScaleTicketAdapter(HttpClient httpClient, IConfiguration configuration, ILogger<DigiScaleTicketAdapter> logger)
+    private readonly FrmPolicyAdapter _frmPolicy;
+
+    public DigiScaleTicketAdapter(HttpClient httpClient, IConfiguration configuration, ILogger<DigiScaleTicketAdapter> logger,
+        FrmPolicyAdapter frmPolicy)
     {
         _httpClient = httpClient;
         _configuration = configuration;
         _logger = logger;
+        _frmPolicy = frmPolicy;
     }
 
     /// <summary>Đẩy phiếu đăng tài lên DigiScale. BU lấy từ lệnh đốn.</summary>
@@ -35,8 +39,16 @@ public sealed class DigiScaleTicketAdapter
         => PushAsync("new_phieudangtai", new { PhieuDangTai = new[] { new { LenhDon = lenhDonId, MaLenhDon = maLenhDon, Ngay = ngay.ToString("M/d/yyyy  h:mm:ss tt", System.Globalization.CultureInfo.InvariantCulture), UuTien = uuTien, LoaiXe = loaiXe, SoDangTai = soDangTai } } }, ct, lenhDonBu);
 
     /// <summary>Đẩy phiếu cân lên DigiScale. LoaiCan: 100000000=cân vào, 100000001=cân ra. isQuetCS: truyền "Yes" khi cân lần 2 để lấy chính sách.</summary>
-    public async Task<TicketResult> PushPhieuCanAsync(string loaiCan, string lanCan, string nvCan, string? userNameNvCan, string lenhDonId, string maLenhDon, string trongLuong, DateTime thoiGian, string soPhieuCan, string? maBanCan, string tlThanhToan, string tcThanhToan, string ccsThanhToan, string? lenhDonBu = null, CancellationToken ct = default, bool isQuetCS = false)
+    /// <param name="tapChatCs">Tạp chất theo chính sách (%) — gửi khi đã có chính sách; null = "0".</param>
+    /// <param name="ccsChinhSach">CCS theo chính sách — gửi khi đã có chính sách; null = "0".</param>
+    public async Task<TicketResult> PushPhieuCanAsync(string loaiCan, string lanCan, string nvCan, string? userNameNvCan, string lenhDonId, string maLenhDon, string trongLuong, DateTime thoiGian, string soPhieuCan, string? maBanCan, string tlThanhToan, string tcThanhToan, string ccsThanhToan, string? lenhDonBu = null, CancellationToken ct = default, bool isQuetCS = false, string? tapChatCs = null, string? ccsChinhSach = null)
     {
+        // Có API chính sách FRM (FrmPolicyApi) → bắt chính sách trực tiếp ở FRM (IsQuetCS = Yes),
+        // rồi gửi phiếu lần 2 lên DigiScale kèm tạp chất / CCS chính sách (IsQuetCS = No, không bắt lại).
+        if (isQuetCS && _frmPolicy.IsEnabled)
+            return await PushPhieuCanWithFrmPolicyAsync(loaiCan, lanCan, nvCan, userNameNvCan, lenhDonId, maLenhDon,
+                trongLuong, thoiGian, soPhieuCan, maBanCan, tlThanhToan, tcThanhToan, ccsThanhToan, lenhDonBu, ct);
+
         var result = await PushAsync("new_phieucan", new
         {
             PhieuCan = new[] { new {
@@ -48,7 +60,7 @@ public sealed class DigiScaleTicketAdapter
                 SoPhieuCan = soPhieuCan, Name = "Null",
                 TrongLuongThanhToan = tlThanhToan, TapChatThanhToan = tcThanhToan, CCSThanhToan = ccsThanhToan,
                 IsQuetCS = isQuetCS ? "Yes" : "No",
-                TapChatCS = "0", CCSChinhSach = "0"
+                TapChatCS = tapChatCs ?? "0", CCSChinhSach = ccsChinhSach ?? "0"
             } }
         }, ct, lenhDonBu);
 
@@ -72,6 +84,61 @@ public sealed class DigiScaleTicketAdapter
         return result;
     }
 
+    /// <summary>Có API chính sách FRM để xem trước chính sách (trước khi lưu cân lần 2).</summary>
+    public bool CanPreviewPolicy => _frmPolicy.IsEnabled;
+
+    /// <summary>Chính sách đã lưu của chuyến (theo số phiếu cân).</summary>
+    public Task<Integration.TripPolicy?> GetStoredPolicyAsync(string soPhieuCan, CancellationToken ct = default)
+        => _frmPolicy.GetStoredAsync(soPhieuCan, ct);
+
+    /// <summary>
+    /// Xem trước chính sách FRM cho cân lần 2 (IsQuetCS = Yes) với số cân hiện tại — KHÔNG gửi DigiScale.
+    /// FRM ghi nhận phiếu lần 2 tạm với số này; lúc bấm Xác nhận cân lần 2 app gửi lại đúng số chốt.
+    /// </summary>
+    public Task<FrmPolicyResult> PreviewPolicyAsync(string businessUnit, string soPhieuCan, string lenhDonId, string maLenhDon,
+        string? maBanCan, decimal trongLuongTon, string? userNameNvCan, string? nvCan, CancellationToken ct = default)
+        => _frmPolicy.CatchPolicyAsync(businessUnit, soPhieuCan, lenhDonId, maLenhDon, maBanCan,
+            trongLuongTon, DateTime.Now, userNameNvCan, nvCan, ct, isPreview: true);
+
+    private async Task<TicketResult> PushPhieuCanWithFrmPolicyAsync(string loaiCan, string lanCan, string nvCan, string? userNameNvCan,
+        string lenhDonId, string maLenhDon, string trongLuong, DateTime thoiGian, string soPhieuCan, string? maBanCan,
+        string tlThanhToan, string tcThanhToan, string ccsThanhToan, string? lenhDonBu, CancellationToken ct)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var bu = lenhDonBu ?? ActiveBusinessUnit ?? string.Empty;
+        _ = decimal.TryParse(trongLuong, System.Globalization.NumberStyles.Any, inv, out var tons);
+
+        var policy = await _frmPolicy.CatchPolicyAsync(bu, soPhieuCan, lenhDonId, maLenhDon, maBanCan,
+            tons, thoiGian, userNameNvCan, nvCan, ct);
+        if (!policy.HasPolicy)
+            return new TicketResult(false, $"POLICY_ERROR: {policy.Error ?? "FRM_POLICY_NOT_FOUND"}");
+
+        var tcText = policy.TapChatCS!.Value.ToString(inv);
+        var ccsText = policy.CcsChinhSach?.ToString(inv) ?? "0";
+        var pushed = await PushAsync("new_phieucan", new
+        {
+            PhieuCan = new[] { new {
+                LoaiCan = loaiCan, LanCan = lanCan,
+                NhanVienCanVao = nvCan, UserNameNhanVienCanVao = userNameNvCan,
+                LenhDon = lenhDonId, MaLenhDon = maLenhDon, MaBanCan = maBanCan,
+                TrongLuong = trongLuong,
+                ThoiGianCanVao = thoiGian.ToString("M/d/yyyy  h:mm:ss tt", inv),
+                SoPhieuCan = soPhieuCan, Name = "Null",
+                TrongLuongThanhToan = tlThanhToan, TapChatThanhToan = tcThanhToan, CCSThanhToan = ccsThanhToan,
+                IsQuetCS = "No",
+                TapChatCS = tcText, CCSChinhSach = ccsText
+            } }
+        }, ct, lenhDonBu);
+
+        // DigiScale lỗi → trả lỗi DigiScale (phiếu chưa được nhận), giữ chính sách để hiển thị lý do.
+        return pushed with
+        {
+            TapChatCS = policy.TapChatCS,
+            CcsChinhSach = policy.CcsChinhSach,
+            ChinhSachThuMia = policy.ChinhSachThuMua
+        };
+    }
+
     /// <summary>Parse CCSChinhSach, TapChatCS, ChinhSachThuMia từ response JSON DigiScale.</summary>
     private static TicketResult ParsePolicyFromResponse(TicketResult original)
     {
@@ -92,24 +159,46 @@ public sealed class DigiScaleTicketAdapter
             decimal? tcCS = null;
             string? chinhSach = null;
 
-            // Format 1 (mới): items[0].policy object
+            // Format 1 (mới): items[0].policy — object, hoặc chuỗi JSON kết quả action FRM
+            // "BatChinhSachCanDo": {"status":200,"tapchatthanhtoan":x,"ccsthanhtoan":y}
+            //                     / {"status":500,"message_error":"..."}.
             if (root.TryGetProperty("items", out var itemsArr) && itemsArr.GetArrayLength() > 0)
             {
                 var item = itemsArr[0];
 
                 // Check error
-                if (item.TryGetProperty("error", out var errEl) && errEl.GetString() is string errMsg && !string.IsNullOrWhiteSpace(errMsg))
+                if (item.TryGetProperty("error", out var errEl) && errEl.ValueKind == JsonValueKind.String
+                    && errEl.GetString() is string errMsg && !string.IsNullOrWhiteSpace(errMsg))
                 {
                     // API trả lỗi chính sách → trả về result với error, không có policy
-                    return original with { ErrorMessage = errMsg };
+                    return original with { IsSuccess = false, ErrorMessage = errMsg };
                 }
 
-                if (item.TryGetProperty("policy", out var policyEl) && policyEl.ValueKind == JsonValueKind.Object)
+                if (item.TryGetProperty("policy", out var policyRaw))
                 {
-                    tcCS = TryGetDecimal(policyEl, "TapChatCS");
-                    ccsCS = TryGetDecimal(policyEl, "CCSChinhSach");
-                    if (policyEl.TryGetProperty("ChinhSachThuMia", out var csEl))
-                        chinhSach = csEl.GetString();
+                    using var policyDoc = policyRaw.ValueKind == JsonValueKind.String
+                        && policyRaw.GetString() is { Length: > 0 } policyJson && policyJson.TrimStart().StartsWith('{')
+                            ? JsonDocument.Parse(policyJson)
+                            : null;
+                    var policyEl = policyDoc?.RootElement ?? policyRaw;
+
+                    if (policyEl.ValueKind == JsonValueKind.Object)
+                    {
+                        // Action FRM báo lỗi (không tìm thấy hợp đồng / chính sách / thời gian cân ra...)
+                        var status = TryGetDecimal(policyEl, "status");
+                        if (status is >= 400)
+                        {
+                            var msg = TryGetString(policyEl, "message_error", "message", "error") ?? "FRM policy error";
+                            return original with { IsSuccess = false, ErrorMessage = $"POLICY_ERROR: {msg}" };
+                        }
+
+                        tcCS = TryGetDecimal(policyEl, "TapChatCS", "tapchatthanhtoan", "TapChatThanhToan");
+                        ccsCS = TryGetDecimal(policyEl, "CCSChinhSach", "ccsthanhtoan", "CCSThanhToan");
+                        chinhSach = TryGetString(policyEl, "ChinhSachThuMua", "ChinhSachThuMia", "TenChinhSach");
+
+                        // CCS = 0 nghĩa là chưa có kết quả CCS (action giữ CCS thực tế = 0) — không phải giá trị thật.
+                        if (ccsCS == 0m) ccsCS = null;
+                    }
                 }
             }
 
@@ -125,11 +214,9 @@ public sealed class DigiScaleTicketAdapter
                     if (t.HasValue && t.Value != 0) tcCS = t;
                     var c = TryGetDecimal(pc, "CCSChinhSach");
                     if (c.HasValue && c.Value != 0) ccsCS = c;
-                    if (pc.TryGetProperty("ChinhSachThuMia", out var csEl2))
-                    {
-                        var s = csEl2.GetString();
-                        if (!string.IsNullOrWhiteSpace(s)) chinhSach = s;
-                    }
+                    // Tài liệu API FRM: tên trường là "ChinhSachThuMua" (giữ "ChinhSachThuMia" cho bản cũ).
+                    if (TryGetString(pc, "ChinhSachThuMua", "ChinhSachThuMia") is { } s)
+                        chinhSach = s;
                 }
             }
 
@@ -141,13 +228,28 @@ public sealed class DigiScaleTicketAdapter
         }
     }
 
-    private static decimal? TryGetDecimal(JsonElement el, string prop)
+    /// <summary>Đọc số theo tên thuộc tính đầu tiên tìm thấy (không phân biệt hoa thường).</summary>
+    private static decimal? TryGetDecimal(JsonElement el, params string[] props)
     {
-        if (!el.TryGetProperty(prop, out var val)) return null;
+        if (FindProperty(el, props) is not { } val) return null;
         if (val.ValueKind == JsonValueKind.Number) return val.GetDecimal();
         if (val.ValueKind == JsonValueKind.String && decimal.TryParse(val.GetString(),
             System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
             return d;
+        return null;
+    }
+
+    private static string? TryGetString(JsonElement el, params string[] props)
+        => FindProperty(el, props) is { ValueKind: JsonValueKind.String } val
+           && val.GetString() is { } s && !string.IsNullOrWhiteSpace(s) ? s : null;
+
+    private static JsonElement? FindProperty(JsonElement el, string[] props)
+    {
+        if (el.ValueKind != JsonValueKind.Object) return null;
+        foreach (var name in props)
+            foreach (var p in el.EnumerateObject())
+                if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase) && p.Value.ValueKind != JsonValueKind.Null)
+                    return p.Value;
         return null;
     }
 
@@ -169,7 +271,8 @@ public sealed class DigiScaleTicketAdapter
         string? itemNumber = null, string? itemDescription = null, decimal? quantity = null,
         string? transporter = null, string? plateNumber = null, string? driverName = null, string? truckOwner = null,
         string? vendorName = null, string? vendorNumber = null, string? vendorSiteCode = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? organizationName = null)
     {
         // Lines array — bắt buộc ít nhất 1 dòng
         var line = new Dictionary<string, object?>
@@ -191,7 +294,8 @@ public sealed class DigiScaleTicketAdapter
             ["ActionCodeRequest"] = actionCode,
             ["TripNumber"] = tripNumber,
             ["ShipmentNumber"] = shipmentNumber,
-            ["Transporter"] = transporter ?? "",
+            // Không có nhà vận chuyển → gửi null (không gửi chuỗi rỗng).
+            ["Transporter"] = string.IsNullOrWhiteSpace(transporter) ? null : transporter.Trim(),
             ["PlateNumber"] = plateNumber ?? "",
             ["DriverName"] = driverName ?? "",
             ["TruckOwner"] = truckOwner ?? "",
@@ -202,6 +306,8 @@ public sealed class DigiScaleTicketAdapter
             ["TotalNetWeight"] = netWeight,
             ["WeightNumber"] = weightNumber,
             ["OrganizationCode"] = organizationCode,
+            // Kho (tên tổ chức kho ERP). Không có → null.
+            ["OrganizationName"] = string.IsNullOrWhiteSpace(organizationName) ? null : organizationName.Trim(),
             ["VendorName"] = vendorName ?? "",
             ["VendorNumber"] = vendorNumber ?? "",
             ["VendorSiteCode"] = vendorSiteCode ?? "",
@@ -307,7 +413,24 @@ public sealed class DigiScaleTicketAdapter
                     return new TicketResult(false, $"DigiScale không lưu: {itemError ?? "unknown"}");
             }
 
-            return new TicketResult(false, $"HTTP {(int)response.StatusCode}: {(responseBody.Length > 200 ? responseBody[..200] : responseBody)}");
+            // HTTP 4xx (vd 422) vẫn có items[0].error mô tả lỗi nghiệp vụ (NO_POLICY...) —
+            // phải lấy đủ câu lỗi, không cắt 200 ký tự đầu (phần đó chỉ là logicalName/organizationUnitId).
+            string? businessError = null;
+            try
+            {
+                using var errDoc = JsonDocument.Parse(responseBody);
+                if (errDoc.RootElement.TryGetProperty("items", out var errItems) && errItems.GetArrayLength() > 0
+                    && errItems[0].TryGetProperty("error", out var errText) && errText.ValueKind == JsonValueKind.String)
+                    businessError = errText.GetString();
+            }
+            catch { /* body không phải JSON */ }
+
+            _logger.LogWarning("DigiScale {LogicalName} rejected HTTP {Status}: {Error}",
+                logicalName, (int)response.StatusCode, businessError ?? Truncate(responseBody));
+
+            return new TicketResult(false, businessError is not null
+                ? $"HTTP {(int)response.StatusCode}: {businessError}"
+                : $"HTTP {(int)response.StatusCode}: {(responseBody.Length > 200 ? responseBody[..200] : responseBody)}");
         }
         catch (Exception ex)
         {
@@ -340,4 +463,16 @@ public sealed record TicketResult(bool IsSuccess, string? ErrorMessage)
 
     /// <summary>Tên chính sách thu mía trả về từ DigiScale.</summary>
     public string? ChinhSachThuMia { get; init; }
+
+    /// <summary>
+    /// DigiScale từ chối vì lệnh đốn chưa có chính sách thu mua (CR-07 NO_POLICY).
+    /// Khi đó phiếu cân KHÔNG được lưu bên DigiScale.
+    /// </summary>
+    public bool IsNoPolicy => ErrorMessage?.Contains("NO_POLICY", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>
+    /// Đã bắt được chính sách. Action FRM luôn trả tạp chất thanh toán khi tìm được chính sách
+    /// (có thể = 0 khi miễn trừ); CCS có thể chưa có (null) — không làm mất chính sách.
+    /// </summary>
+    public bool HasPolicy => IsSuccess && TapChatCS.HasValue;
 }

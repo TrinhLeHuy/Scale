@@ -11,6 +11,11 @@ internal sealed record LanguageItem(AppLanguage Language)
     public override string ToString() => Language.DisplayName();
 }
 
+/// <summary>
+/// Màn hình đăng nhập toàn màn hình, bố cục chia đôi:
+/// trái là vùng thương hiệu (nền tối, logo, thông điệp), phải là biểu mẫu đăng nhập nền trắng.
+/// Văn bản song ngữ Việt/Anh cố định vì lúc này chưa biết BU → chưa biết ngôn ngữ được phép.
+/// </summary>
 public sealed class LoginForm : Form
 {
     /// <summary>Giảm chớp nháy khi khởi động.</summary>
@@ -24,27 +29,21 @@ public sealed class LoginForm : Form
         }
     }
 
-    private static readonly Color Teal = Color.FromArgb(22, 111, 163);
-    private static readonly Color Green = Color.FromArgb(0, 148, 68);
+    private const string SignInText = "ĐĂNG NHẬP / SIGN IN";
 
     private readonly TextBox _txtUser;
     private readonly TextBox _txtPass;
     private readonly Button _btnLogin;
     private readonly Label _lblError;
-    private readonly Label _lblTitle;
-    private readonly Label _lblSub;
-    private readonly Label _lblU;
-    private readonly Label _lblP;
     private readonly string? _apiBaseUrl;
     private readonly string? _requiredTenantId;
 
-    // Card + close button — lưu để DoLayout dùng.
-    private readonly Panel _card;
+    private readonly BrandPanel _brand;
+    private readonly Panel _formHost;
+    private readonly Panel _formCard;
     private readonly Button _btnClose;
 
-    // Cờ chặn vẽ + layout khi form đang maximize / chưa sẵn sàng.
     private bool _ready;
-    private Bitmap? _bgCache; // Cache background tránh vẽ lại mỗi repaint
 
     public string? AuthenticatedUser { get; private set; }
 
@@ -59,154 +58,156 @@ public sealed class LoginForm : Form
         FormBorderStyle = FormBorderStyle.None;
         DoubleBuffered = true;
         KeyPreview = true;
-        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
 
-        // Không dùng WindowState = Maximized (gây chớp nháy do Windows resize 2 lần).
-        // Thay vào đó set kích thước = toàn màn hình ngay từ constructor.
+        // Kích thước = toàn màn hình ngay từ constructor (tránh chớp do maximize hai lần).
         var screen = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1920, 1080);
         StartPosition = FormStartPosition.Manual;
         Location = screen.Location;
         ClientSize = screen.Size;
-        BackColor = Color.FromArgb(36, 88, 110);
-        Opacity = 0; // Ẩn hoàn toàn cho đến khi vẽ xong — tránh chớp trắng
-
-        Paint += PaintBg;
+        BackColor = AgrisTheme.Surface;
+        Opacity = 0; // Ẩn cho đến khi layout xong — tránh chớp trắng
 
         SuspendLayout();
 
-        // ── Card giữa màn hình ──
-        _card = new Panel { Size = new Size(440, 520), BackColor = Color.Transparent, Visible = false };
-        _card.Paint += PaintCard;
+        // ── Trái: vùng thương hiệu ──
+        _brand = new BrandPanel { Dock = DockStyle.Left, Width = (int)(ClientSize.Width * 0.46) };
 
-        // Logo area
-        var pnlLogo = new Panel { Dock = DockStyle.Top, Height = 160, BackColor = Color.Transparent };
-        pnlLogo.Paint += PaintLogo;
+        // ── Phải: biểu mẫu ──
+        _formHost = new Panel { Dock = DockStyle.Fill, BackColor = AgrisTheme.Surface };
 
-        // Form area
-        var formArea = new Panel
+        _formCard = new Panel { Size = new Size(440, 560), BackColor = AgrisTheme.Surface };
+
+        var lblTitle = new Label
         {
-            Dock = DockStyle.Fill,
-            BackColor = Color.Transparent,
-            Padding = new Padding(48, 8, 48, 16)
+            Text = "Đăng nhập",
+            Dock = DockStyle.Top, Height = 52,
+            Font = new Font(AgrisTheme.FontFamily, 22F, FontStyle.Bold),
+            ForeColor = AgrisTheme.TextPrimary,
+            TextAlign = ContentAlignment.BottomLeft
         };
 
-        _lblTitle = new Label
+        var lblTitleEn = new Label
         {
-            Text = "Đăng nhập hệ thống / System Login",
-            Dock = DockStyle.Top, Height = 38,
-            Font = new Font("Segoe UI", 14F, FontStyle.Bold),
-            ForeColor = Color.FromArgb(30, 60, 70),
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.Transparent
+            Text = "Sign in to continue",
+            Dock = DockStyle.Top, Height = 28,
+            Font = new Font(AgrisTheme.FontFamily, 11F),
+            ForeColor = AgrisTheme.TextMuted,
+            TextAlign = ContentAlignment.TopLeft
         };
 
-        _lblSub = new Label
+        var lblSub = new Label
         {
-            Text = "Nhập thông tin tài khoản / Enter your credentials",
-            Dock = DockStyle.Top, Height = 22,
-            Font = new Font("Segoe UI", 9.5F),
-            ForeColor = Color.FromArgb(120, 135, 140),
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.Transparent
+            Text = "Nhập thông tin tài khoản DigiScale / Enter your DigiScale credentials",
+            Dock = DockStyle.Top, Height = 44,
+            Font = new Font(AgrisTheme.FontFamily, 9.5F),
+            ForeColor = AgrisTheme.TextMuted,
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
-        var sp1 = Spacer(18);
-        _lblU = FieldLabel("TÊN ĐĂNG NHẬP / USERNAME");
-        _txtUser = Input("Nhập tên đăng nhập / Enter username");
+        var userBox = new InputBox("\uE77B", "Nhập tên đăng nhập / Enter username");
+        _txtUser = userBox.TextBox;
         _txtUser.TabIndex = 0;
-        var sp2 = Spacer(12);
-        _lblP = FieldLabel("MẬT KHẨU / PASSWORD");
-        _txtPass = Input("••••••••");
+        _txtUser.AccessibleName = "Tên đăng nhập / Username";
+
+        var passBox = new InputBox("\uE72E", "••••••••");
+        _txtPass = passBox.TextBox;
         _txtPass.UseSystemPasswordChar = true;
         _txtPass.TabIndex = 1;
-        var sp3 = Spacer(20);
+        _txtPass.AccessibleName = "Mật khẩu / Password";
 
-        _btnLogin = new Button
+        _btnLogin = new ModernButton
         {
-            Text = "ĐĂNG NHẬP / SIGN IN",
-            Dock = DockStyle.Top, Height = 44,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Teal, ForeColor = Color.White,
-            Font = new Font("Segoe UI", 11F, FontStyle.Bold),
-            Cursor = Cursors.Hand,
-            TabIndex = 2
+            Text = SignInText,
+            Dock = DockStyle.Top, Height = 50,
+            BackColor = AgrisTheme.Primary,
+            ForeColor = AgrisTheme.TextOnBrand,
+            Font = new Font(AgrisTheme.FontFamily, 11F, FontStyle.Bold),
+            TabIndex = 2,
+            CornerRadius = AgrisTheme.RadiusMd,
+            AccessibleName = SignInText
         };
-        _btnLogin.FlatAppearance.BorderSize = 0;
-        _btnLogin.FlatAppearance.MouseOverBackColor = Green;
-        _btnLogin.Paint += PaintBtn;
+        _btnLogin.FlatAppearance.MouseOverBackColor = AgrisTheme.PrimaryHover;
         _btnLogin.Click += OnLogin;
 
         _lblError = new Label
         {
             Text = string.Empty,
-            Dock = DockStyle.Top, Height = 26,
-            Font = new Font("Segoe UI", 9.5F),
+            Dock = DockStyle.Top, Height = 48,
+            Font = new Font(AgrisTheme.FontFamily, 9.5F),
             ForeColor = AgrisTheme.Danger,
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.Transparent,
-            TabStop = false
+            TextAlign = ContentAlignment.MiddleLeft,
+            TabStop = false,
+            AccessibleRole = AccessibleRole.Alert
         };
 
-        formArea.Controls.Add(_lblError);
-        formArea.Controls.Add(Spacer(6));
-        formArea.Controls.Add(_btnLogin);
-        formArea.Controls.Add(sp3);
-        formArea.Controls.Add(_txtPass);
-        formArea.Controls.Add(_lblP);
-        formArea.Controls.Add(sp2);
-        formArea.Controls.Add(_txtUser);
-        formArea.Controls.Add(_lblU);
-        formArea.Controls.Add(sp1);
-        formArea.Controls.Add(_lblSub);
-        formArea.Controls.Add(_lblTitle);
-
-        _card.Controls.Add(formArea);
-        _card.Controls.Add(pnlLogo);
-
-        // Close
-        _btnClose = new Button
+        var lblHelp = new Label
         {
-            Text = "✕", Size = new Size(40, 30), FlatStyle = FlatStyle.Flat,
-            BackColor = Color.Transparent, ForeColor = Color.FromArgb(200, 255, 255, 255),
-            Font = new Font("Segoe UI", 14F), Cursor = Cursors.Hand,
-            Anchor = AnchorStyles.Top | AnchorStyles.Right,
-            Visible = false,
-            TabStop = false
+            Text = "Quên mật khẩu? Liên hệ quản trị hệ thống / Forgot password? Contact your administrator",
+            Dock = DockStyle.Top, Height = 40,
+            Font = new Font(AgrisTheme.FontFamily, 8.5F),
+            ForeColor = AgrisTheme.TextMuted,
+            TextAlign = ContentAlignment.MiddleLeft
         };
-        _btnClose.FlatAppearance.BorderSize = 0;
-        _btnClose.FlatAppearance.MouseOverBackColor = AgrisTheme.Danger;
-        _btnClose.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
 
-        // Footer
+        // Thứ tự Add ngược với thứ tự hiển thị (Dock = Top).
+        _formCard.Controls.Add(lblHelp);
+        _formCard.Controls.Add(_lblError);
+        _formCard.Controls.Add(_btnLogin);
+        _formCard.Controls.Add(Spacer(24));
+        _formCard.Controls.Add(passBox);
+        _formCard.Controls.Add(FieldLabel("MẬT KHẨU / PASSWORD"));
+        _formCard.Controls.Add(Spacer(16));
+        _formCard.Controls.Add(userBox);
+        _formCard.Controls.Add(FieldLabel("TÊN ĐĂNG NHẬP / USERNAME"));
+        _formCard.Controls.Add(Spacer(20));
+        _formCard.Controls.Add(lblSub);
+        _formCard.Controls.Add(lblTitleEn);
+        _formCard.Controls.Add(lblTitle);
+
+        _formHost.Controls.Add(_formCard);
+
         var lblFoot = new Label
         {
-            Text = "© 2026 AgriS · Weigh Smarter, Drive Further",
-            Dock = DockStyle.Bottom, Height = 28,
+            Text = $"© {DateTime.Now.Year} AgriS · Weigh Smarter, Drive Further",
+            Dock = DockStyle.Bottom, Height = 40,
             Font = new Font(AgrisTheme.FontFamily, 8.5F),
-            ForeColor = Color.FromArgb(140, 255, 255, 255),
-            TextAlign = ContentAlignment.MiddleCenter, BackColor = Color.Transparent
+            ForeColor = AgrisTheme.TextMuted,
+            TextAlign = ContentAlignment.MiddleCenter
         };
+        _formHost.Controls.Add(lblFoot);
 
-        Controls.Add(_card);
-        Controls.Add(_btnClose);
-        Controls.Add(lblFoot);
+        _btnClose = new ModernButton
+        {
+            Text = AgrisTheme.Icon(11F) is not null ? "\uE8BB" : "✕",
+            Font = AgrisTheme.Icon(11F) ?? new Font(AgrisTheme.FontFamily, 12F),
+            Size = new Size(44, 36),
+            BackColor = AgrisTheme.Surface,
+            ForeColor = AgrisTheme.TextMuted,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            TabStop = false,
+            AccessibleName = "Đóng / Close"
+        };
+        _btnClose.FlatAppearance.MouseOverBackColor = AgrisTheme.DangerSoft;
+        _btnClose.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
+        _formHost.Controls.Add(_btnClose);
+
+        Controls.Add(_formHost);
+        Controls.Add(_brand);
 
         ResumeLayout(false);
 
-        // DoLayout chỉ chạy khi _ready = true, tránh repaint loạn khi maximize.
         Resize += (_, _) => { if (_ready) DoLayout(); };
+        _formHost.Resize += (_, _) => { if (_ready) DoLayout(); };
 
-        // Shown fire SAU khi form đã maximize + hiển thị xong.
-        // Lúc này mới layout card, hiện controls, vẽ nền — một lần duy nhất.
+        // Shown fire SAU khi form đã hiển thị: layout một lần rồi mới hiện (Opacity = 1).
         Shown += (_, _) =>
         {
             DoLayout();
-            _card.Visible = true;
-            _btnClose.Visible = true;
             _ready = true;
-            Invalidate();
-            Update(); // Force synchronous repaint TRƯỚC khi hiện form
-            Opacity = 1; // Hiện form sau khi đã vẽ xong — không chớp trắng
+            Invalidate(true);
+            Update();
+            Opacity = 1;
             _txtUser.Focus();
         };
 
@@ -216,13 +217,16 @@ public sealed class LoginForm : Form
 
     private void DoLayout()
     {
-        _card.Location = new Point(
-            (ClientSize.Width - _card.Width) / 2,
-            Math.Max(30, (ClientSize.Height - _card.Height) / 2));
-        _btnClose.Location = new Point(ClientSize.Width - 48, 8);
-    }
+        // Màn hình hẹp: thu vùng thương hiệu để biểu mẫu luôn đủ chỗ.
+        _brand.Width = ClientSize.Width < 1100 ? 0 : (int)(ClientSize.Width * 0.46);
+        _brand.Visible = _brand.Width > 0;
 
-    /// <summary>Song ngữ cố định — không cần cập nhật khi đổi ngôn ngữ.</summary>
+        _formCard.Location = new Point(
+            Math.Max(24, (_formHost.ClientSize.Width - _formCard.Width) / 2),
+            Math.Max(40, (_formHost.ClientSize.Height - _formCard.Height) / 2 - 20));
+
+        _btnClose.Location = new Point(_formHost.ClientSize.Width - _btnClose.Width - 12, 12);
+    }
 
     private async void OnLogin(object? sender, EventArgs e)
     {
@@ -235,10 +239,7 @@ public sealed class LoginForm : Form
         // Gọi API DigiScale nếu có cấu hình base URL
         if (!string.IsNullOrWhiteSpace(_apiBaseUrl))
         {
-            _btnLogin.Enabled = false;
-            _btnLogin.Text = "Đang đăng nhập... / Signing in...";
-            _txtUser.Enabled = false;
-            _txtPass.Enabled = false;
+            SetBusy(true);
             try
             {
                 using var authService = new DigiScaleAuthService(_apiBaseUrl);
@@ -280,10 +281,8 @@ public sealed class LoginForm : Form
             }
             finally
             {
-                _btnLogin.Enabled = true;
-                _btnLogin.Text = "ĐĂNG NHẬP / SIGN IN";
-                _txtUser.Enabled = true;
-                _txtPass.Enabled = true;
+                if (!IsDisposed)
+                    SetBusy(false);
             }
             return;
         }
@@ -295,138 +294,213 @@ public sealed class LoginForm : Form
         _txtPass.SelectAll(); _txtPass.Focus();
     }
 
-    // ═══ Drawing ═══
-
-    private void PaintBg(object? sender, PaintEventArgs e)
+    private void SetBusy(bool busy)
     {
-        if (!_ready) return;
-
-        // Cache background bitmap — chỉ vẽ 1 lần
-        if (_bgCache is null || _bgCache.Width != ClientSize.Width || _bgCache.Height != ClientSize.Height)
-        {
-            _bgCache?.Dispose();
-            _bgCache = new Bitmap(ClientSize.Width, ClientSize.Height);
-            using var bg = Graphics.FromImage(_bgCache);
-            using var brush = new LinearGradientBrush(ClientRectangle,
-                Color.FromArgb(36, 88, 110),
-                Color.FromArgb(32, 82, 68),
-                LinearGradientMode.ForwardDiagonal);
-            bg.FillRectangle(brush, ClientRectangle);
-            using var glow1 = new SolidBrush(Color.FromArgb(10, 255, 255, 255));
-            bg.FillEllipse(glow1, -150, ClientSize.Height - 350, 500, 500);
-            using var glow2 = new SolidBrush(Color.FromArgb(8, 255, 255, 255));
-            bg.FillEllipse(glow2, ClientSize.Width - 250, -100, 450, 450);
-        }
-
-        e.Graphics.DrawImageUnscaled(_bgCache, 0, 0);
+        _btnLogin.Enabled = !busy;
+        _btnLogin.Text = busy ? "Đang đăng nhập... / Signing in..." : SignInText;
+        _txtUser.Enabled = !busy;
+        _txtPass.Enabled = !busy;
+        UseWaitCursor = busy;
     }
 
-    private static void PaintCard(object? sender, PaintEventArgs e)
+    private static Label FieldLabel(string text) => new()
     {
-        var panel = (Panel)sender!;
-        var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-
-        var rect = new Rectangle(0, 0, panel.Width - 1, panel.Height - 1);
-        using var path = RoundedRect(rect, 16);
-
-        using var fill = new SolidBrush(Color.FromArgb(240, 255, 255, 255));
-        g.FillPath(fill, path);
-
-        using var border = new Pen(Color.FromArgb(60, 255, 255, 255), 1.5f);
-        g.DrawPath(border, path);
-
-        // Set Region 1 lần — không tạo lại mỗi paint
-        if (panel.Tag is not "region_set")
-        {
-            panel.Region = new Region(RoundedRect(new Rectangle(0, 0, panel.Width, panel.Height), 16));
-            panel.Tag = "region_set";
-        }
-    }
-
-    private static void PaintLogo(object? sender, PaintEventArgs e)
-    {
-        var p = (Panel)sender!;
-        var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-        var cx = p.Width / 2;
-
-        var logo = LogoHelper.GetLogo();
-        if (logo is not null)
-        {
-            var maxH = p.Height - 12;
-            var ratio = Math.Min((double)(p.Width - 60) / logo.Width, (double)maxH / logo.Height);
-            var w = (int)(logo.Width * ratio);
-            var h = (int)(logo.Height * ratio);
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.DrawImage(logo, cx - w / 2, (p.Height - h) / 2, w, h);
-            return;
-        }
-
-        // Fallback — chỉ hiện chữ viết tắt, không có tên thương hiệu
-        using var f1 = new Font("Segoe UI", 48F, FontStyle.Bold);
-        using var b1 = new LinearGradientBrush(new Rectangle(cx - 35, 12, 70, 65), Teal, Green, LinearGradientMode.Vertical);
-        var s1 = g.MeasureString("W", f1);
-        g.DrawString("W", f1, b1, cx - s1.Width / 2, 18);
-
-        using var f3 = new Font("Segoe UI", 9F, FontStyle.Bold);
-        using var b3 = new SolidBrush(Color.FromArgb(100, 115, 120));
-        var t = "Hệ thống cân hợp nhất / Unified Weighing";
-        var s3 = g.MeasureString(t, f3);
-        g.DrawString(t, f3, b3, cx - s3.Width / 2, 88);
-
-        using var f4 = new Font("Segoe UI", 7.5F);
-        using var b4 = new SolidBrush(Color.FromArgb(130, 145, 150));
-        var t2 = "WEIGH SMARTER   DRIVE FURTHER";
-        var s4 = g.MeasureString(t2, f4);
-        g.DrawString(t2, f4, b4, cx - s4.Width / 2, 112);
-    }
-
-    private static void PaintBtn(object? sender, PaintEventArgs e)
-    {
-        var btn = (Button)sender!;
-        var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-
-        // Bo tròn nút
-        var rect = new Rectangle(0, 0, btn.Width - 1, btn.Height - 1);
-        using var path = RoundedRect(rect, 8);
-        using var brush = new LinearGradientBrush(rect, Teal, Green, LinearGradientMode.Horizontal);
-        g.FillPath(brush, path);
-        btn.Region = new Region(RoundedRect(new Rectangle(0, 0, btn.Width, btn.Height), 8));
-
-        using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-        g.DrawString(btn.Text, btn.Font, Brushes.White, btn.ClientRectangle, sf);
-    }
-
-    private static GraphicsPath RoundedRect(Rectangle r, int rad)
-    {
-        var p = new GraphicsPath();
-        p.AddArc(r.X, r.Y, rad, rad, 180, 90);
-        p.AddArc(r.Right - rad, r.Y, rad, rad, 270, 90);
-        p.AddArc(r.Right - rad, r.Bottom - rad, rad, rad, 0, 90);
-        p.AddArc(r.X, r.Bottom - rad, rad, rad, 90, 90);
-        p.CloseFigure();
-        return p;
-    }
-
-    private static Label FieldLabel(string t) => new()
-    {
-        Text = t, Dock = DockStyle.Top, Height = 22,
+        Text = text,
+        Dock = DockStyle.Top, Height = 26,
         Font = new Font(AgrisTheme.FontFamily, 8.5F, FontStyle.Bold),
-        ForeColor = Color.FromArgb(100, 115, 120),
-        Padding = new Padding(0, 4, 0, 0),
-        BackColor = Color.Transparent,
+        ForeColor = AgrisTheme.TextSecondary,
+        TextAlign = ContentAlignment.MiddleLeft,
         TabStop = false
     };
 
-    private static TextBox Input(string ph) => new()
-    {
-        Dock = DockStyle.Top, Font = new Font(AgrisTheme.FontFamily, 12F), Height = 38,
-        PlaceholderText = ph, BorderStyle = BorderStyle.FixedSingle,
-        BackColor = Color.FromArgb(245, 248, 247)
-    };
+    private static Panel Spacer(int h) => new() { Dock = DockStyle.Top, Height = h, TabStop = false };
 
-    private static Panel Spacer(int h) => new() { Dock = DockStyle.Top, Height = h, BackColor = Color.Transparent, TabStop = false };
+    /// <summary>
+    /// Ô nhập hiện đại: viền bo góc, icon bên trái, viền chuyển màu thương hiệu khi focus.
+    /// </summary>
+    private sealed class InputBox : Panel
+    {
+        private readonly string _glyph;
+
+        public InputBox(string glyph, string placeholder)
+        {
+            _glyph = glyph;
+            Dock = DockStyle.Top;
+            Height = 50;
+            BackColor = AgrisTheme.Surface;
+
+            var hasIcon = AgrisTheme.Icon(12F) is not null;
+            Padding = new Padding(hasIcon ? 46 : 14, 13, 14, 8);
+
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+
+            TextBox = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                BorderStyle = BorderStyle.None,
+                Font = new Font(AgrisTheme.FontFamily, 12F),
+                BackColor = AgrisTheme.Surface,
+                ForeColor = AgrisTheme.TextPrimary,
+                PlaceholderText = placeholder
+            };
+            TextBox.GotFocus += (_, _) => Invalidate();
+            TextBox.LostFocus += (_, _) => Invalidate();
+            TextBox.EnabledChanged += (_, _) =>
+            {
+                TextBox.BackColor = TextBox.Enabled ? AgrisTheme.Surface : AgrisTheme.SurfaceMuted;
+                BackColor = TextBox.BackColor;
+                Invalidate();
+            };
+
+            Controls.Add(TextBox);
+            Cursor = Cursors.IBeam;
+            Click += (_, _) => TextBox.Focus();
+        }
+
+        public TextBox TextBox { get; }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Shapes.EffectiveBackColor(Parent));
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            var focused = TextBox.Focused;
+            var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+
+            using var path = Shapes.RoundedRect(rect, AgrisTheme.RadiusMd);
+            using var fill = new SolidBrush(BackColor);
+            g.FillPath(fill, path);
+
+            using var pen = new Pen(focused ? AgrisTheme.Primary : AgrisTheme.BorderStrong, focused ? 2f : 1f);
+            g.DrawPath(pen, path);
+
+            if (AgrisTheme.Icon(12F) is { } iconFont)
+            {
+                TextRenderer.DrawText(g, _glyph, iconFont, new Rectangle(14, 0, 22, Height),
+                    focused ? AgrisTheme.Primary : AgrisTheme.TextMuted,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            }
+        }
+    }
+
+    /// <summary>Vùng thương hiệu: nền gradient tối, hoạ tiết vòng tròn mờ, logo trên thẻ trắng, thông điệp.</summary>
+    private sealed class BrandPanel : Panel
+    {
+        private Bitmap? _cache;
+
+        public BrandPanel()
+        {
+            BackColor = AgrisTheme.NavBack;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            _cache?.Dispose();
+            _cache = null;
+            base.OnResize(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            if (Width <= 0 || Height <= 0) return;
+
+            _cache ??= Render();
+            e.Graphics.DrawImageUnscaled(_cache, 0, 0);
+        }
+
+        private Bitmap Render()
+        {
+            var bmp = new Bitmap(Width, Height);
+            using var g = Graphics.FromImage(bmp);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+            var rect = new Rectangle(0, 0, Width, Height);
+            using (var bg = new LinearGradientBrush(rect, AgrisTheme.NavBack, AgrisTheme.BrandTealDark, 60f))
+            {
+                var blend = new ColorBlend
+                {
+                    Colors = [AgrisTheme.NavBack, AgrisTheme.BrandTealDark, Color.FromArgb(0, 92, 58)],
+                    Positions = [0f, 0.6f, 1f]
+                };
+                bg.InterpolationColors = blend;
+                g.FillRectangle(bg, rect);
+            }
+
+            // Hoạ tiết vòng tròn mờ — chiều sâu mà không rối mắt.
+            using (var ring = new Pen(Color.FromArgb(22, 255, 255, 255), 2f))
+            {
+                g.DrawEllipse(ring, Width - 360, -180, 560, 560);
+                g.DrawEllipse(ring, Width - 260, -80, 360, 360);
+                g.DrawEllipse(ring, -200, Height - 300, 520, 520);
+            }
+            using (var glow = new SolidBrush(Color.FromArgb(14, 255, 255, 255)))
+                g.FillEllipse(glow, -140, Height - 240, 400, 400);
+
+            var left = Math.Max(48, Width / 9);
+            var top = Math.Max(60, Height / 2 - 220);
+
+            // Logo đặt trên thẻ trắng bo góc — logo gốc nền trắng nên không đặt trực tiếp lên nền tối.
+            var logo = LogoHelper.GetLogo();
+            var tile = new Rectangle(left, top, 220, 110);
+            using (var tilePath = Shapes.RoundedRect(tile, AgrisTheme.RadiusLg))
+            using (var tileBrush = new SolidBrush(Color.White))
+                g.FillPath(tileBrush, tilePath);
+
+            if (logo is not null)
+            {
+                var ratio = Math.Min((tile.Width - 32) / (double)logo.Width, (tile.Height - 24) / (double)logo.Height);
+                var w = (int)(logo.Width * ratio);
+                var h = (int)(logo.Height * ratio);
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(logo, tile.Left + (tile.Width - w) / 2, tile.Top + (tile.Height - h) / 2, w, h);
+            }
+            else
+            {
+                using var f = new Font(AgrisTheme.FontFamily, 30F, FontStyle.Bold);
+                TextRenderer.DrawText(g, "AgriS", f, tile, AgrisTheme.BrandGreen,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
+
+            var y = tile.Bottom + 48;
+            var textWidth = Width - left * 2;
+
+            using (var fTitle = new Font(AgrisTheme.FontFamily, 26F, FontStyle.Bold))
+            {
+                var r = new Rectangle(left, y, textWidth, 96);
+                TextRenderer.DrawText(g, "Hệ thống cân hợp nhất\nmía và vật tư", fTitle, r, Color.White,
+                    TextFormatFlags.Left | TextFormatFlags.WordBreak);
+                y += 104;
+            }
+
+            using (var fSub = new Font(AgrisTheme.FontFamily, 12F))
+            {
+                TextRenderer.DrawText(g, "Unified Sugarcane & Material Weighing System", fSub,
+                    new Rectangle(left, y, textWidth, 28), Color.FromArgb(190, 215, 225),
+                    TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+                y += 56;
+            }
+
+            using (var accent = new SolidBrush(AgrisTheme.NavAccent))
+                g.FillRectangle(accent, left, y, 56, 4);
+
+            using var fTag = new Font(AgrisTheme.FontFamily, 9F, FontStyle.Bold);
+            TextRenderer.DrawText(g, "WEIGH SMARTER  ·  DRIVE FURTHER", fTag,
+                new Rectangle(left, Height - 64, textWidth, 24), Color.FromArgb(130, 160, 175),
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+            return bmp;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                _cache?.Dispose();
+            base.Dispose(disposing);
+        }
+    }
 }

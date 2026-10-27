@@ -1,0 +1,6 @@
+reg.erp_date_from	Từ ngày (ERP)
+reg.erp_date_to	Đến ngày (ERP)
+reg.erp_trip_list	Danh sách TRIP trong khung ngày
+reg.erp_date_range	Khung ngày ERP
+reg.erp_date_invalid	⚠ Khung ngày ERP không hợp lệ: từ ngày lớn hơn đến ngày.
+reg.erp_none_in_range	Không có đơn hàng ERP nào từ {0} đến {1}. Hãy kéo dữ liệu ERP mới nhất hoặc mở rộng khung ngày.

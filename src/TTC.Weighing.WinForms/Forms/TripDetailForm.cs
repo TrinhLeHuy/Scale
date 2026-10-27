@@ -1,4 +1,4 @@
-using TTC.Weighing.Application.Abstractions;
+﻿using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Application.UseCases.Reconcile;
 using TTC.Weighing.Domain.Enums;
@@ -59,7 +59,7 @@ public sealed class TripDetailForm : Form
 
         Text = Loc.T("detail.title");
         MinimumSize = new Size(1100, 760);
-        BackColor = Color.FromArgb(243, 245, 248);
+        BackColor = TTC.Weighing.WinForms.Theme.AgrisTheme.Canvas;
         DoubleBuffered = true;
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
 

@@ -1,0 +1,1 @@
+﻿id,trip_id,warehouse_id,conveyor_lane_id,item_code,document_line_id,device_ids,mass_basis,reading_mode,counter_epoch,counter_start,status,opened_at,closed_at,iot_mass_kg,net_bag_count,forward_bag_count,reverse_bag_count,sequence_watermark,data_complete,hold_reason,iot_mass_origin,created_at,created_by,updated_at,updated_by,deleted_at,version,counter_end

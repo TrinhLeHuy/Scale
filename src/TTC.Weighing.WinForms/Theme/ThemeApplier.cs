@@ -5,14 +5,15 @@ namespace TTC.Weighing.WinForms.Theme;
 /// <summary>
 /// Chuẩn hóa màu và font cho toàn bộ cây control của một màn hình.
 /// Dùng một lần khi mở tab để mọi form nhất quán mà không phải đặt màu rải rác trong từng form.
+/// Chỉ ghi đè giá trị "mặc định hệ thống" — màu form tự đặt có chủ đích được giữ nguyên.
 /// </summary>
 public static class ThemeApplier
 {
     /// <summary>Các control tự vẽ, giữ nguyên màu riêng của chúng.</summary>
     private static bool IsSelfStyled(Control control) => control
-        is GradientBar or MetricTile or PipelineStageBox
-        or WeighDisplayControl or CommitChecklistControl
-        or DocumentTabControl or DataGridView;
+        is GradientBar or MetricTile or PipelineStageBox or ModernButton or ChipLabel
+        or BrandBarButton or WeighDisplayControl or CommitChecklistControl or FieldTile
+        or DocumentTabControl;
 
     public static void Apply(Control root)
     {
@@ -39,6 +40,10 @@ public static class ThemeApplier
 
             Style(control);
 
+            // Lưới dữ liệu không có con cần style.
+            if (control is DataGridView)
+                continue;
+
             if (control.HasChildren)
                 Walk(control);
         }
@@ -48,6 +53,13 @@ public static class ThemeApplier
     {
         switch (control)
         {
+            case DataGridView grid:
+                // Lưới tạo ngoài GridBuilder vẫn có header kiểu hệ thống → đưa về chuẩn chung.
+                if (grid.EnableHeadersVisualStyles)
+                    GridBuilder.ApplyStyle(grid);
+                GridBuilder.AttachTooltipCleanup(grid);
+                break;
+
             case Button button:
                 StyleButton(button);
                 break;
@@ -55,11 +67,23 @@ public static class ThemeApplier
             case CheckBox checkBox:
                 checkBox.Font = AgrisTheme.Body();
                 checkBox.ForeColor = AgrisTheme.TextPrimary;
+                checkBox.Cursor = Cursors.Hand;
+                break;
+
+            case RadioButton radio:
+                radio.Font = AgrisTheme.Body();
+                radio.ForeColor = AgrisTheme.TextPrimary;
+                radio.Cursor = Cursors.Hand;
                 break;
 
             case TextBox textBox:
                 StyleInput(textBox);
                 textBox.BorderStyle = BorderStyle.FixedSingle;
+                if (textBox.ReadOnly && textBox.BackColor == AgrisTheme.Surface)
+                {
+                    textBox.BackColor = AgrisTheme.ReadOnlyBg;
+                    textBox.ForeColor = AgrisTheme.ReadOnlyText;
+                }
                 break;
 
             case ComboBox comboBox:
@@ -76,16 +100,27 @@ public static class ThemeApplier
             case DateTimePicker picker:
                 picker.Font = AgrisTheme.Body(10F);
                 picker.CalendarForeColor = AgrisTheme.TextPrimary;
+                picker.CalendarTitleBackColor = AgrisTheme.Primary;
+                picker.CalendarTitleForeColor = AgrisTheme.TextOnBrand;
                 break;
 
             case ListBox listBox:
                 listBox.Font = AgrisTheme.Body();
                 listBox.BorderStyle = BorderStyle.None;
                 listBox.BackColor = AgrisTheme.Surface;
+                listBox.ForeColor = AgrisTheme.TextPrimary;
                 break;
 
             case TabControl tabControl:
                 tabControl.Font = AgrisTheme.Body();
+                break;
+
+            case GroupBox groupBox:
+                groupBox.ForeColor = AgrisTheme.TextSecondary;
+                if (IsSystemFont(groupBox.Font))
+                    groupBox.Font = AgrisTheme.Body(9.5F, FontStyle.Bold);
+                if (groupBox.BackColor == SystemColors.Control)
+                    groupBox.BackColor = AgrisTheme.Surface;
                 break;
 
             case Label label:
@@ -100,18 +135,31 @@ public static class ThemeApplier
         }
     }
 
+    /// <summary>
+    /// Font cũ kiểu WinForms cổ điển. Không so với Control.DefaultFont (Segoe UI 9pt trên .NET 8)
+    /// vì nhiều nhãn đặt toạ độ tuyệt đối dựa trên cỡ chữ mặc định đó.
+    /// </summary>
+    private static bool IsSystemFont(Font font)
+        => font.FontFamily.Name is "Microsoft Sans Serif";
+
     private static void StyleButton(Button button)
     {
-        // Nút đã tạo qua GridBuilder thì giữ nguyên.
-        if (button.FlatStyle == FlatStyle.Flat) return;
+        // Nút form tự đặt FlatStyle.Flat (đã có màu riêng) thì giữ nguyên, chỉ thêm con trỏ tay.
+        if (button.FlatStyle == FlatStyle.Flat)
+        {
+            button.Cursor = Cursors.Hand;
+            return;
+        }
 
         button.FlatStyle = FlatStyle.Flat;
         button.BackColor = AgrisTheme.Surface;
-        button.ForeColor = AgrisTheme.TextPrimary;
+        button.ForeColor = AgrisTheme.TextSecondary;
         button.Font = AgrisTheme.Body(9.5F);
         button.UseVisualStyleBackColor = false;
-        button.FlatAppearance.BorderColor = AgrisTheme.Border;
-        button.FlatAppearance.MouseOverBackColor = AgrisTheme.SurfaceMuted;
+        button.Cursor = Cursors.Hand;
+        button.FlatAppearance.BorderColor = AgrisTheme.BorderStrong;
+        button.FlatAppearance.MouseOverBackColor = AgrisTheme.SurfaceHover;
+        button.FlatAppearance.MouseDownBackColor = AgrisTheme.Border;
 
         if (string.IsNullOrEmpty(button.AccessibleName))
             button.AccessibleName = button.Text;
@@ -119,20 +167,26 @@ public static class ThemeApplier
 
     private static void StyleInput(Control control)
     {
+        // Giữ hành vi cũ: mọi ô nhập cùng một cỡ chữ để bố cục các form không lệch nhau.
         control.Font = AgrisTheme.Body(10F);
-        control.BackColor = AgrisTheme.Surface;
-        control.ForeColor = AgrisTheme.TextPrimary;
+
+        if (control.BackColor == SystemColors.Window || control.BackColor == AgrisTheme.Surface)
+            control.BackColor = AgrisTheme.InputBg;
+
+        if (control.ForeColor == SystemColors.WindowText || control.ForeColor == SystemColors.ControlText)
+            control.ForeColor = AgrisTheme.TextPrimary;
     }
 
     private static void StyleLabel(Label label)
     {
         // Nhãn phụ dùng màu xám nhạt, nhãn giá trị giữ màu chữ chính.
-        if (label.ForeColor == Color.DimGray || label.ForeColor == SystemColors.GrayText)
+        if (label.ForeColor == Color.DimGray || label.ForeColor == Color.Gray
+            || label.ForeColor == SystemColors.GrayText)
             label.ForeColor = AgrisTheme.TextMuted;
         else if (label.ForeColor == SystemColors.ControlText)
             label.ForeColor = AgrisTheme.TextPrimary;
 
-        if (label.Font.FontFamily.Name == "Microsoft Sans Serif")
+        if (IsSystemFont(label.Font))
             label.Font = AgrisTheme.Body();
     }
 }

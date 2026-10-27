@@ -50,12 +50,12 @@ public sealed class CancelTripHandler(
         if (trip.Lifecycle is not (TripLifecycle.TempRegistered or TripLifecycle.Registered or TripLifecycle.InProgress))
             return Fail($"Không thể hủy chuyến ở trạng thái {trip.Lifecycle}. Chỉ hủy được khi chuyến chưa hoàn thành.");
 
-        // 4. Kiểm tra chưa có WeighSession Committed
-        var hasCommittedSession = trip.WeighSessions
-            .Any(ws => ws.Status == WeighSessionStatus.Committed);
-
-        if (hasCommittedSession)
-            return Fail("Chuyến đã bắt đầu cân (có phiên cân đã Committed). Không thể hủy.");
+        // 4. Đã cân (có bất kỳ lượt cân nào, kể cả mới cân lần 1) → không được hủy.
+        //    Tra thẳng bảng weigh_events: GetForUpdateAsync không nạp WeighSessions nên không dựa vào navigation.
+        if (await trips.HasWeighEventsAsync(trip.Id, ct)
+            || trip.WeighSessions.Any(ws => ws.Status == WeighSessionStatus.Committed))
+            return Fail(Domain.Common.DomainText.T("rule.trip_weighed_no_cancel",
+                "Chuyến {0} đã cân — không được hủy đăng tài.", trip.TripNo));
 
         // Validate lý do không trống
         if (string.IsNullOrWhiteSpace(cmd.Reason))

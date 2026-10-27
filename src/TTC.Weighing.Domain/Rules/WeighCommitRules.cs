@@ -1,3 +1,4 @@
+using TTC.Weighing.Domain.Common;
 using TTC.Weighing.Domain.Enums;
 
 namespace TTC.Weighing.Domain.Rules;
@@ -49,6 +50,9 @@ public sealed record WeighCommitContext
     public required QrTokenStatus QrStatus { get; init; }
     public required bool QrMatchesTrip { get; init; }
     public required bool QrMatchesSite { get; init; }
+
+    /// <summary>Thời điểm QR của chuyến hết hạn (khi không còn QR hiệu lực) — để báo đúng lý do.</summary>
+    public DateTimeOffset? QrExpiredAt { get; init; }
     public required bool CheckpointAllowedByProfile { get; init; }
 
     // 2. Thiết bị và phiên
@@ -117,6 +121,11 @@ public static class WeighCommitRules
 
         // QR tạm cho phép cân (cân offline — sau đẩy lên hệ thống chính).
         // Chỉ cần QR chưa thu hồi và chuyến chưa hủy/đóng.
+
+        if (c.QrStatus == QrTokenStatus.Expired && c.QrType != QrTokenType.Temp)
+            return new(code, name, false, c.QrExpiredAt is { } exp
+                ? DomainText.T("rule.qr_expired_at", "QR chuyến đã hết hạn lúc {0:dd/MM/yyyy HH:mm}.", exp.ToLocalTime())
+                : DomainText.T("rule.qr_expired", "QR chuyến đã hết hạn."));
 
         if (c.QrStatus != QrTokenStatus.Issued && c.QrType != QrTokenType.Temp)
             return new(code, name, false, $"QR ở trạng thái {c.QrStatus}.");

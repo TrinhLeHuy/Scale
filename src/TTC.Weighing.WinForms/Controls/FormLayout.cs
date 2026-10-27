@@ -65,13 +65,14 @@ public static class FormLayout
 
         field.Font = AgrisTheme.Body(11F);
 
-        // Nổi bật ô nhập liệu — viền + nền sáng cho editable, nền xám cho readonly
+        // Ô được nhập: nền trắng, viền rõ. Ô chỉ đọc: nền xám, chữ phụ — phân biệt ngay bằng mắt.
         if (field is TextBox txt)
         {
+            txt.BorderStyle = BorderStyle.FixedSingle;
             if (!txt.ReadOnly)
             {
-                txt.BorderStyle = BorderStyle.FixedSingle;
-                txt.BackColor = Color.FromArgb(255, 255, 248); // Vàng nhạt — nổi bật "cần nhập"
+                txt.BackColor = AgrisTheme.InputBg;
+                txt.ForeColor = AgrisTheme.TextPrimary;
             }
             else
             {
@@ -82,12 +83,12 @@ public static class FormLayout
         else if (field is ComboBox cbo)
         {
             cbo.FlatStyle = FlatStyle.Flat;
+            cbo.BackColor = AgrisTheme.InputBg;
         }
         else if (field is NumericUpDown num)
         {
             num.BorderStyle = BorderStyle.FixedSingle;
-            if (!num.ReadOnly)
-                num.BackColor = Color.FromArgb(255, 255, 248);
+            num.BackColor = num.ReadOnly ? AgrisTheme.ReadOnlyBg : AgrisTheme.InputBg;
         }
 
         if (string.IsNullOrEmpty(field.AccessibleName))
@@ -114,10 +115,10 @@ public static class FormLayout
     {
         Text = caption,
         Dock = DockStyle.Fill,
-        Font = AgrisTheme.Body(10F),
-        ForeColor = AgrisTheme.TextMuted,
+        Font = AgrisTheme.Body(9.5F),
+        ForeColor = AgrisTheme.TextSecondary,
         TextAlign = ContentAlignment.MiddleLeft,
-        Margin = new Padding(4, 0, 6, 0),
+        Margin = new Padding(10, 0, 8, 0),
         AutoEllipsis = true
     };
 
@@ -133,7 +134,7 @@ public static class FormLayout
             WrapContents = true,
             AutoSize = false,
             BackColor = AgrisTheme.Surface,
-            Padding = new Padding(8, 5, 8, 3)
+            Padding = new Padding(10, 6, 10, 3)
         };
 
         foreach (var button in buttons)
@@ -141,8 +142,8 @@ public static class FormLayout
             button.AutoSize = true;
             button.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             button.MinimumSize = new Size(90, 40);
-            button.Padding = new Padding(14, 0, 14, 0);
-            button.Margin = new Padding(0, 0, 6, 2);
+            button.Padding = new Padding(16, 0, 16, 0);
+            button.Margin = new Padding(0, 0, 8, 2);
             bar.Controls.Add(button);
         }
 
@@ -162,7 +163,7 @@ public static class FormLayout
             ColumnCount = 1,
             RowCount = rows.Length,
             BackColor = AgrisTheme.Canvas,
-            Padding = new Padding(8, 6, 8, 6)
+            Padding = new Padding(12, 10, 12, 8)
         };
 
         var requiredHeight = table.Padding.Vertical;
@@ -171,7 +172,7 @@ public static class FormLayout
         {
             var (content, type, size) = rows[i];
 
-            content.Margin = new Padding(0, 0, 0, 10);
+            content.Margin = new Padding(0, 0, 0, 12);
 
             if (type == SizeType.AutoSize)
             {

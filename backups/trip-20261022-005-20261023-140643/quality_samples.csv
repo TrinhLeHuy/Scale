@@ -1,0 +1,2 @@
+﻿id,trip_id,sample_qr_ref,type,status,revision,supersedes_id,is_effective,sample_before_kg,sample_after_kg,impurity_percent,ccs_value,source,received_at,received_by,below_minimum_sample_warning,approval_ref,reason,created_at,created_by,updated_at,updated_by,deleted_at,version
+31c12baa-7e83-4adb-8dbe-f76ddca4f8e4,540689d3-87ae-42a9-b020-44acde0c825d,,Impurity,Valid,1,,t,12.000,11.000,8.3333,,MANUAL,2026-10-22 10:09:03.546906+00,local.operator,f,"",a,2026-10-22 10:09:03.546962+00,local.operator,,,,0

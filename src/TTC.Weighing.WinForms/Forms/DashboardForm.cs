@@ -1,6 +1,7 @@
 using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.WinForms.Controls;
+using TTC.Weighing.WinForms.Helpers;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
@@ -50,13 +51,17 @@ public sealed class DashboardForm : Form
     private readonly MetricTile _tileNet = new(Loc.T("dashboard.tile_net"), AgrisTheme.BrandGreen, "kg");
     private readonly MetricTile _tileManual = new(Loc.T("dashboard.tile_manual"), AgrisTheme.Warning, "lượt cân");
 
-    private readonly FlowLayoutPanel _pipelineRow = new();
-    private readonly FlowLayoutPanel _metricRow = new();
     private readonly DataGridView _tripGrid = GridBuilder.ReadOnlyGrid(Loc.T("dashboard.trip_section"));
     private readonly DataGridView _deviceGrid = GridBuilder.ReadOnlyGrid(Loc.T("dashboard.device_section"));
     private readonly CheckBox _chkFirstWeightOnly = new();
     private readonly Button _btnRefresh = GridBuilder.SecondaryButton(Loc.T("common.refresh"), new Size(110, 30));
     private readonly Label _lblUpdatedAt = new();
+
+    // ── Tách lưới Mía / Vật tư + xuất Excel ──
+    private readonly TripCategorySwitch _tripCategory = new("dashboard.trips");
+    private readonly Button _btnExportExcel = GridBuilder.ExportExcelButton();
+    private readonly Label _lblTripCount = new();
+    private IReadOnlyList<TripBoardRow> _tripRows = [];
 
     public event Action<Guid>? TripSelected;
 
@@ -127,6 +132,7 @@ public sealed class DashboardForm : Form
             Loc.T("col.profile"), Loc.T("col.lifecycle"), Loc.T("col.execution"),
             Loc.T("col.first_weight"), Loc.T("col.second_weight"), Loc.T("col.net_weight")
         ]);
+        ApplyWeightUnit();
 
         UpdateGridColumnHeaders(_deviceGrid, [
             Loc.T("col.device_code"), Loc.T("col.device_class"), Loc.T("col.lane"),
@@ -134,8 +140,9 @@ public sealed class DashboardForm : Form
         ]);
 
         // Repaint pipeline stages
-        foreach (Control c in _pipelineRow.Controls)
-            c.Invalidate();
+        if (_pipelineTable is not null)
+            foreach (Control c in _pipelineTable.Controls)
+                c.Invalidate();
 
         Invalidate(true);
     }
@@ -161,17 +168,48 @@ public sealed class DashboardForm : Form
             Padding = new Padding(12, 8, 12, 12)
         };
 
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 122));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 118));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        // Chiều cao từng hàng tính từ cỡ chữ thật (FontScale 1.5) — trước đây đặt cứng 122/118/44px
+        // nên số lớn trong thẻ và chặng bị cắt mất nửa dưới.
+        var pipelineCard = BuildPipelineCard();
+        var metricRow = BuildMetricPanel();
+        var toolbar = BuildToolbar();
+
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, pipelineCard.Height + pipelineCard.Margin.Vertical));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, metricRow.Height + metricRow.Margin.Vertical));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, toolbar.Height + toolbar.Margin.Vertical));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        root.Controls.Add(BuildPipelineCard(), 0, 0);
-        root.Controls.Add(BuildMetricPanel(), 0, 1);
-        root.Controls.Add(BuildToolbar(), 0, 2);
+        root.Controls.Add(pipelineCard, 0, 0);
+        root.Controls.Add(metricRow, 0, 1);
+        root.Controls.Add(toolbar, 0, 2);
         root.Controls.Add(BuildTables(), 0, 3);
 
         Controls.Add(root);
+    }
+
+    /// <summary>Bảng 1 hàng chia đều cột — các thẻ giãn theo bề ngang màn hình, không cuộn ngang.</summary>
+    private static TableLayoutPanel EqualColumns(Control[] items, int height, Color back)
+    {
+        var table = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = items.Length,
+            RowCount = 1,
+            Height = height,
+            BackColor = back,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+
+        table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        for (var i = 0; i < items.Length; i++)
+        {
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / items.Length));
+            items[i].Dock = DockStyle.Fill;
+            table.Controls.Add(items[i], i, 0);
+        }
+
+        return table;
     }
 
     private Card BuildPipelineCard()
@@ -179,81 +217,92 @@ public sealed class DashboardForm : Form
         var card = new Card
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(0, 0, 0, 10),
-            Padding = new Padding(14, 8, 14, 10)
+            Margin = new Padding(0, 0, 0, 12),
+            Padding = new Padding(1)
         };
 
-        var header = new Label
+        var header = GridBuilder.SectionHeader(Loc.T("dashboard.pipeline_header"));
+
+        var stages = new Control[]
         {
-            Text = Loc.T("dashboard.pipeline_header"),
-            Dock = DockStyle.Top,
-            Height = 22,
-            Font = AgrisTheme.Body(10F, FontStyle.Bold),
-            ForeColor = AgrisTheme.BrandGreenDark
-        };
-
-        _pipelineRow.Dock = DockStyle.Fill;
-        _pipelineRow.FlowDirection = FlowDirection.LeftToRight;
-        _pipelineRow.WrapContents = false;
-        _pipelineRow.AutoScroll = true;
-
-        _pipelineRow.Controls.AddRange(
-        [
             _stageTemp, _stageRegistered, _stageInProgress, _stageWeighed,
             _stageReconciled, _stagePosted, _stageClosed
-        ]);
+        };
+        foreach (var stage in stages)
+            stage.Margin = new Padding(0, 0, 3, 0);
 
-        card.Controls.Add(_pipelineRow);
+        var row = EqualColumns(stages, PipelineStageBox.PreferredBoxHeight, AgrisTheme.Surface);
+        var host = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(14, 10, 14, 12),
+            BackColor = AgrisTheme.Surface
+        };
+        host.Controls.Add(row);
+
+        card.Controls.Add(host);
         card.Controls.Add(header);
+        card.Height = header.Height + PipelineStageBox.PreferredBoxHeight + host.Padding.Vertical + card.Padding.Vertical;
+        _pipelineTable = row;
 
         return card;
     }
 
-    private Panel BuildMetricPanel()
-    {
-        _metricRow.Dock = DockStyle.Fill;
-        _metricRow.FlowDirection = FlowDirection.LeftToRight;
-        _metricRow.WrapContents = false;
-        _metricRow.AutoScroll = true;
-        _metricRow.BackColor = AgrisTheme.Canvas;
-        _metricRow.Margin = new Padding(0, 0, 0, 10);
+    private TableLayoutPanel? _pipelineTable;
 
-        _metricRow.Controls.AddRange(
-        [
+    private Control BuildMetricPanel()
+    {
+        var tiles = new Control[]
+        {
             _tileWaiting, _tileInside, _tileFirstOnly, _tilePaused,
             _tileReconciliation, _tileIntegration, _tileNet, _tileManual
-        ]);
+        };
+        foreach (var tile in tiles)
+            tile.Margin = new Padding(0, 0, 10, 0);
+        _tileManual.Margin = Padding.Empty;
 
-        return _metricRow;
+        var row = EqualColumns(tiles, MetricTile.PreferredTileHeight, AgrisTheme.Canvas);
+        row.Margin = new Padding(0, 0, 0, 12);
+        return row;
     }
 
-    private Panel BuildToolbar()
+    private Control BuildToolbar()
     {
-        var toolbar = new Card
+        var toolbar = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(12, 6, 12, 6),
-            Margin = new Padding(0, 0, 0, 10)
+            Height = 56,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            BackColor = AgrisTheme.Surface,
+            Padding = new Padding(14, 7, 14, 7),
+            Margin = new Padding(0, 0, 0, 12)
         };
 
         _chkFirstWeightOnly.Text = Loc.T("dashboard.filter_first_only");
-        _chkFirstWeightOnly.Location = new Point(14, 9);
         _chkFirstWeightOnly.AutoSize = true;
         _chkFirstWeightOnly.Font = AgrisTheme.Body();
         _chkFirstWeightOnly.ForeColor = AgrisTheme.TextPrimary;
+        _chkFirstWeightOnly.Cursor = Cursors.Hand;
+        _chkFirstWeightOnly.Margin = new Padding(0, 8, 20, 0);
         _chkFirstWeightOnly.CheckedChanged += async (_, _) => await RefreshAsync();
 
-        _btnRefresh.Location = new Point(300, 5);
+        _btnRefresh.Margin = new Padding(0, 0, 20, 0);
         _btnRefresh.Click += async (_, _) => await RefreshAsync();
 
-        _lblUpdatedAt.Location = new Point(424, 11);
         _lblUpdatedAt.AutoSize = true;
         _lblUpdatedAt.Font = AgrisTheme.Caption();
         _lblUpdatedAt.ForeColor = AgrisTheme.TextMuted;
+        _lblUpdatedAt.Margin = new Padding(0, 11, 0, 0);
 
-        toolbar.Controls.Add(_chkFirstWeightOnly);
-        toolbar.Controls.Add(_btnRefresh);
-        toolbar.Controls.Add(_lblUpdatedAt);
+        toolbar.Controls.AddRange([_chkFirstWeightOnly, _btnRefresh, _lblUpdatedAt]);
+
+        // Viền mảnh như các thẻ khác.
+        toolbar.Paint += (_, e) =>
+        {
+            using var pen = new Pen(AgrisTheme.Border);
+            e.Graphics.DrawRectangle(pen, 0, 0, toolbar.Width - 1, toolbar.Height - 1);
+        };
 
         return toolbar;
     }
@@ -269,8 +318,28 @@ public sealed class DashboardForm : Form
         };
 
         var tripCard = new Card { Dock = DockStyle.Fill, Padding = new Padding(1) };
+        var tripHeader = GridBuilder.SectionHeader(Loc.T("dashboard.trip_section"));
+
+        _lblTripCount.AutoSize = true;
+        _lblTripCount.Font = AgrisTheme.Body(9F, FontStyle.Bold);
+        _lblTripCount.ForeColor = AgrisTheme.TextSecondary;
+        _lblTripCount.Margin = new Padding(0, 10, 8, 0);
+
+        _btnExportExcel.Click += async (_, _) => await ExportTripGridAsync();
+        _tripCategory.CategoryChanged += async (_, _) =>
+        {
+            GridBuilder.ApplyCategoryHeader(tripCard, tripHeader, Loc.T("dashboard.trip_section"), _tripCategory.Category);
+            ApplyWeightUnit();
+            await RefreshAsync();
+        };
+        GridBuilder.ApplyCategoryHeader(tripCard, tripHeader, Loc.T("dashboard.trip_section"), _tripCategory.Category);
+
+        var tripToolbar = new GridToolbar([_tripCategory], [_lblTripCount, _btnExportExcel]);
+
+        // Thứ tự Add ngược thứ tự dock: lưới (Fill) → thanh công cụ → tiêu đề.
         tripCard.Controls.Add(_tripGrid);
-        tripCard.Controls.Add(GridBuilder.SectionHeader(Loc.T("dashboard.trip_section")));
+        tripCard.Controls.Add(tripToolbar);
+        tripCard.Controls.Add(tripHeader);
 
         var deviceCard = new Card { Dock = DockStyle.Fill, Padding = new Padding(1) };
         deviceCard.Controls.Add(_deviceGrid);
@@ -281,6 +350,18 @@ public sealed class DashboardForm : Form
         split.Panel1.Controls.Add(tripCard);
         split.Panel2.Controls.Add(deviceCard);
         split.SplitterDistance = 720;
+
+        // Chia theo tỉ lệ 68/32 thay vì 720px cố định — màn rộng thì bảng thiết bị không bị
+        // bóp còn các cột 1–2 ký tự. Người dùng kéo vách ngăn rồi thì giữ nguyên lựa chọn đó.
+        var userMoved = false;
+        split.SplitterMoved += (_, _) => { if (split.Focused) userMoved = true; };
+        split.SizeChanged += (_, _) =>
+        {
+            if (userMoved || split.Width <= 0) return;
+            var target = (int)(split.Width * 0.68);
+            if (target > split.Panel1MinSize && split.Width - target > split.Panel2MinSize)
+                split.SplitterDistance = target;
+        };
 
         return split;
     }
@@ -298,6 +379,18 @@ public sealed class DashboardForm : Form
             GridBuilder.Column(Loc.T("col.second_weight"), nameof(TripBoardRow.SecondWeightKg), 100, "N3"),
             GridBuilder.Column(Loc.T("col.net_weight"), nameof(TripBoardRow.VehicleNetKg), 100, "N3"));
 
+        ApplyWeightUnit();
+
+        // Dữ liệu luôn là kg; mía hiển thị tấn (N3), vật tư hiển thị kg (N0).
+        _tripGrid.CellFormatting += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            if (!IsWeightColumn(_tripGrid.Columns[e.ColumnIndex].DataPropertyName)) return;
+            if (e.Value is not decimal kg) return;
+            e.Value = IsUnitTon ? (kg / 1000m).ToString("N3") : kg.ToString("N0");
+            e.FormattingApplied = true;
+        };
+
         GridBuilder.AttachEmptyState(_tripGrid, Loc.T("dashboard.no_trips"));
 
         _tripGrid.CellDoubleClick += (_, e) =>
@@ -306,6 +399,31 @@ public sealed class DashboardForm : Form
             if (_tripGrid.Rows[e.RowIndex].DataBoundItem is TripBoardRow row)
                 TripSelected?.Invoke(row.TripId);
         };
+    }
+
+    /// <summary>Mía = tấn, vật tư = kg.</summary>
+    private bool IsUnitTon => _tripCategory.Category != TripCategory.Material;
+
+    private static bool IsWeightColumn(string propertyName) => propertyName is
+        nameof(TripBoardRow.FirstWeightKg) or nameof(TripBoardRow.SecondWeightKg) or nameof(TripBoardRow.VehicleNetKg);
+
+    /// <summary>Cập nhật tiêu đề + định dạng 3 cột số cân theo nhóm Mía/Vật tư đang chọn.</summary>
+    private void ApplyWeightUnit()
+    {
+        var unit = Loc.T(IsUnitTon ? "print.unit_ton" : "print.unit_kg");
+        foreach (DataGridViewColumn col in _tripGrid.Columns)
+        {
+            var key = col.DataPropertyName switch
+            {
+                nameof(TripBoardRow.FirstWeightKg) => "col.first_weight_unit",
+                nameof(TripBoardRow.SecondWeightKg) => "col.second_weight_unit",
+                nameof(TripBoardRow.VehicleNetKg) => "col.net_weight_unit",
+                _ => null
+            };
+            if (key is null) continue;
+            col.HeaderText = Loc.T(key, unit);
+            col.DefaultCellStyle.Format = IsUnitTon ? "N3" : "N0"; // Excel xuất theo định dạng này
+        }
     }
 
     private void ConfigureDeviceGrid()
@@ -334,9 +452,14 @@ public sealed class DashboardForm : Form
             RenderMetrics(overview);
 
             var trips = await _queries.ListTripsAsync(_siteId,
-                new TripBoardFilter { FirstWeightOnly = _chkFirstWeightOnly.Checked }, _cts.Token);
+                new TripBoardFilter
+                {
+                    FirstWeightOnly = _chkFirstWeightOnly.Checked,
+                    Category = _tripCategory.Category
+                }, _cts.Token);
 
-            _tripGrid.DataSource = trips.ToList();
+            _tripRows = trips;
+            _lblTripCount.Text = Loc.T("grid.row_count", trips.Count.ToString("N0"));
             _deviceGrid.DataSource = overview.Devices.ToList();
 
             GridBuilder.BindAndColorize(_tripGrid, trips, r =>
@@ -362,6 +485,33 @@ public sealed class DashboardForm : Form
         finally
         {
             _btnRefresh.Enabled = true;
+        }
+    }
+
+    /// <summary>Xuất danh sách chuyến đang hiển thị (theo nhóm Mía/Vật tư) ra Excel.</summary>
+    private async Task ExportTripGridAsync()
+    {
+        var filters = new List<string> { Loc.T("export.filter_category", _tripCategory.CategoryLabel) };
+        if (_chkFirstWeightOnly.Checked)
+            filters.Add(_chkFirstWeightOnly.Text);
+
+        try
+        {
+            await ExportHelper.ExportGridAsync(
+                this, _tripGrid, _tripRows,
+                new ExportHelper.ExportRequest(
+                    $"{Loc.T("dashboard.trip_section")} - {_tripCategory.CategoryLabel}",
+                    $"tong-quan-chuyen_{_tripCategory.FileSuffix}",
+                    filters,
+                    _tripCategory.CategoryLabel),
+                // Excel cùng đơn vị với lưới: mía đổi kg → tấn.
+                mapValue: (prop, _, raw) => IsUnitTon && IsWeightColumn(prop) && raw is decimal kg ? kg / 1000m : raw,
+                busyControl: _btnExportExcel);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"{Loc.T("export.error")}{Environment.NewLine}{ex.Message}",
+                Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

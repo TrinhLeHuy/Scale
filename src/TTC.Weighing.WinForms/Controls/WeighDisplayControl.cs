@@ -41,9 +41,9 @@ public sealed class WeighDisplayControl : UserControl
 
         _lblUom = new Label
         {
-            Text = "tấn",
+            Text = Loc.T("weigh.unit_ton"),
             Font = AgrisTheme.Body(11F),
-            ForeColor = Color.FromArgb(150, 160, 166),
+            ForeColor = AgrisTheme.ScaleDisplayCaption,
             TextAlign = ContentAlignment.MiddleRight,
             Dock = DockStyle.Top,
             Height = 24
@@ -64,7 +64,7 @@ public sealed class WeighDisplayControl : UserControl
         {
             Text = Loc.T("control.scale_stability_na"),
             Font = AgrisTheme.Body(9.5F),
-            ForeColor = Color.FromArgb(150, 160, 166),
+            ForeColor = AgrisTheme.ScaleDisplayCaption,
             TextAlign = ContentAlignment.MiddleLeft,
             Dock = DockStyle.Top,
             Height = 24
@@ -118,15 +118,16 @@ public sealed class WeighDisplayControl : UserControl
         }
 
         var displayValue = DisplayAsTon ? normalizedKg.Value / 1000m : normalizedKg.Value;
-        var displayUom = DisplayAsTon ? "tấn" : "kg";
+        var displayUom = DisplayAsTon ? Loc.T("weigh.unit_ton") : "kg";
 
-        _lblWeight.Text = $"{displayValue:N0}";
+        // Số cân luôn N3, không theo culture riêng — tránh mất phần lẻ (30,050 kg → 30.050 tấn).
+        _lblWeight.Text = $"{displayValue:N3}";
         _lblUom.Text = displayUom;
 
         var window = requiredWindow ?? TimeSpan.Zero;
         var isStable = window > TimeSpan.Zero && stableDuration >= window;
 
-        _lblWeight.ForeColor = isStable ? Color.FromArgb(120, 226, 160) : Color.FromArgb(238, 213, 130);
+        _lblWeight.ForeColor = isStable ? AgrisTheme.ScaleStable : AgrisTheme.ScaleMeasuring;
         _lblSignalState.Text = isStable ? Loc.T("control.scale_stable") : Loc.T("control.scale_measuring");
         _lblSignalState.ForeColor = _lblWeight.ForeColor;
 
@@ -168,16 +169,23 @@ public sealed class WeighDisplayControl : UserControl
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            using var track = new SolidBrush(Color.FromArgb(38, 48, 54));
-            e.Graphics.FillRectangle(track, ClientRectangle);
+            var g = e.Graphics;
+            g.Clear(AgrisTheme.ScaleDisplayBack);
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            var radius = Math.Max(1, Height / 2);
+            using (var trackPath = Shapes.RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), radius))
+            using (var track = new SolidBrush(AgrisTheme.ScaleDisplayTrack))
+                g.FillPath(track, trackPath);
 
             if (_progress <= 0) return;
 
-            var width = (int)(Width * _progress);
-            var color = _progress >= 1f ? AgrisTheme.BrandGreen : Color.FromArgb(196, 158, 40);
+            var width = Math.Max(Height, (int)(Width * _progress));
+            var color = _progress >= 1f ? AgrisTheme.ScaleStable : AgrisTheme.ScaleMeasuring;
 
+            using var fillPath = Shapes.RoundedRect(new Rectangle(0, 0, width - 1, Height - 1), radius);
             using var fill = new SolidBrush(color);
-            e.Graphics.FillRectangle(fill, 0, 0, width, Height);
+            g.FillPath(fill, fillPath);
         }
     }
 }

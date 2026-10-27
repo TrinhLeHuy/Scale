@@ -1,0 +1,23 @@
+print.none	ບໍ່ມີ
+print.field_shipment	Shipment
+print.field_customer	ລູກຄ້າ/ຜູ້ສະໜອງ
+print.field_commodity	ສິນຄ້າ
+print.field_warehouse	ສາງ
+print.field_plate	ປ້າຍທະບຽນລົດ
+print.field_trailer	ລົດພ່ວງ
+print.field_transporter	ຜູ້ຂົນສົ່ງ
+print.weigh_title	ໃບຊັ່ງອ້ອຍ
+print.weigh_form_title	ໃບຊັ່ງອ້ອຍ — {0}
+print.weigh_ticket_no	ເລກໃບຊັ່ງ
+print.unit_ton	ໂຕນ
+print.weigh_gross	ນ້ຳໜັກລວມ
+print.weigh_gross_time	ເວລາຊັ່ງລວມ
+print.weigh_tare	ນ້ຳໜັກລົດເປົ່າ
+print.weigh_tare_time	ເວລາຊັ່ງລົດເປົ່າ
+print.weigh_tc_paid	ສິ່ງເຈືອປົນຈ່າຍ
+print.weigh_ccs_paid	CCS ຈ່າຍ
+print.weigh_paid_weight	ນ້ຳໜັກຈ່າຍ
+print.weigh_waiting_policy	ລໍຖ້ານະໂຍບາຍ
+print.sig_receiver	ຕາງໜ້າຫົວໜ່ວຍຮັບ
+print.sig_deliverer	ຕາງໜ້າຫົວໜ່ວຍສົ່ງ
+print.sig_sign_note	(ລົງລາຍເຊັນ, ຊື່ແຈ້ງ)

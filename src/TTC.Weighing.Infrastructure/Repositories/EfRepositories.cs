@@ -9,7 +9,23 @@ namespace TTC.Weighing.Infrastructure.Repositories;
 
 public sealed class EfUnitOfWork(WeighingDbContext db) : IUnitOfWork
 {
-    public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
+    /// <summary>
+    /// Lưu thay đổi. Lưu lỗi → xoá change tracker: DbContext sống theo tab, nếu giữ lại entity
+    /// Added/Modified hỏng thì MỌI lần lưu sau sẽ gửi lại chúng (vd. phiên cân Open cũ + phiên mới
+    /// → vi phạm uq_weigh_sessions_bridge_open). Thao tác sau sẽ đọc lại dữ liệu từ DB.
+    /// </summary>
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            db.ChangeTracker.Clear();
+            throw;
+        }
+    }
 
     public async Task<IUnitOfWorkTransaction> BeginTransactionAsync(CancellationToken ct = default)
         => new EfTransaction(await db.Database.BeginTransactionAsync(ct));
@@ -92,10 +108,28 @@ public sealed class TripRepository(WeighingDbContext db) : ITripRepository
     public async Task<string?> FindActiveByLenhDonIdAsync(string lenhDonId, CancellationToken ct = default)
     {
         return await db.Trips
+            // Lệnh đốn đã cân xong (Closed) vẫn chặn — chỉ phiếu đã hủy / đã xóa (chưa cân) mới được đăng tài lại.
             .Where(t => t.FrmLenhDonId == lenhDonId
                 && t.DeletedAt == null
-                && t.Lifecycle != TripLifecycle.Cancelled
-                && t.Lifecycle != TripLifecycle.Closed)
+                && t.Lifecycle != TripLifecycle.Cancelled)
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => t.TripNo)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public Task<bool> HasWeighEventsAsync(Guid tripId, CancellationToken ct = default)
+        => db.WeighEvents.AnyAsync(e => e.TripId == tripId, ct);
+
+    public async Task<string?> FindActiveByReferenceAsync(
+        string sourceSystem, string referenceTripNo, CancellationToken ct = default)
+    {
+        // Chứng từ đã cân xong (Closed) vẫn chặn — chỉ phiếu đã hủy / đã xóa mới được đăng tài lại.
+        var reference = referenceTripNo.Trim();
+        return await db.Trips
+            .Where(t => t.SourceSystem == sourceSystem
+                && t.ReferenceTripNo == reference
+                && t.DeletedAt == null
+                && t.Lifecycle != TripLifecycle.Cancelled)
             .OrderByDescending(t => t.CreatedAt)
             .Select(t => t.TripNo)
             .FirstOrDefaultAsync(ct);

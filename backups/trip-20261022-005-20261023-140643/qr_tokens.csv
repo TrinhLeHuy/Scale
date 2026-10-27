@@ -1,0 +1,2 @@
+﻿id,token_hash,type,status,trip_id,vehicle_id,site_id,issued_at,expires_at,revoked_at,created_at,created_by,updated_at,updated_by,deleted_at,version,encoded_content
+20a572da-3f3f-4772-9cb4-3646d022978e,C8CDDD6DAF17D102120547C573A936C9B10E6F8901845F292ECE7EF004937B86,Trip,Issued,540689d3-87ae-42a9-b020-44acde0c825d,,bddcbe10-6f69-4545-9f0b-02b3f4a06369,2026-10-22 10:08:05.983181+00,2026-10-23 10:08:05.98319+00,,2026-10-22 10:08:05.983315+00,local.operator,,,,0,eyJ0IjoiQzhDRERENkQiLCJzIjozfQ

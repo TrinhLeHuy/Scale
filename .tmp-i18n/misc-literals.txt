@@ -1,0 +1,194 @@
+﻿src\TTC.Weighing.WinForms\Program.cs:209: Lỗi khởi tạo ứng dụng:\n{ex.Message}
+src\TTC.Weighing.WinForms\Program.cs:209: Lỗi hệ thống
+src\TTC.Weighing.WinForms\Program.cs:301: Thiếu ConnectionStrings:WeighingDb. Cấu hình qua appsettings hoặc biến môi trường TTC_WEIGHING_.
+src\TTC.Weighing.WinForms\Program.cs:307: Thiếu Site:Code. Trạm phải được gán nhà máy trước khi vận hành (R-002).
+src\TTC.Weighing.WinForms\Program.cs:333: Người trực cân cục bộ
+src\TTC.Weighing.WinForms\Program.cs:355: === Vùng hiển thị {viewport.Width}x{viewport.Height} ===
+src\TTC.Weighing.WinForms\Program.cs:440: Lỗi không xử lý được. Ứng dụng tạm ngưng thao tác nghiệp vụ.{Environment.NewLine}{Environment.NewLine}{ex?.Message}
+src\TTC.Weighing.WinForms\Program.cs:441: Lỗi hệ thống
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:20: Tìm kiếm...
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:26: A→Z  Sắp xếp tăng dần
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:35: Z→A  Sắp xếp giảm dần
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:44: Chọn Tất cả
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:52: Áp dụng
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:61: Xóa bộ lọc
+src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs:81: Lọc cột
+src\TTC.Weighing.WinForms\Controls\GridScrollBar.cs:33: Lưới phải có cha trước khi gắn thanh cuộn.
+src\TTC.Weighing.WinForms\Controls\TripSearchBox.cs:17: Nhập mã đăng tài hoặc biển số xe...
+src\TTC.Weighing.WinForms\Controls\TripSearchBox.cs:18: Tìm chuyến
+src\TTC.Weighing.WinForms\Forms\AllocateTripDialog.cs:40: Dialog phân bổ trọng lượng ghép xe
+src\TTC.Weighing.WinForms\Forms\AllocateTripDialog.cs:55: Mã phê duyệt phân bổ
+src\TTC.Weighing.WinForms\Forms\AllocateTripDialog.cs:75: Dòng phân bổ
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:40: Nhập mã đăng tài hoặc biển số xe...
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:41: Nhập số đăng tài hoặc biển số xe
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:64: Số đăng tài
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:65: Biển số
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:66: Khách hàng
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:77: CCS tự động: —
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:93: ✓  Ghi nhận CCS
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:94: In phiếu
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:95: 🔄 Đẩy lại Digi
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:96: Lượt mới (Esc)
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:103: Lịch sử CCS
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:114: Nhập mã đăng tài hoặc biển số để bắt đầu
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:134: Đo chữ đường (CCS)
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:194: Lịch sử CCS
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:202: Từ:
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:208: Bấm vào dòng để xem thông tin chuyến và in lại phiếu
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:219: Số đăng tài
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:220: Biển số
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:225: Trạng thái
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:226: Thời gian
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:415: Đang tra cứu...
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:444: ❌ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:453: Nhập mã đăng tài hoặc biển số trước.
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:453: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:471: Lỗi ghi CCS
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:475: Đã ghi nhận CCS. Trạng thái: {result.Status}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:475: Thành công
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:482: Đang chờ
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:500: GHI CHỮ ĐƯỜNG THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:501: Chuyến: {_txtTripNo.Text}\nBiển số: {_txtPlate.Text}\nBrix: {_numBrix.Value:#,##0.##} | Pol: {_numPol.Value:#,##0.##} | CCS: {_numCcs.Value:#,##0.##}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:502: Lỗi
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:507: GHI CHỮ ĐƯỜNG THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:508: Chuyến: {_txtTripNo.Text}\nBiển số: {_txtPlate.Text}\nCCS: {_numCcs.Value:#,##0.##}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:509: Lỗi push: {pushEx.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:527: Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:527: Lỗi hệ thống
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:551: Nhập mã đăng tài hoặc biển số để bắt đầu
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:553: CCS tự động: —
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:566: CCS tự động: — (nhập Brix + Pol)
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:574: CCS tự động: ❌ {result.InvalidReason}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:579: CCS tự động: {result.CcsValue:#,##0.##} (Pol cc: {result.PolCaiChinh:N4}, g: {result.ApparentDensity:N5})
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:705: Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:736: Đang chờ
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:744: Lỗi tải lịch sử CCS: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:744: Lỗi
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:775: 📋 Xem lại chuyến {tripNo} — bấm In phiếu hoặc Lượt mới (Esc) để nhập mới
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:796: Chọn chuyến trước khi đẩy lại.
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:796: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:809: ⏳ Đang đẩy lại CCS lên DigiScale...
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:830: ✅ Đẩy DigiScale thành công cho {tripNo}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:833: ĐẨY LẠI THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:834: Chuyến: {tripNo}\nBiển số: {plate}\nCCS: {ccs:#,##0.##}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:839: ❌ Đẩy lại thất bại: {pushResult.ErrorMessage}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:842: ĐẨY LẠI THẤT BẠI
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:843: Chuyến: {tripNo}\nBiển số: {plate}\nCCS: {ccs:#,##0.##}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:844: Lỗi không xác định
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:849: ❌ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:851: Lỗi đẩy lại DigiScale:\n{ex.Message}
+src\TTC.Weighing.WinForms\Forms\CcsForm.cs:851: Lỗi
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:21: Hồ sơ nghiệp vụ
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:22: Bàn cân
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:23: Thiết bị và ánh xạ làn
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:87: Ngưỡng của hồ sơ nghiệp vụ đang chọn
+src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs:160: giây
+src\TTC.Weighing.WinForms\Forms\DashboardForm.cs:52: lượt cân
+src\TTC.Weighing.WinForms\Forms\ExceptionQueueForm.cs:32: Hàng chờ ngoại lệ
+src\TTC.Weighing.WinForms\Forms\ExceptionQueueForm.cs:153: Nhật ký xử lý ngoại lệ
+src\TTC.Weighing.WinForms\Forms\GuideForm.cs:31: Hướng dẫn sử dụng
+src\TTC.Weighing.WinForms\Forms\GuideForm.cs:100: Nhập mía
+src\TTC.Weighing.WinForms\Forms\IntegrationMonitorForm.cs:25: Danh sách thông điệp tích hợp
+src\TTC.Weighing.WinForms\Forms\IntegrationMonitorForm.cs:174: Nhật ký tích hợp
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:32: ĐĂNG NHẬP / SIGN IN
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:57: Đăng nhập / Sign In
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:83: Đăng nhập
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:101: Nhập thông tin tài khoản DigiScale / Enter your DigiScale credentials
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:108: Nhập tên đăng nhập / Enter username
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:111: Tên đăng nhập / Username
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:117: Mật khẩu / Password
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:146: Quên mật khẩu? Liên hệ quản trị hệ thống / Forgot password? Contact your administrator
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:159: MẬT KHẨU / PASSWORD
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:162: TÊN ĐĂNG NHẬP / USERNAME
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:189: Đóng / Close
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:236: Vui lòng nhập tên đăng nhập / Please enter username
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:237: Vui lòng nhập mật khẩu / Please enter password
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:250: ❌ Sai tên đăng nhập hoặc mật khẩu / Incorrect credentials
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:260: ❌ Tài khoản không thuộc nhà máy / Account not in this plant
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:272: ❌ Lỗi kết nối / Connection error: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:276: ❌ Hết thời gian chờ / Connection timed out
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:280: ❌ Lỗi / Error: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:293: ❌ Sai tên đăng nhập hoặc mật khẩu / Incorrect credentials
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:300: Đang đăng nhập... / Signing in...
+src\TTC.Weighing.WinForms\Forms\LoginForm.cs:475: Hệ thống cân hợp nhất\nmía và vật tư
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:657: Xem trước (dev) ▾
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:669: Đã đo tạp chất (bỏ tick để xem chặn cân lần 2)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:671: Đã xác thực danh tính xe (bỏ tick để xem chặn theo R-039)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:673: Chữ đường đang chờ (chỉ cảnh báo, không chặn cân)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:676: Giả định hợp đồng API đã xác minh (thực tế D-02 chưa duyệt)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:678: Giả định dung sai đã duyệt (thực tế D-06 chưa duyệt)
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:681: Bộ điều khiển barie sẵn sàng
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:683: Điều kiện an toàn tại chỗ đạt
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:687: Xem audit trail toàn hệ thống
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:699: Chưa có bản ghi audit.
+src\TTC.Weighing.WinForms\Forms\MainForm.cs:706: Audit trail (xem trước)
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:54: Nhập số đăng tài hoặc biển số xe
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:90: Trạng thái QR
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:102: Trạng thái workflow đo tạp chất
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:114: Số cân mẫu hiện tại
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:125: Tiến trình ổn định
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:134: Khối lượng mẫu trước
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:143: Khối lượng mẫu sau
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:155: In phiếu
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:158: 🔄 Đẩy lại Digi
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:171: Lý do nhập tay (bắt buộc)...
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:173: Lý do nhập tay
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:177: Mã phê duyệt (không bắt buộc)...
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:179: Mã phê duyệt nhập tay
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:202: Lịch sử mẫu chất lượng
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:617: Ngưỡng cảnh báo mẫu nhỏ theo tài liệu là {ImpurityCalculator.DocumentReferenceMinSampleKg} kg. 
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:618: Đây là cảnh báo, không phải lỗi cứng. 
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:619: Cân mẫu tự động ghi khi ổn định ≥ {StableThresholdSeconds} giây.
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:869: Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1120: 📝 Nhập tay tạp chất
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1174: Tạp chất dự kiến: {calc.ImpurityPercent:N4} %
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1303: ⏳ Đang đẩy tạp chất lên DigiScale...
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1327: GHI TẠP CHẤT THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1328: Chuyến: {_txtTripNo.Text}\nBiển số: {_txtPlate.Text}\nTạp chất: {result.ImpurityPercent:N4} %\n\n{debugInfo}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1329: Lỗi
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1334: GHI TẠP CHẤT THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1335: Chuyến: {_txtTripNo.Text}\nBiển số: {_txtPlate.Text}\nTạp chất: {result.ImpurityPercent:N4} %
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1336: Lỗi push: {pushEx.Message}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1479: 📋 Xem lại chuyến {tripNo} — bấm Làm mới (Esc) để nhập mới
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1613: Chọn chuyến trước khi đẩy lại.
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1613: Thiếu thông tin
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1643: ⏳ Đang đẩy lại tạp chất lên DigiScale...
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1661: ✅ Đẩy DigiScale thành công cho {tripNo}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1664: ĐẨY LẠI TẠP CHẤT THÀNH CÔNG
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1665: Chuyến: {tripNo}\nBiển số: {plate}\nMẫu trước: {beforeKg:N0} kg | Mẫu sau: {afterKg:N0} kg
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1670: ❌ Đẩy lại thất bại: {pushResult.ErrorMessage}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1673: ĐẨY LẠI TẠP CHẤT THẤT BẠI
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1674: Chuyến: {tripNo}\nBiển số: {plate}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1675: Lỗi không xác định
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1680: ❌ Lỗi: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1682: Lỗi đẩy lại DigiScale:\n{ex.Message}
+src\TTC.Weighing.WinForms\Forms\QualityForm.cs:1682: Lỗi
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:289: Số chuyến        : {row.TripNo}
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:290: Chứng từ nguồn   : {row.ReferenceNo ?? 
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:291: Hồ sơ nghiệp vụ  : {row.ProfileCode}
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:292: Biển số          : {row.Plate ?? 
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:294: Cân lần 1        : {Fmt(row.GrossKg)} kg
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:295: Cân lần 2        : {Fmt(row.TareKg)} kg
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:296: Net cân xe       : {Fmt(row.NetKg)} kg
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:297:                    (chênh lệch cân xe, không mặc định là khối lượng sản phẩm tinh)
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:299: Tạp chất         : {Fmt(row.ImpurityPercent, 
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:300: Chữ đường        : {Fmt(row.CcsValue, 
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:301: Kết luận đối soát: {row.OverallVerdict?.ToString() ?? Loc.T(
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:302: Can thiệp tay    : {row.ManualInterventionCount} lần
+src\TTC.Weighing.WinForms\Forms\ReportForm.cs:309: In lúc: {DateTime.Now:yyyy-MM-dd HH:mm:ss}
+src\TTC.Weighing.WinForms\Forms\SplashForm.cs:29: Đang khởi động... / Starting...
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:33: Các lần cân
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:34: Mẫu chất lượng
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:35: Phiên đo
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:36: Đối soát
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:37: Phân bổ
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:38: Tích hợp
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:57: Phân bổ trọng lượng ghép xe
+src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs:122: Danh sách blocker của chuyến
+src\TTC.Weighing.WinForms\Localization\AppLanguage.cs:48: Tiếng Việt
+src\TTC.Weighing.WinForms\Localization\AppLanguage.cs:52: Tiếng Việt
+src\TTC.Weighing.WinForms\Localization\Loc.cs:23: Loc chưa được khởi tạo. Gọi Loc.Initialize(...) khi khởi động app.
+src\TTC.Weighing.WinForms\Presenters\QualityPresenter.cs:87: Đã duyệt
+src\TTC.Weighing.WinForms\Services\DigiScaleAuthService.cs:43: API trả về response rỗng.
+src\TTC.Weighing.WinForms\Theme\ThemedControls.cs:144: Ág
+src\TTC.Weighing.WinForms\Theme\ThemedControls.cs:252: Ág

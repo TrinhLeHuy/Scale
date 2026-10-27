@@ -1,0 +1,6 @@
+reg.erp_date_from	ពីថ្ងៃ (ERP)
+reg.erp_date_to	ដល់ថ្ងៃ (ERP)
+reg.erp_trip_list	បញ្ជី TRIP ក្នុងចន្លោះថ្ងៃ
+reg.erp_date_range	ចន្លោះថ្ងៃ ERP
+reg.erp_date_invalid	⚠ ចន្លោះថ្ងៃ ERP មិនត្រឹមត្រូវ៖ ថ្ងៃចាប់ផ្តើមធំជាងថ្ងៃបញ្ចប់។
+reg.erp_none_in_range	គ្មានការបញ្ជាទិញ ERP ពី {0} ដល់ {1} ទេ។ សូមទាញទិន្នន័យ ERP ថ្មីបំផុត ឬពង្រីកចន្លោះថ្ងៃ។

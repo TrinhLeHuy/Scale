@@ -104,7 +104,7 @@ public sealed class EfDashboardQueries(WeighingDbContext db) : IDashboardQueries
                 t.Lifecycle is TripLifecycle.Registered or TripLifecycle.TempRegistered),
             InsidePlant: trips.Count(t => t.Lifecycle is TripLifecycle.InProgress
                 or TripLifecycle.WeighingCompleted or TripLifecycle.Reconciled or TripLifecycle.Posted),
-            FirstWeightOnly: trips.Count(t => t.HasGross && !t.HasTare),
+            FirstWeightOnly: trips.Count(t => t.HasGross != t.HasTare),
             PausedTrips: trips.Count(t => t.ExecutionStatus == ExecutionStatus.Paused),
             ReconciliationBlockers: reconciliationBlockers,
             IntegrationAttention: integrationAttention,
@@ -133,6 +133,10 @@ public sealed class EfDashboardQueries(WeighingDbContext db) : IDashboardQueries
 
         if (filter.ExecutionStatus.HasValue)
             query = query.Where(t => t.ExecutionStatus == filter.ExecutionStatus.Value);
+
+        // Tách Mía (FRM) / Vật tư (ERP)
+        if (filter.Category.ToSourceSystem() is { } sourceSystem)
+            query = query.Where(t => t.SourceSystem == sourceSystem);
 
         if (!string.IsNullOrWhiteSpace(filter.PlateContains))
             query = query.Where(t => t.TractorPlate != null
@@ -174,7 +178,8 @@ public sealed class EfDashboardQueries(WeighingDbContext db) : IDashboardQueries
 
         foreach (var r in rows)
         {
-            if (filter.FirstWeightOnly && (r.Gross is null || r.Tare is not null))
+            // Mới cân 1 lần (Gross hoặc Tare) — vật tư xuất cân Tare trước
+            if (filter.FirstWeightOnly && (r.Gross is null) == (r.Tare is null))
                 continue;
 
             if (!string.IsNullOrWhiteSpace(filter.ProfileCode) &&

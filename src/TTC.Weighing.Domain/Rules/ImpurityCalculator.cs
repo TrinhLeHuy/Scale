@@ -1,3 +1,5 @@
+using TTC.Weighing.Domain.Common;
+
 namespace TTC.Weighing.Domain.Rules;
 
 public sealed record ImpurityResult(
@@ -23,14 +25,15 @@ public static class ImpurityCalculator
         decimal minimumSampleKg = DocumentReferenceMinSampleKg)
     {
         if (sampleBeforeKg <= 0)
-            return new(false, null, false, "Khối lượng mẫu trước phải lớn hơn 0.");
+            return new(false, null, false, DomainText.T("rule.impurity_before_positive", "Khối lượng mẫu trước phải lớn hơn 0."));
 
         if (sampleAfterKg < 0)
-            return new(false, null, false, "Khối lượng mẫu sau không được âm.");
+            return new(false, null, false, DomainText.T("rule.impurity_after_negative", "Khối lượng mẫu sau không được âm."));
 
-        if (sampleAfterKg > sampleBeforeKg)
+        // Lần 2 (mẫu sau khi làm sạch) phải NHỎ HƠN lần 1 — bằng hoặc lớn hơn đều không hợp lệ.
+        if (sampleAfterKg >= sampleBeforeKg)
             return new(false, null, false,
-                "Mẫu sau lớn hơn mẫu trước — số đo không hợp lệ, cần lấy lại mẫu.");
+                DomainText.T("rule.impurity_after_gt_before", "Lần 2 phải nhỏ hơn lần 1 — số đo không hợp lệ, cần cân lại."));
 
         var percent = (sampleBeforeKg - sampleAfterKg) / sampleBeforeKg * 100m;
         var belowMinimum = sampleBeforeKg < minimumSampleKg;

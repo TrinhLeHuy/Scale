@@ -1,3 +1,5 @@
+using TTC.Weighing.Domain.Common;
+
 namespace TTC.Weighing.Domain.BusinessRules;
 
 /// <summary>
@@ -19,24 +21,24 @@ public static class CcsCalculator
     public static CcsResult Calculate(decimal polDoc, decimal brixDoc, decimal fibre)
     {
         if (polDoc <= 0)
-            return CcsResult.Invalid("Pol phải lớn hơn 0.");
+            return CcsResult.Invalid(DomainText.T("rule.ccs_pol_positive", "Pol phải lớn hơn 0."));
         if (brixDoc <= 0)
-            return CcsResult.Invalid("Brix phải lớn hơn 0.");
+            return CcsResult.Invalid(DomainText.T("rule.ccs_brix_positive", "Brix phải lớn hơn 0."));
         if (fibre < 0)
-            return CcsResult.Invalid("Fibre không được âm.");
+            return CcsResult.Invalid(DomainText.T("rule.ccs_fibre_negative", "Fibre không được âm."));
 
         // Bước 1: Tra tỷ trọng biểu kiến theo Brix (bảng ICUMSA, 20°C/20°C)
         var bxRounded = Math.Round(brixDoc, 1, MidpointRounding.AwayFromZero);
         var g = LookupApparentDensity((double)bxRounded);
         if (g <= 0)
-            return CcsResult.Invalid($"Không tra được tỷ trọng cho Brix = {bxRounded}.");
+            return CcsResult.Invalid(DomainText.T("rule.ccs_density_not_found", "Không tra được tỷ trọng cho Brix = {0}.", bxRounded));
 
         // Bước 2: Tính Pol cải chính (PolTinh)
         // PolTinh = (PolDoc × 26 × 110) / (99.718 × g × 100)
         var polTinh = ((double)polDoc * 26.0 * 110.0) / (99.718 * g * 100.0);
 
         if (polTinh <= 0)
-            return CcsResult.Invalid("Pol cải chính ≤ 0, kiểm tra lại giá trị Pol và Brix.");
+            return CcsResult.Invalid(DomainText.T("rule.ccs_pol_corrected_invalid", "Pol cải chính ≤ 0, kiểm tra lại giá trị Pol và Brix."));
 
         // Bước 3: Tính CCS
         // CCS = 1.5 × PolTinh × (95 - F) / 100 - 0.5 × BxDoc × (97 - F) / 100

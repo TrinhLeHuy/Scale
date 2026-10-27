@@ -48,8 +48,23 @@ public interface ITripRepository
     Task<IReadOnlyDictionary<Guid, int>> CountPendingByWeighbridgeAsync(
         Guid siteId, CancellationToken ct = default);
 
-    /// <summary>Tìm chuyến active (chưa Closed/Cancelled) theo lệnh đốn GUID. Trả TripNo nếu tìm thấy.</summary>
+    /// <summary>
+    /// Tìm chuyến đã dùng lệnh đốn GUID — mọi trạng thái trừ Cancelled, kể cả đã cân xong (Closed).
+    /// Chuyến đã xóa không tính. Trả TripNo nếu tìm thấy.
+    /// </summary>
     Task<string?> FindActiveByLenhDonIdAsync(string lenhDonId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Tìm chuyến đã dùng chứng từ nguồn (ví dụ Shipment/TRIP ERP của vật tư) — mọi trạng thái trừ Cancelled,
+    /// kể cả đã cân xong (Closed). Trả TripNo nếu tìm thấy; chỉ phiếu đã hủy / đã xóa mới cho đăng tài lại.
+    /// </summary>
+    Task<string?> FindActiveByReferenceAsync(string sourceSystem, string referenceTripNo, CancellationToken ct = default);
+
+    /// <summary>
+    /// Chuyến đã có lượt cân nào chưa (mọi WeighEvent, kể cả bản đã bị thay thế khi cân lại).
+    /// Dùng để chặn hủy / xóa đăng tài khi xe đã cân.
+    /// </summary>
+    Task<bool> HasWeighEventsAsync(Guid tripId, CancellationToken ct = default);
 }
 
 public interface IQrTokenRepository

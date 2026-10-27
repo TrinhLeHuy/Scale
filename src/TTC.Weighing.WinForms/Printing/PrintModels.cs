@@ -60,6 +60,34 @@ public sealed record PhieuCanData(
     string? ChinhSachThuMia,
     decimal? CcsThanhToan);
 
+/// <summary>
+/// Data phiếu cân vật tư (luồng ERP / WMS). Số cân theo kg.
+/// <see cref="TrongLuongHang"/> = chênh lệch cân xe theo hướng (nhập: vào − ra; xuất: ra − vào) — âm vẫn giữ nguyên.
+/// </summary>
+public sealed record PhieuCanVatTuData(
+    string? CompanyName,
+    string? CompanyAddress,
+    string? PhieuCanSo,
+    string? SoDangTai,
+    DateTime? Ngay,
+    string? SoXe,
+    string? Shipment,
+    string? SoTrip,
+    string? Huong,
+    string? KhachHangNcc,
+    string? HangHoa,
+    string? MaHang,
+    string? Kho,
+    string? NhaVanChuyen,
+    string? LaiXe,
+    decimal? TrongLuongVao,
+    DateTime? ThoiGianVao,
+    decimal? TrongLuongRa,
+    DateTime? ThoiGianRa,
+    decimal? TrongLuongHang,
+    string? GhiChu,
+    string? Barcode);
+
 /// <summary>Data phiếu cân trừ tạp chất.</summary>
 public sealed record PhieuTapChatData(
     FactoryInfo Factory,

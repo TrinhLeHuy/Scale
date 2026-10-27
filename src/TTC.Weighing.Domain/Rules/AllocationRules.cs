@@ -1,3 +1,4 @@
+using TTC.Weighing.Domain.Common;
 using TTC.Weighing.Domain.Enums;
 
 namespace TTC.Weighing.Domain.Rules;
@@ -41,10 +42,10 @@ public static class AllocationRules
         int roundingDecimals = 3)
     {
         if (lines.Count == 0)
-            return Invalid("Không có dòng nào để phân bổ.");
+            return Invalid(DomainText.T("rule.alloc_no_lines", "Không có dòng nào để phân bổ."));
 
         if (measuredTotalKg <= 0)
-            return Invalid("Tổng lượng đã đo phải lớn hơn 0 để phân bổ.");
+            return Invalid(DomainText.T("rule.alloc_total_positive", "Tổng lượng đã đo phải lớn hơn 0 để phân bổ."));
 
         return method switch
         {
@@ -54,7 +55,7 @@ public static class AllocationRules
             AllocationMethod.FixedQuantityWithRemainder
                 => AllocateByFixedQuantity(measuredTotalKg, lines, roundingDecimals),
 
-            _ => Invalid($"Phương pháp phân bổ không hỗ trợ: {method}")
+            _ => Invalid(DomainText.T("rule.alloc_method_unsupported", "Phương pháp phân bổ không hỗ trợ: {0}", method))
         };
     }
 
@@ -62,11 +63,11 @@ public static class AllocationRules
         decimal total, IReadOnlyList<AllocationRequestLine> lines, int decimals)
     {
         if (lines.Any(l => l.Ratio is null or <= 0))
-            return Invalid("Mọi dòng phải có tỷ lệ đã duyệt lớn hơn 0.");
+            return Invalid(DomainText.T("rule.alloc_ratio_positive", "Mọi dòng phải có tỷ lệ đã duyệt lớn hơn 0."));
 
         var ratioSum = lines.Sum(l => l.Ratio!.Value);
         if (ratioSum <= 0)
-            return Invalid("Tổng tỷ lệ phải lớn hơn 0.");
+            return Invalid(DomainText.T("rule.alloc_ratio_sum_positive", "Tổng tỷ lệ phải lớn hơn 0."));
 
         var results = new List<AllocationLineResult>();
         var running = 0m;
@@ -99,16 +100,16 @@ public static class AllocationRules
     {
         var remainderLines = lines.Where(l => l.ReceivesRemainder).ToList();
         if (remainderLines.Count != 1)
-            return Invalid("Phải có đúng một dòng nhận phần còn lại.");
+            return Invalid(DomainText.T("rule.alloc_one_remainder", "Phải có đúng một dòng nhận phần còn lại."));
 
         var fixedLines = lines.Where(l => !l.ReceivesRemainder).ToList();
         if (fixedLines.Any(l => l.FixedKg is null or <= 0))
-            return Invalid("Mọi dòng số lượng xác định phải có giá trị lớn hơn 0.");
+            return Invalid(DomainText.T("rule.alloc_fixed_positive", "Mọi dòng số lượng xác định phải có giá trị lớn hơn 0."));
 
         var fixedTotal = fixedLines.Sum(l => Math.Round(l.FixedKg!.Value, decimals));
         if (fixedTotal > total)
-            return Invalid(
-                $"Tổng số lượng xác định ({fixedTotal:N3} kg) vượt tổng đã đo ({total:N3} kg).");
+            return Invalid(DomainText.T("rule.alloc_fixed_exceeds",
+                "Tổng số lượng xác định ({0:N3} kg) vượt tổng đã đo ({1:N3} kg).", fixedTotal, total));
 
         var results = fixedLines
             .Select(l => new AllocationLineResult(
@@ -126,11 +127,11 @@ public static class AllocationRules
         var sum = results.Sum(r => r.AllocatedKg);
 
         if (sum != total)
-            return Invalid(
-                $"Tổng phân bổ {sum:N3} kg không bằng tổng đã đo {total:N3} kg — phần dư không được biến mất.");
+            return Invalid(DomainText.T("rule.alloc_sum_mismatch",
+                "Tổng phân bổ {0:N3} kg không bằng tổng đã đo {1:N3} kg — phần dư không được biến mất.", sum, total));
 
         if (results.Any(r => r.AllocatedKg < 0))
-            return Invalid("Có dòng phân bổ âm.");
+            return Invalid(DomainText.T("rule.alloc_negative_line", "Có dòng phân bổ âm."));
 
         return new(true, results, null);
     }

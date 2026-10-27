@@ -1,0 +1,15 @@
+ccs.ux_input_sub	Read Bx and Pol from the instruments; manual entry needs manager approval
+ccs.ux_btn_read_brix	Read Brix meter
+ccs.ux_btn_read_pol	Read Pol meter
+ccs.ux_btn_manual	Manual entry (manager)
+ccs.ux_btn_manual_approved	Manual · approved by {0}
+ccs.ux_badge_device	INSTRUMENT
+ccs.ux_badge_manual	MANUAL
+ccs.ux_badge_none	NOT MEASURED
+ccs.ux_device_reading	Reading value from the {0} meter...
+ccs.ux_device_unavailable	Could not read the {0} meter. Check the connection, or click "Manual entry" (manager account required).
+ccs.ux_device_read_ok	Read {0} from meter: {1}
+ccs.ux_device_error	{0} meter read error: {1}
+ccs.ux_manual_approval	Manual Brix/Pol entry for trip {0}
+ccs.ux_manual_approved_status	Manager {0} approved manual Brix/Pol entry. Enter the values, then click Record.
+ccs.ux_need_reading	Brix and Pol are missing. Click "Read Brix meter" / "Read Pol meter", or "Manual entry" with a manager account.

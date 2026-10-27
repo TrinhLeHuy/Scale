@@ -1,0 +1,6 @@
+reg.erp_date_from	ຈາກວັນທີ (ERP)
+reg.erp_date_to	ຮອດວັນທີ (ERP)
+reg.erp_trip_list	ລາຍການ TRIP ໃນຊ່ວງວັນທີ
+reg.erp_date_range	ຊ່ວງວັນທີ ERP
+reg.erp_date_invalid	⚠ ຊ່ວງວັນທີ ERP ບໍ່ຖືກຕ້ອງ: ວັນເລີ່ມຫຼາຍກວ່າວັນສິ້ນສຸດ.
+reg.erp_none_in_range	ບໍ່ມີຄຳສັ່ງ ERP ຈາກ {0} ຫາ {1}. ກະລຸນາດຶງຂໍ້ມູນ ERP ລ່າສຸດ ຫຼື ຂະຫຍາຍຊ່ວງວັນທີ.

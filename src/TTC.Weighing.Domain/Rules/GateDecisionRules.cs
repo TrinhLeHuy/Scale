@@ -1,3 +1,4 @@
+using TTC.Weighing.Domain.Common;
 using TTC.Weighing.Domain.Enums;
 
 namespace TTC.Weighing.Domain.Rules;
@@ -62,25 +63,25 @@ public static class GateDecisionRules
     private static ConditionCheck CheckTripAndQr(GateDecisionContext c)
     {
         const string code = "GATE.1";
-        const string name = "Chuyến và QR còn hiệu lực";
+        var name = DomainText.T("rule.gate_trip_qr_name", "Chuyến và QR còn hiệu lực");
 
         // QR tạm cho phép qua cổng — cân offline, sau đẩy lên hệ thống chính.
         // Chỉ cần QR chưa thu hồi và chuyến chưa hủy/đóng.
 
         if (c.QrStatus != QrTokenStatus.Issued && c.QrType != QrTokenType.Temp)
-            return new(code, name, false, $"QR ở trạng thái {c.QrStatus}.");
+            return new(code, name, false, DomainText.T("rule.qr_status_is", "QR ở trạng thái {0}.", c.QrStatus));
 
         if (!c.QrMatchesTrip)
-            return new(code, name, false, "QR không thuộc chuyến đang xét.");
+            return new(code, name, false, DomainText.T("rule.gate_qr_not_trip", "QR không thuộc chuyến đang xét."));
 
         if (c.TripLifecycle is TripLifecycle.Cancelled)
-            return new(code, name, false, "Chuyến đã bị hủy.");
+            return new(code, name, false, DomainText.T("rule.gate_trip_cancelled", "Chuyến đã bị hủy."));
 
         if (c.TripLifecycle is TripLifecycle.Closed)
-            return new(code, name, false, "Chuyến đã kết thúc, không mở cổng mới bằng QR này.");
+            return new(code, name, false, DomainText.T("rule.gate_trip_closed", "Chuyến đã kết thúc, không mở cổng mới bằng QR này."));
 
         if (c.ExecutionStatus == ExecutionStatus.Paused)
-            return new(code, name, false, "Chuyến đang PAUSED, ngừng cấp quyền mở mới (U-13).");
+            return new(code, name, false, DomainText.T("rule.gate_trip_paused", "Chuyến đang PAUSED, ngừng cấp quyền mở mới (U-13)."));
 
         return new(code, name, true);
     }
@@ -88,25 +89,26 @@ public static class GateDecisionRules
     private static ConditionCheck CheckIdentity(GateDecisionContext c)
     {
         const string code = "GATE.2";
-        const string name = "Đúng danh tính xe tại làn";
+        var name = DomainText.T("rule.gate_identity_name", "Đúng danh tính xe tại làn");
 
         return c.VehicleIdentityVerified
             ? new(code, name, true)
             : new(code, name, false,
-                "Chưa xác thực xe tại làn theo D-03. Khi chưa có ANPR nghiệm thu, " +
-                "cần xác nhận của nhân viên tại làn trước khi mở tự động.");
+                DomainText.T("rule.gate_identity_unverified",
+                    "Chưa xác thực xe tại làn theo D-03. Khi chưa có ANPR nghiệm thu, " +
+                    "cần xác nhận của nhân viên tại làn trước khi mở tự động."));
     }
 
     private static ConditionCheck CheckGateAndStage(GateDecisionContext c)
     {
         const string code = "GATE.3";
-        const string name = "Đúng cổng, hướng và đủ checkpoint";
+        var name = DomainText.T("rule.gate_stage_name", "Đúng cổng, hướng và đủ checkpoint");
 
         if (!c.GateMatchesConfiguration)
-            return new(code, name, false, $"Cổng/làn không khớp cấu hình cho hướng {c.RequestedDirection}.");
+            return new(code, name, false, DomainText.T("rule.gate_lane_mismatch", "Cổng/làn không khớp cấu hình cho hướng {0}.", c.RequestedDirection));
 
         if (!c.StageCheckpointsSatisfied)
-            return new(code, name, false, "Chưa đủ checkpoint bắt buộc của giai đoạn này.");
+            return new(code, name, false, DomainText.T("rule.gate_checkpoints_missing", "Chưa đủ checkpoint bắt buộc của giai đoạn này."));
 
         return new(code, name, true);
     }
@@ -114,18 +116,18 @@ public static class GateDecisionRules
     private static ConditionCheck CheckController(GateDecisionContext c)
     {
         const string code = "GATE.4";
-        const string name = "Bộ điều khiển và an toàn tại chỗ";
+        var name = DomainText.T("rule.gate_controller_name", "Bộ điều khiển và an toàn tại chỗ");
 
         if (!c.ControllerReady)
-            return new(code, name, false, "Bộ điều khiển barie không sẵn sàng.");
+            return new(code, name, false, DomainText.T("rule.gate_controller_not_ready", "Bộ điều khiển barie không sẵn sàng."));
 
         if (!c.LocalSafetyConditionsMet)
             return new(code, name, false,
-                "Điều kiện an toàn tại chỗ chưa đạt. Không bỏ qua cảm biến an toàn.");
+                DomainText.T("rule.gate_safety_not_met", "Điều kiện an toàn tại chỗ chưa đạt. Không bỏ qua cảm biến an toàn."));
 
         if (c.HasPendingUnknownCommand)
             return new(code, name, false,
-                "Còn lệnh mở chưa rõ kết quả. Kiểm tra trạng thái thiết bị và xe trước khi cấp lệnh mới.");
+                DomainText.T("rule.gate_pending_unknown", "Còn lệnh mở chưa rõ kết quả. Kiểm tra trạng thái thiết bị và xe trước khi cấp lệnh mới."));
 
         return new(code, name, true);
     }

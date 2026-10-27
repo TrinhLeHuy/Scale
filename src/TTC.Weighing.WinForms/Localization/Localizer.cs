@@ -62,6 +62,37 @@ public sealed class Localizer : ILocalizer
         return key;
     }
 
+    /// <summary>
+    /// Tra khóa ở ngôn ngữ hiện hành rồi tiếng Việt; null nếu khóa không tồn tại.
+    /// Dùng làm resolver cho <c>DomainText</c> (thông báo từ tầng nghiệp vụ).
+    /// </summary>
+    public string? TryT(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+
+        if (_tables.TryGetValue(Current, out var table) && table.TryGetValue(key, out var value))
+            return value;
+
+        if (_tables.TryGetValue(FallbackLanguage, out var fallback) && fallback.TryGetValue(key, out var fallbackValue))
+            return fallbackValue;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tra khóa ở một ngôn ngữ cụ thể (không phụ thuộc ngôn ngữ đang chọn) — dùng cho phiếu in song ngữ.
+    /// Thiếu khóa → tiếng Việt → chính khóa.
+    /// </summary>
+    public string TFor(AppLanguage language, string key)
+    {
+        if (string.IsNullOrEmpty(key)) return string.Empty;
+        if (_tables.TryGetValue(language, out var table) && table.TryGetValue(key, out var value))
+            return value;
+        if (_tables.TryGetValue(FallbackLanguage, out var fallback) && fallback.TryGetValue(key, out var fallbackValue))
+            return fallbackValue;
+        return key;
+    }
+
     public string T(string key, params object[] args)
     {
         var template = T(key);

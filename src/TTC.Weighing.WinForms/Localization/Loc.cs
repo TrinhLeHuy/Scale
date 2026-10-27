@@ -47,6 +47,28 @@ public static class Loc
 
     /// <summary>Lấy chuỗi đã dịch và format.</summary>
     public static string T(string key, params object[] args) => _localizer?.T(key, args) ?? key;
+
+    /// <summary>
+    /// Tên hiển thị của giá trị enum theo ngôn ngữ hiện hành — khóa <c>enum.{TênKiểu}.{GiáTrị}</c>.
+    /// Thiếu khóa thì trả tên gốc của enum.
+    /// </summary>
+    public static string Enum(System.Enum value)
+    {
+        var key = $"enum.{value.GetType().Name}.{value}";
+        return (_localizer as Localizer)?.TryT(key) ?? value.ToString();
+    }
+
+    /// <summary>Chuỗi của một khóa ở ngôn ngữ chỉ định (phiếu in song ngữ). Có format nếu truyền tham số.</summary>
+    public static string TIn(AppLanguage language, string key, params object[] args)
+    {
+        var template = (_localizer as Localizer)?.TFor(language, key) ?? key;
+        if (args.Length == 0) return template;
+        try { return string.Format(System.Globalization.CultureInfo.CurrentCulture, template, args); }
+        catch (FormatException) { return template; }
+    }
+
+    /// <summary>Có / Không theo ngôn ngữ hiện hành.</summary>
+    public static string YesNo(bool value) => T(value ? "common.yes" : "common.no");
 }
 
 /// <summary>Chọn font phù hợp với chữ viết của ngôn ngữ hiện hành, có fallback nếu font chưa cài.</summary>
@@ -88,4 +110,23 @@ public static class LocalizedFont
 
     /// <summary>Họ font cho ngôn ngữ đang dùng.</summary>
     public static string Current => FamilyFor(Loc.Language);
+
+    /// <summary>
+    /// Font in phiếu theo ngôn ngữ hiện hành. Phiếu tiếng Việt/Anh giữ Times New Roman như mẫu giấy;
+    /// Times New Roman không có chữ Lào/Khmer nên dùng font hệ thống có glyph tương ứng.
+    /// </summary>
+    public static string Print => Loc.Language switch
+    {
+        AppLanguage.Lo or AppLanguage.Km => FamilyFor(Loc.Language),
+        _ => "Times New Roman"
+    };
+
+    /// <summary>
+    /// Font biểu tượng có sẵn trên Windows: ưu tiên Segoe Fluent Icons (Win11),
+    /// lùi về Segoe MDL2 Assets (Win10). Null nếu không có — UI chỉ hiển thị chữ.
+    /// </summary>
+    public static string? IconFamily { get; } =
+        _installed.Contains("Segoe Fluent Icons") ? "Segoe Fluent Icons"
+        : _installed.Contains("Segoe MDL2 Assets") ? "Segoe MDL2 Assets"
+        : null;
 }

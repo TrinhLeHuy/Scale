@@ -143,12 +143,21 @@ public sealed class SiteCodeContext : Forms.ISiteContext
 
         CurrentSiteId = site.Id;
         CurrentSiteCode = site.Code;
-        CurrentSiteName = site.Name;
+        _siteName = site.Name;
     }
+
+    private readonly string? _siteName;
 
     public Guid CurrentSiteId { get; }
     public string CurrentSiteCode { get; }
-    public string? CurrentSiteName { get; }
+
+    /// <summary>
+    /// Tên nhà máy in trên phiếu: theo đơn vị của tài khoản đăng nhập (Portal), không dùng mã site
+    /// cấu hình máy ("TTC-01"). Chưa đăng nhập / admin offline → mã BU, cuối cùng mới tới tên site.
+    /// </summary>
+    public string? CurrentSiteName => WinForms.Program.ActiveOrganizationUnitName
+        ?? WinForms.Program.ActiveOrganizationUnitCode
+        ?? _siteName;
     public string? CurrentSiteAddress { get; set; }
 
     /// <summary>Lấy từ Program.ActiveOrganizationUnitCode sau đăng nhập. Null = admin → thấy tất cả.</summary>

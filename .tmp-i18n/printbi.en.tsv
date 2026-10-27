@@ -1,0 +1,23 @@
+print.none	None
+print.field_shipment	Shipment
+print.field_customer	Customer/Supplier
+print.field_commodity	Commodity
+print.field_warehouse	Warehouse
+print.field_plate	Vehicle plate
+print.field_trailer	Trailer
+print.field_transporter	Transporter
+print.weigh_title	SUGARCANE WEIGHING TICKET
+print.weigh_form_title	Sugarcane weighing ticket — {0}
+print.weigh_ticket_no	Weighing ticket no.
+print.unit_ton	t
+print.weigh_gross	Gross weight
+print.weigh_gross_time	Gross weighing time
+print.weigh_tare	Tare weight
+print.weigh_tare_time	Tare weighing time
+print.weigh_tc_paid	Paid impurity
+print.weigh_ccs_paid	Paid CCS
+print.weigh_paid_weight	Paid weight
+print.weigh_waiting_policy	Awaiting policy
+print.sig_receiver	RECEIVING UNIT REP.
+print.sig_deliverer	DELIVERING UNIT REP.
+print.sig_sign_note	(Sign, full name)

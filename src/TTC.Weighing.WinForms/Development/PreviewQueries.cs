@@ -108,6 +108,9 @@ public sealed class PreviewDashboardQueries(PreviewDataStore store) : IDashboard
             if (filter.ExecutionStatus.HasValue && trip.ExecutionStatus != filter.ExecutionStatus.Value)
                 continue;
 
+            if (filter.Category.ToSourceSystem() is { } sourceSystem && trip.SourceSystem != sourceSystem)
+                continue;
+
             if (!string.IsNullOrWhiteSpace(filter.ProfileCode) &&
                 !string.Equals(profile?.Code, filter.ProfileCode, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -394,6 +397,8 @@ public sealed class PreviewTripRegistrationQueries(PreviewDataStore store) : ITr
             query = query.Where(t => t.CreatedAt >= filter.FromUtc.Value);
         if (filter.ToUtc.HasValue)
             query = query.Where(t => t.CreatedAt < filter.ToUtc.Value);
+        if (filter.Category.ToSourceSystem() is { } sourceSystem)
+            query = query.Where(t => t.SourceSystem == sourceSystem);
 
         var rows = query
             .OrderByDescending(t => t.CreatedAt)
@@ -422,6 +427,8 @@ public sealed class PreviewWeighOperationQueries(PreviewDataStore store) : IWeig
             query = query.Where(t => t.CreatedAt >= filter.FromUtc.Value);
         if (filter.ToUtc.HasValue)
             query = query.Where(t => t.CreatedAt < filter.ToUtc.Value);
+        if (filter.Category.ToSourceSystem() is { } sourceSystem)
+            query = query.Where(t => t.SourceSystem == sourceSystem);
 
         var rows = new List<WeighedTripRow>();
 
@@ -474,10 +481,12 @@ public sealed class PreviewWeighOperationQueries(PreviewDataStore store) : IWeig
     }
 
     public Task<IReadOnlyList<WeighedTripRow>> ListPendingAsync(
-        Guid siteId, CancellationToken ct = default)
+        Guid siteId, TripCategory category = TripCategory.All, CancellationToken ct = default)
     {
+        var sourceSystem = category.ToSourceSystem();
         var pending = store.Trips
             .Where(t => t.SiteId == siteId
+                && (sourceSystem == null || t.SourceSystem == sourceSystem)
                 && t.Lifecycle is TripLifecycle.TempRegistered
                     or TripLifecycle.Registered
                     or TripLifecycle.InProgress

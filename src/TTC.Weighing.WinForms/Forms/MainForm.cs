@@ -9,18 +9,45 @@ using TTC.Weighing.WinForms.Theme;
 namespace TTC.Weighing.WinForms.Forms;
 
 /// <summary>
-/// Shell điều hướng theo 04_Man_hinh. Mỗi màn hình mở thành một tab có nút đóng;
-/// mở lại cùng màn hình thì chuyển sang tab đang có thay vì tạo phiên trùng.
+/// Shell điều hướng theo 04_Man_hinh — bố cục "Modern Enterprise":
+/// <list type="bullet">
+/// <item>Header trắng: nút thu gọn menu, logo, tên hệ thống + màn hình hiện tại, ngôn ngữ, nhà máy, người dùng, đăng xuất.</item>
+/// <item>Sidebar tối bên trái: chức năng nhóm theo luồng nghiệp vụ, mục đang mở được đánh dấu.</item>
+/// <item>Vùng làm việc: mỗi màn hình là một tab có nút đóng; mở lại cùng màn hình thì chuyển sang tab đang có.</item>
+/// <item>Status bar: chế độ vận hành, quyết định chưa duyệt, bản quyền.</item>
+/// </list>
 /// </summary>
 public sealed class MainForm : Form
 {
+    // ── Icon glyph (Segoe Fluent Icons / Segoe MDL2 Assets) ──
+    private const string IconHome = "\uE80F";
+    private const string IconCar = "\uE804";
+    private const string IconScale = "\uEC4A";
+    private const string IconFilter = "\uE71C";
+    private const string IconLab = "\uE9D9";
+    private const string IconDocument = "\uE8A5";
+    private const string IconReport = "\uE9F9";
+    private const string IconSync = "\uE895";
+    private const string IconApiLog = "\uE9D5";
+    private const string IconSettings = "\uE713";
+    private const string IconCloud = "\uE753";
+    private const string IconLibrary = "\uE8F1";
+    private const string IconHelp = "\uE897";
+    private const string IconCloseAll = "\uE8BB";
+    private const string IconMenu = "\uE700";
+    private const string IconGlobe = "\uE774";
+    private const string IconUser = "\uE77B";
+    private const string IconSite = "\uE707";
+    private const string IconPower = "\uE7E8";
+
     private readonly IServiceProvider _services;
     private readonly ICurrentUser _user;
     private readonly ISiteContext _site;
     private readonly PreviewDataStore? _previewStore = null; // Preview đã bỏ
 
-    private Label? _lblUserDisplay;
     private string _loggedInUser = "Admin";
+    private string? _orgUnitCode;
+    private string? _orgUnitName;
 
     /// <summary>
     /// <c>true</c> khi người dùng chọn đăng xuất — Program.cs dùng để quay lại màn hình login
@@ -29,13 +56,14 @@ public sealed class MainForm : Form
     public bool IsLogout { get; private set; }
 
     // Tham chiếu để dựng lại khi đổi ngôn ngữ lúc chạy.
-    private MenuStrip? _menu;
-    private Panel? _menuSeparator;
-    private BrandBar? _brandBar;
-    private BrandBar? _footer;
-    private StatusStrip? _statusBar;
-    private Label? _lblBrandDesc;
-    private BrandBarButton? _btnLogout;
+    private Panel? _header;
+    private NavigationSidebar? _sidebar;
+    private Panel? _statusBar;
+    private Label? _lblScreenTitle;
+    private ChipLabel? _chipUser;
+    private ChipLabel? _chipSite;
+    private readonly ToolTip _headerTips = new() { AutoPopDelay = 8000 };
+    private bool _sidebarCollapsed;
 
     /// <summary>
     /// Chống chớp: WS_CLIPCHILDREN ngăn vùng cha vẽ đè lên vùng con.
@@ -94,7 +122,6 @@ public sealed class MainForm : Form
         DoubleBuffered = true;
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
 
-        // Không dùng WindowState = Maximized (gây chớp nháy do Windows resize 2 lần).
         // Set kích thước = toàn màn hình ngay từ constructor → form hiện đúng kích thước ngay.
         FormBorderStyle = FormBorderStyle.Sizable;
         var screenArea = System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1920, 1080);
@@ -103,23 +130,40 @@ public sealed class MainForm : Form
         ClientSize = screenArea.Size;
         WindowState = FormWindowState.Maximized;
 
-        // Thứ tự thêm control quyết định thứ tự dock: vùng Fill phải vào trước
-        // các dải Top/Bottom, nếu không dải tab sẽ bị menu che.
+        // Thứ tự thêm quyết định thứ tự dock (control thêm sau được dock trước):
+        // status bar (đáy, full width) → header (đỉnh, full width) → sidebar (trái) → vùng tab (fill).
         SuspendLayout();
         BuildWorkspace();
-        BuildFooter();
+        BuildSidebar();
+        BuildHeader();
         BuildStatusBar();
-        BuildBrandBar();
-        BuildMenu();
         ResumeLayout(true);
 
         // Auto-navigate: khi một form hoàn thành bước → tự nhảy sang tab tiếp theo
         var eventBus = services.GetRequiredService<TripEventBus>();
         eventBus.TripChanged += OnTripChangedAutoNavigate;
 
-        // Đổi ngôn ngữ lúc chạy → dựng lại menu, brand bar, footer, status bar.
+        // Đổi ngôn ngữ lúc chạy → dựng lại sidebar, header, status bar và các tab.
         Loc.Changed += OnLanguageChanged;
         FormClosed += (_, _) => Loc.Changed -= OnLanguageChanged;
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == (Keys.Control | Keys.B))
+        {
+            ToggleSidebar();
+            return true;
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    private void ToggleSidebar()
+    {
+        if (_sidebar is null) return;
+        _sidebar.ToggleCollapsed();
+        _sidebarCollapsed = _sidebar.Collapsed;
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e)
@@ -133,11 +177,30 @@ public sealed class MainForm : Form
         // Tạo lại tất cả tab đang mở với ngôn ngữ mới — giữ nguyên thứ tự và tab đang chọn.
         ReopenAllTabs();
 
-        RebuildBrandBar();
-        RebuildFooter();
-        RebuildStatusBar();
-        RebuildMenu();
+        Rebuild(ref _sidebar, BuildSidebar);
+        Rebuild(ref _header, BuildHeader);
+        Rebuild(ref _statusBar, BuildStatusBar);
+
         ResumeLayout(true);
+        SyncNavigationState();
+    }
+
+    /// <summary>Dựng lại một vùng chrome mà vẫn giữ đúng vị trí trong thứ tự dock.</summary>
+    private void Rebuild<T>(ref T? current, Action build) where T : Control
+    {
+        var index = current is not null ? Controls.GetChildIndex(current) : -1;
+
+        if (current is not null)
+        {
+            Controls.Remove(current);
+            current.Dispose();
+        }
+
+        // build() gán lại chính field mà `current` đang tham chiếu tới.
+        build();
+
+        if (index >= 0 && current is not null)
+            Controls.SetChildIndex(current, index);
     }
 
     /// <summary>
@@ -146,7 +209,6 @@ public sealed class MainForm : Form
     /// </summary>
     private void ReopenAllTabs()
     {
-        // Ghi nhớ danh sách tab đang mở theo thứ tự và tab đang chọn.
         var openTypes = _tabs.TabPages.Cast<TabPage>()
             .Select(page => _openTabs.FirstOrDefault(kv => kv.Value == page).Key)
             .Where(t => t is not null)
@@ -157,17 +219,11 @@ public sealed class MainForm : Form
             ? _openTabs.FirstOrDefault(kv => kv.Value == _tabs.SelectedTab).Key
             : null;
 
-        // Đóng tất cả tab (cleanup timers, tokens).
         CloseAllTabs();
 
-        // Mở lại theo thứ tự cũ.
         foreach (var type in openTypes)
-        {
-            // Dùng reflection vì OpenTab<T> là generic — gọi qua method non-generic.
             ReopenTabByType(type);
-        }
 
-        // Khôi phục tab đang chọn.
         if (selectedType is not null && _openTabs.TryGetValue(selectedType, out var selectedPage))
             _tabs.SelectedTab = selectedPage;
     }
@@ -182,7 +238,6 @@ public sealed class MainForm : Form
             return;
         }
 
-        // Mỗi tab tạo scope riêng → DbContext riêng.
         var scope = _services.CreateScope();
         if (scope.ServiceProvider.GetRequiredService(formType) is not Form form)
         {
@@ -190,71 +245,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        form.TopLevel = false;
-        form.FormBorderStyle = FormBorderStyle.None;
-        form.ControlBox = false;
-        form.WindowState = FormWindowState.Normal;
-        form.Dock = DockStyle.Fill;
-        form.MinimumSize = ResolveMinimumSize(form);
-
-        form.Visible = false;
-
-        _tabs.SuspendLayout();
-        ThemeApplier.Apply(form);
-
-        var page = new TabPage(form.Text)
-        {
-            BackColor = AgrisTheme.Canvas,
-            AutoScroll = true
-        };
-
-        page.Controls.Add(form);
-        _openTabs[formType] = page;
-        _tabScopes[formType] = scope;
-        _tabs.TabPages.Add(page);
-
-        form.FormClosed += (_, _) => RemoveTab(formType, page);
-        form.Show();
-        _tabs.ResumeLayout(true);
-    }
-
-    private void RebuildMenu()
-    {
-        // Giữ đúng thứ tự dock: ghi lại child index rồi khôi phục sau khi dựng lại.
-        var menuIndex = _menu is not null ? Controls.GetChildIndex(_menu) : -1;
-        var sepIndex = _menuSeparator is not null ? Controls.GetChildIndex(_menuSeparator) : -1;
-
-        if (_menu is not null) { Controls.Remove(_menu); _menu.Dispose(); }
-        if (_menuSeparator is not null) { Controls.Remove(_menuSeparator); _menuSeparator.Dispose(); }
-
-        BuildMenu();
-
-        if (menuIndex >= 0 && _menu is not null) Controls.SetChildIndex(_menu, menuIndex);
-        if (sepIndex >= 0 && _menuSeparator is not null) Controls.SetChildIndex(_menuSeparator, sepIndex);
-    }
-
-    private void RebuildBrandBar()
-    {
-        var index = _brandBar is not null ? Controls.GetChildIndex(_brandBar) : -1;
-        if (_brandBar is not null) { Controls.Remove(_brandBar); _brandBar.Dispose(); }
-        BuildBrandBar();
-        if (index >= 0 && _brandBar is not null) Controls.SetChildIndex(_brandBar, index);
-    }
-
-    private void RebuildFooter()
-    {
-        var index = _footer is not null ? Controls.GetChildIndex(_footer) : -1;
-        if (_footer is not null) { Controls.Remove(_footer); _footer.Dispose(); }
-        BuildFooter();
-        if (index >= 0 && _footer is not null) Controls.SetChildIndex(_footer, index);
-    }
-
-    private void RebuildStatusBar()
-    {
-        var index = _statusBar is not null ? Controls.GetChildIndex(_statusBar) : -1;
-        if (_statusBar is not null) { Controls.Remove(_statusBar); _statusBar.Dispose(); }
-        BuildStatusBar();
-        if (index >= 0 && _statusBar is not null) Controls.SetChildIndex(_statusBar, index);
+        HostInTab(formType, form, scope, select: false);
     }
 
     /// <summary>
@@ -277,11 +268,6 @@ public sealed class MainForm : Form
         {
             switch (e.ChangeType)
             {
-                // Đăng tài xong → mở Cổng (vào)
-                case TripChangeType.Registered:
-                    break;
-                    break;
-
                 // Cổng vào xong → mở Cân (lần 1)
                 case TripChangeType.GateEntryConfirmed:
                     var weigh1 = OpenTab<WeighOperationForm>(null);
@@ -296,11 +282,6 @@ public sealed class MainForm : Form
                         await quality.AutoScanQrAsync(qrForNextForm);
                     break;
 
-                // Tạp chất xong → mở Kho vận
-                case TripChangeType.ImpurityRecorded:
-                    break; // UI-04 đã bỏ
-                    break;
-
                 // Ra kho xong → mở Cân (lần 2)
                 case TripChangeType.WarehouseExit:
                     var weigh2 = OpenTab<WeighOperationForm>(null);
@@ -308,9 +289,8 @@ public sealed class MainForm : Form
                         await weigh2.AutoScanQrAsync(qrForNextForm);
                     break;
 
-                // Cân lần 2 xong → mở Cổng (ra)
-                case TripChangeType.SecondWeighCommitted:
-                    break;
+                // Đăng tài / tạp chất / cân lần 2: không tự chuyển (UI cổng và UI-04 đã bỏ).
+                default:
                     break;
             }
         }
@@ -320,162 +300,133 @@ public sealed class MainForm : Form
         }
     }
 
-    private void BuildMenu()
+    // ═══════════════════════════ Sidebar ═══════════════════════════
+
+    private void BuildSidebar()
     {
-        var menu = new MenuStrip
+        var nav = new NavigationSidebar { AccessibleName = Loc.T("nav.accessible") };
+
+        // Thứ tự theo luồng nghiệp vụ: Tổng quan → Đăng tài → Cân → Tạp chất → CCS.
+        nav.AddGroup(Loc.T("menu.operations"));
+        nav.AddItem(Loc.T("menu.dashboard"), IconHome, OpenDashboard, typeof(DashboardForm));
+        nav.AddItem(Loc.T("menu.trip_registration"), IconCar, Open<TripRegistrationForm>, typeof(TripRegistrationForm));
+        nav.AddItem(Loc.T("menu.weighing"), IconScale, Open<WeighOperationForm>, typeof(WeighOperationForm));
+        nav.AddItem(Loc.T("menu.quality"), IconFilter, Open<QualityForm>, typeof(QualityForm));
+        nav.AddItem(Loc.T("menu.ccs"), IconLab, Open<CcsForm>, typeof(CcsForm));
+
+        nav.AddGroup(Loc.T("menu.lookup"));
+        nav.AddItem(Loc.T("menu.trip_detail"), IconDocument, Open<TripDetailForm>, typeof(TripDetailForm));
+        nav.AddItem(Loc.T("menu.report"), IconReport, Open<ReportForm>, typeof(ReportForm));
+
+        nav.AddGroup(Loc.T("menu.technical"));
+        nav.AddItem(Loc.T("menu.integration_monitor"), IconSync, Open<IntegrationMonitorForm>, typeof(IntegrationMonitorForm));
+        nav.AddItem(Loc.T("menu.api_log"), IconApiLog, Open<ApiLogForm>, typeof(ApiLogForm));
+        nav.AddItem(Loc.T("menu.configuration"), IconSettings, Open<ConfigurationForm>, typeof(ConfigurationForm));
+        nav.AddItem(Loc.T("menu.frm_data"), IconCloud, Open<FrmSyncForm>, typeof(FrmSyncForm));
+        nav.AddItem(Loc.T("menu.erp_data"), IconLibrary, Open<ErpSyncForm>, typeof(ErpSyncForm));
+
+        nav.AddGroup(Loc.T("menu.help"));
+        nav.AddItem(Loc.T("menu.guide"), IconHelp, OpenGuide, typeof(GuideForm));
+        nav.AddItem(Loc.T("menu.close_all_tabs"), IconCloseAll, CloseAllTabs);
+
+        nav.Collapsed = _sidebarCollapsed;
+
+        _sidebar = nav;
+        Controls.Add(nav);
+    }
+
+    // ═══════════════════════════ Header ═══════════════════════════
+
+    private void BuildHeader()
+    {
+        var header = new BrandBar { Dock = DockStyle.Top, Height = 68, Padding = new Padding(8, 0, 16, 0) };
+
+        // ── Trái: nút menu + logo + tên hệ thống / màn hình hiện tại ──
+        var left = new FlowLayoutPanel
         {
+            Dock = DockStyle.Left,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            BackColor = Color.Transparent,
+            Padding = Padding.Empty
+        };
+
+        var btnToggle = new ModernButton
+        {
+            Text = AgrisTheme.Icon(14F) is not null ? IconMenu : "≡",
+            Font = AgrisTheme.Icon(14F) ?? AgrisTheme.Ui(16F, FontStyle.Bold),
+            Size = new Size(44, 44),
+            Margin = new Padding(4, 12, 10, 0),
             BackColor = AgrisTheme.Surface,
-            Font = new Font(LocalizedFont.Current, 9.5F),
-            Padding = new Padding(6, 2, 0, 2),
-            Renderer = new ToolStripProfessionalRenderer(new AgrisMenuColors())
+            ForeColor = AgrisTheme.TextSecondary,
+            AccessibleName = Loc.T("nav.toggle")
         };
+        btnToggle.FlatAppearance.MouseOverBackColor = AgrisTheme.SurfaceHover;
+        btnToggle.Click += (_, _) => ToggleSidebar();
+        _headerTips.SetToolTip(btnToggle, Loc.T("nav.toggle"));
+        left.Controls.Add(btnToggle);
 
-        // Thứ tự theo luồng nghiệp vụ từ trên xuống dưới:
-        // Tổng quan → Đăng tài → Cổng vào → Cân → Tạp chất → Phiên kho/đối soát → Cổng ra
-        var opsMenu = new ToolStripMenuItem(Loc.T("menu.operations"));
-        opsMenu.DropDownItems.Add(Screen(Loc.T("menu.dashboard"), OpenDashboard));
-        opsMenu.DropDownItems.Add(new ToolStripSeparator());
-        opsMenu.DropDownItems.Add(Screen(Loc.T("menu.trip_registration"), Open<TripRegistrationForm>));
-        opsMenu.DropDownItems.Add(Screen(Loc.T("menu.weighing"), Open<WeighOperationForm>));
-        opsMenu.DropDownItems.Add(Screen(Loc.T("menu.quality"), Open<QualityForm>));
-        opsMenu.DropDownItems.Add(Screen("Đo chữ đường (CCS)", Open<CcsForm>));
-
-        var mgmtMenu = new ToolStripMenuItem(Loc.T("menu.lookup"));
-        mgmtMenu.DropDownItems.Add(Screen(Loc.T("menu.trip_detail"), Open<TripDetailForm>));
-        mgmtMenu.DropDownItems.Add(Screen(Loc.T("menu.report"), Open<ReportForm>));
-
-        var itMenu = new ToolStripMenuItem(Loc.T("menu.technical"));
-        itMenu.DropDownItems.Add(Screen(Loc.T("menu.integration_monitor"), Open<IntegrationMonitorForm>));
-        itMenu.DropDownItems.Add(Screen(Loc.T("menu.configuration"), Open<ConfigurationForm>));
-        itMenu.DropDownItems.Add(new ToolStripSeparator());
-        itMenu.DropDownItems.Add(Screen("Quản lý dữ liệu FRM", Open<FrmSyncForm>));
-        itMenu.DropDownItems.Add(Screen("Quản lý dữ liệu ERP", Open<ErpSyncForm>));
-
-        var tabMenu = new ToolStripMenuItem(Loc.T("menu.tab"));
-        tabMenu.DropDownItems.Add(Screen(Loc.T("menu.guide"), OpenGuide));
-        tabMenu.DropDownItems.Add(new ToolStripSeparator());
-        tabMenu.DropDownItems.Add(Screen(Loc.T("menu.close_current_tab"), CloseCurrentTab));
-        tabMenu.DropDownItems.Add(Screen(Loc.T("menu.close_all_tabs"), CloseAllTabs));
-
-        menu.Items.AddRange([opsMenu, mgmtMenu, itMenu, tabMenu, BuildLanguageMenu()]);
-
-        if (_previewStore is not null)
-            menu.Items.Add(BuildPreviewMenu(_previewStore));
-
-        MainMenuStrip = menu;
-        _menu = menu;
-        Controls.Add(menu);
-
-        // Đường kẻ ngang phân tách menu với brand bar
-        _menuSeparator = new Panel
+        if (LogoHelper.GetLogoScaled(44) is { } logo)
         {
-            Dock = DockStyle.Top,
-            Height = 1,
-            BackColor = AgrisTheme.Border
-        };
-        Controls.Add(_menuSeparator);
-    }
-
-    /// <summary>Menu đổi ngôn ngữ. Chỉ hiển thị ngôn ngữ mà BU/tài khoản được phép dùng.</summary>
-    private ToolStripMenuItem BuildLanguageMenu()
-    {
-        var langMenu = new ToolStripMenuItem(Loc.T("menu.language"));
-        var allowed = Loc.AllowedLanguages;
-
-        foreach (AppLanguage lang in Enum.GetValues<AppLanguage>())
-        {
-            // Nếu có danh sách allowed (sau đăng nhập), chỉ hiện ngôn ngữ được phép
-            if (allowed is { Count: > 0 } && !allowed.Contains(lang))
-                continue;
-
-            var item = new ToolStripMenuItem(lang.DisplayName())
+            left.Controls.Add(new PictureBox
             {
-                Checked = lang == Loc.Language,
-                CheckOnClick = false,
-                Tag = lang
-            };
-            item.Click += (_, _) => Loc.SetLanguage((AppLanguage)item.Tag!);
-            langMenu.DropDownItems.Add(item);
-        }
-
-        return langMenu;
-    }
-
-    /// <summary>Gắn tên user đã đăng nhập lên brand bar.</summary>
-    internal void SetLoggedInUser(string username)
-    {
-        _loggedInUser = username;
-        if (_lblUserDisplay is not null)
-            _lblUserDisplay.Text = $"  {username}  ";
-    }
-
-    /// <summary>Gắn tên BU (công ty) lên badge nhà máy trên brand bar.</summary>
-    internal void SetOrganizationUnit(string? code, string? name)
-    {
-        if (_lblSite is null || string.IsNullOrWhiteSpace(code)) return;
-
-        // Hiện mã code ngắn (KSK, ATN...) trên badge — tên đầy đủ hiện khi hover tooltip.
-        _lblSite.Text = $"  {code}  ";
-
-        if (!string.IsNullOrWhiteSpace(name))
-        {
-            var tip = new ToolTip { AutoPopDelay = 8000 };
-            tip.SetToolTip(_lblSite, name);
-        }
-    }
-
-    private Label? _lblSite;
-
-    private void BuildBrandBar()
-    {
-        var bar = new BrandBar { Dock = DockStyle.Top, Height = 72 };
-        _brandBar = bar;
-
-        // ── Trái: Logo + mô tả ──
-        var leftPanel = new Panel { Dock = DockStyle.Left, Width = 480, BackColor = Color.Transparent, Padding = Padding.Empty };
-
-        var logoImg = LogoHelper.GetLogoScaled(80);
-        var textX = 10; // fallback khi không có logo
-
-        if (logoImg is not null)
-        {
-            var logoPic = new PictureBox
-            {
-                Image = logoImg,
+                Image = logo,
                 SizeMode = PictureBoxSizeMode.Zoom,
-                Size = new Size(80, 80),
-                Location = new Point(8, -4),
+                Size = new Size(Math.Min(logo.Width, 140), 44),
+                Margin = new Padding(0, 12, 14, 0),
                 BackColor = Color.Transparent,
-                Margin = Padding.Empty,
-                Padding = Padding.Empty
-            };
-            leftPanel.Controls.Add(logoPic);
-            textX = 8 + 80 + 12;
+                AccessibleName = "AgriS"
+            });
         }
 
-        var lblDesc = new Label
+        left.Controls.Add(new VerticalSeparator { Height = 36, Margin = new Padding(0, 16, 14, 0) });
+
+        var titleBlock = new Panel { Size = new Size(520, 68), Margin = Padding.Empty, BackColor = Color.Transparent };
+        var lblApp = new Label
         {
             Text = Loc.T("app.title"),
-            Location = new Point(textX, 0),
-            Size = new Size(360, 72),
-            Font = new Font(LocalizedFont.Current, 13F, FontStyle.Bold),
-            ForeColor = AgrisTheme.BrandTealDark,
-            BackColor = Color.Transparent,
-            TextAlign = ContentAlignment.MiddleLeft
+            Dock = DockStyle.Top,
+            Height = 36,
+            Font = AgrisTheme.Ui(12.5F, FontStyle.Bold),
+            ForeColor = AgrisTheme.TextPrimary,
+            TextAlign = ContentAlignment.BottomLeft,
+            AutoEllipsis = true,
+            BackColor = Color.Transparent
         };
-        _lblBrandDesc = lblDesc;
-        leftPanel.Controls.Add(lblDesc);
-
-        // ── Phải: User + Nhà máy + Đăng xuất ──
-        var rightPanel = new Panel { Dock = DockStyle.Right, Width = 420, BackColor = Color.Transparent };
-
-        // Nút đăng xuất — tông đỏ cam nhẹ, nổi bật
-        var btnLogout = new BrandBarButton(Loc.T("button.logout"))
+        _lblScreenTitle = new Label
         {
-            Size = new Size(118, 34),
-            Location = new Point(rightPanel.Width - 118 - 14, 19)
+            Text = Loc.T("header.empty_title"),
+            Dock = DockStyle.Top,
+            Height = 26,
+            Font = AgrisTheme.Ui(9.5F),
+            ForeColor = AgrisTheme.TextMuted,
+            TextAlign = ContentAlignment.TopLeft,
+            AutoEllipsis = true,
+            BackColor = Color.Transparent
         };
-        btnLogout.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        titleBlock.Controls.Add(_lblScreenTitle);
+        titleBlock.Controls.Add(lblApp);
+        left.Controls.Add(titleBlock);
+
+        // ── Phải: ngôn ngữ · nhà máy · người dùng · đăng xuất ──
+        var right = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            BackColor = Color.Transparent
+        };
+
+        var btnLogout = new BrandBarButton(Loc.T("button.logout").Replace("⏻", string.Empty).Trim())
+        {
+            IconGlyph = IconPower,
+            Size = new Size(140, 38),
+            Margin = new Padding(6, 15, 0, 0)
+        };
         btnLogout.Click += (_, _) =>
         {
             if (MessageBox.Show(Loc.T("logout.confirm"), Loc.T("button.logout_title"),
@@ -485,75 +436,210 @@ public sealed class MainForm : Form
                 Close();
             }
         };
-        _btnLogout = btnLogout;
-        rightPanel.Controls.Add(btnLogout);
+        right.Controls.Add(btnLogout);
 
-        // Separator trước nút logout
-        var sep2 = new VerticalSeparator { Anchor = AnchorStyles.Top | AnchorStyles.Right };
-        sep2.Location = new Point(btnLogout.Left - sep2.Width - 6, 20);
-        rightPanel.Controls.Add(sep2);
+        right.Controls.Add(new VerticalSeparator { Height = 36, Margin = new Padding(10, 16, 4, 0) });
 
-        // Badge nhà máy
-        _lblSite = new Label
+        _chipUser = new ChipLabel
         {
-            Text = $"  {Loc.T("badge.site", _site.CurrentSiteCode)}  ",
-            AutoSize = true,
-            Font = new Font(AgrisTheme.FontFamily, 9.5F, FontStyle.Bold),
+            IconGlyph = IconUser,
+            ForeColor = AgrisTheme.BrandGreenDark,
+            ChipBackColor = AgrisTheme.BrandGreenSoft,
+            ChipBorderColor = Color.FromArgb(190, 228, 205),
+            Height = 34,
+            Margin = new Padding(6, 17, 0, 0)
+        };
+        _chipUser.Text = _loggedInUser;
+        right.Controls.Add(_chipUser);
+
+        _chipSite = new ChipLabel
+        {
+            IconGlyph = IconSite,
             ForeColor = AgrisTheme.BrandTealDark,
-            BackColor = Color.FromArgb(233, 242, 249),
-            TextAlign = ContentAlignment.MiddleCenter,
-            Padding = new Padding(10, 5, 10, 5),
-            Anchor = AnchorStyles.Top | AnchorStyles.Right
+            ChipBackColor = AgrisTheme.InfoSoft,
+            ChipBorderColor = Color.FromArgb(190, 215, 235),
+            Height = 34,
+            Margin = new Padding(6, 17, 0, 0)
         };
-        _lblSite.Location = new Point(sep2.Left - _lblSite.PreferredWidth - 6, 21);
-        rightPanel.Controls.Add(_lblSite);
+        _chipSite.Text = string.IsNullOrWhiteSpace(_orgUnitCode)
+            ? Loc.T("badge.site", _site.CurrentSiteCode)
+            : _orgUnitCode;
+        if (!string.IsNullOrWhiteSpace(_orgUnitName))
+            _headerTips.SetToolTip(_chipSite, _orgUnitName);
+        right.Controls.Add(_chipSite);
 
-        // Separator giữa nhà máy và user
-        var sep1 = new VerticalSeparator { Anchor = AnchorStyles.Top | AnchorStyles.Right };
-        sep1.Location = new Point(_lblSite.Left - sep1.Width - 6, 20);
-        rightPanel.Controls.Add(sep1);
+        right.Controls.Add(BuildLanguageButton());
 
-        // Badge user
-        _lblUserDisplay = new Label
+        if (_previewStore is not null)
+            right.Controls.Add(BuildPreviewButton(_previewStore));
+
+        header.Controls.Add(left);
+        header.Controls.Add(right);
+
+        _header = header;
+        Controls.Add(header);
+    }
+
+    /// <summary>Nút đổi ngôn ngữ. Chỉ hiển thị ngôn ngữ mà BU/tài khoản được phép dùng.</summary>
+    private Control BuildLanguageButton()
+    {
+        var button = new ModernButton
         {
-            Text = $"  {_loggedInUser}  ",
+            Text = Loc.Language.DisplayName() + "  ▾",
+            IconGlyph = IconGlobe,
+            Font = new Font(LocalizedFont.Current, 9.5F),
+            BackColor = AgrisTheme.Surface,
+            ForeColor = AgrisTheme.TextSecondary,
             AutoSize = true,
-            Font = new Font(AgrisTheme.FontFamily, 9.5F, FontStyle.Bold),
-            ForeColor = AgrisTheme.BrandGreenDark,
-            BackColor = Color.FromArgb(233, 246, 238),
-            TextAlign = ContentAlignment.MiddleCenter,
-            Padding = new Padding(10, 5, 10, 5),
-            Anchor = AnchorStyles.Top | AnchorStyles.Right
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(0, 34),
+            MaximumSize = new Size(0, 34),
+            Padding = new Padding(8, 0, 8, 0),
+            Margin = new Padding(6, 17, 0, 0),
+            CornerRadius = 17,
+            AccessibleName = Loc.T("menu.language")
         };
-        _lblUserDisplay.Location = new Point(
-            sep1.Left - _lblUserDisplay.PreferredWidth - 6, 21);
-        rightPanel.Controls.Add(_lblUserDisplay);
+        button.FlatAppearance.MouseOverBackColor = AgrisTheme.SurfaceHover;
 
-        // Icon user trước tên
-        var lblUserIcon = new Label
+        _headerTips.SetToolTip(button, Loc.T("menu.language"));
+
+        var menu = new ContextMenuStrip
         {
-            Text = "👤",
-            AutoSize = true,
-            Font = new Font(AgrisTheme.FontFamily, 11F),
-            ForeColor = AgrisTheme.BrandGreenDark,
-            BackColor = Color.Transparent,
-            Anchor = AnchorStyles.Top | AnchorStyles.Right
+            Font = AgrisTheme.Ui(10F),
+            Renderer = new ToolStripProfessionalRenderer(new AgrisMenuColors()),
+            ShowImageMargin = false,
+            ShowCheckMargin = true
         };
-        lblUserIcon.Location = new Point(_lblUserDisplay.Left - lblUserIcon.PreferredWidth - 4, 22);
-        rightPanel.Controls.Add(lblUserIcon);
 
-        bar.Controls.Add(leftPanel);
-        bar.Controls.Add(rightPanel);
+        var allowed = Loc.AllowedLanguages;
+        foreach (AppLanguage lang in Enum.GetValues<AppLanguage>())
+        {
+            if (allowed is { Count: > 0 } && !allowed.Contains(lang))
+                continue;
 
+            var item = new ToolStripMenuItem(lang.DisplayName())
+            {
+                Checked = lang == Loc.Language,
+                Font = new Font(LocalizedFont.FamilyFor(lang), 10F),
+                Padding = new Padding(0, 4, 0, 4),
+                Tag = lang
+            };
+            item.Click += (_, _) => Loc.SetLanguage((AppLanguage)item.Tag!);
+            menu.Items.Add(item);
+        }
+
+        button.Click += (_, _) => menu.Show(button, new Point(0, button.Height + 2));
+        button.Disposed += (_, _) => menu.Dispose();
+
+        return button;
+    }
+
+    /// <summary>Gắn tên user đã đăng nhập lên header.</summary>
+    internal void SetLoggedInUser(string username)
+    {
+        _loggedInUser = username;
+        if (_chipUser is not null)
+            _chipUser.Text = username;
+    }
+
+    /// <summary>Gắn mã BU (công ty) lên chip nhà máy; tên đầy đủ hiện khi hover.</summary>
+    internal void SetOrganizationUnit(string? code, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return;
+
+        _orgUnitCode = code;
+        _orgUnitName = name;
+
+        if (_chipSite is null) return;
+
+        _chipSite.Text = code;
+        if (!string.IsNullOrWhiteSpace(name))
+            _headerTips.SetToolTip(_chipSite, name);
+    }
+
+    // ═══════════════════════════ Status bar ═══════════════════════════
+
+    private void BuildStatusBar()
+    {
+        var bar = new StatusBarPanel { Dock = DockStyle.Bottom, Height = 32, Padding = new Padding(16, 0, 16, 0) };
+
+        var isPreview = _previewStore is not null;
+        var modeColor = isPreview ? AgrisTheme.Warning : AgrisTheme.Success;
+
+        var mode = new Label
+        {
+            Text = "●  " + (isPreview ? Loc.T("status.preview_mode") : Loc.T("status.operation_mode")),
+            Dock = DockStyle.Left,
+            AutoSize = true,
+            Font = AgrisTheme.Ui(9F, FontStyle.Bold),
+            ForeColor = modeColor,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(0, 8, 0, 0),
+            BackColor = Color.Transparent
+        };
+
+        var right = new Label
+        {
+            Text = $"{Loc.T("status.pending_decisions")}     ·     {Loc.T("footer.copyright", DateTime.Now.Year)}",
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            Font = AgrisTheme.Ui(8.5F),
+            ForeColor = AgrisTheme.TextMuted,
+            TextAlign = ContentAlignment.MiddleRight,
+            Padding = new Padding(0, 9, 0, 0),
+            BackColor = Color.Transparent
+        };
+
+        bar.Controls.Add(mode);
+        bar.Controls.Add(right);
+
+        _statusBar = bar;
         Controls.Add(bar);
     }
+
+    /// <summary>Thanh trạng thái: nền trắng, đường phân cách trên.</summary>
+    private sealed class StatusBarPanel : Panel
+    {
+        public StatusBarPanel()
+        {
+            BackColor = AgrisTheme.Surface;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using var pen = new Pen(AgrisTheme.Border);
+            e.Graphics.DrawLine(pen, 0, 0, Width, 0);
+        }
+    }
+
+    // ═══════════════════════════ Workspace / tabs ═══════════════════════════
 
     private void BuildWorkspace()
     {
         _tabs.Visible = true;
         _tabs.TabCloseRequested += CloseTab;
+        _tabs.SelectedIndexChanged += (_, _) => SyncNavigationState();
 
         Controls.Add(_tabs);
+    }
+
+    /// <summary>Đồng bộ mục sidebar đang sáng và tiêu đề màn hình trên header với tab đang chọn.</summary>
+    private void SyncNavigationState()
+    {
+        if (IsDisposed) return;
+
+        var selected = _tabs.SelectedTab;
+        var type = selected is not null
+            ? _openTabs.FirstOrDefault(kv => kv.Value == selected).Key
+            : null;
+
+        _sidebar?.SetActive(type);
+
+        if (_lblScreenTitle is not null)
+            _lblScreenTitle.Text = selected?.Text ?? Loc.T("header.empty_title");
     }
 
     /// <summary>Mở Tổng quan tự động khi khởi động để người vận hành thấy trạng thái ngay.</summary>
@@ -561,78 +647,52 @@ public sealed class MainForm : Form
     {
         base.OnShown(e);
 
-        // Dùng BeginInvoke để mở Dashboard SAU khi MainForm đã paint xong,
-        // tránh giật UI khi khởi động do DI resolve + ThemeApplier + query DB
-        // chạy đồng bộ trên UI thread trước khi form hiển thị.
+        // Mở Dashboard SAU khi MainForm đã paint xong — tránh giật UI khi khởi động.
         BeginInvoke(OpenDashboard);
     }
 
-    /// <summary>Chân trang thương hiệu.</summary>
-    private void BuildFooter()
-    {
-        var footer = new BrandBar { Dock = DockStyle.Bottom, Height = 26 };
-        _footer = footer;
-
-        footer.Controls.Add(new Label
-        {
-            Text = Loc.T("footer.copyright", DateTime.Now.Year),
-            Dock = DockStyle.Fill,
-            Font = new Font(LocalizedFont.Current, 8.5F),
-            ForeColor = AgrisTheme.TextOnBrand,
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.Transparent
-        });
-
-        Controls.Add(footer);
-    }
-
     /// <summary>Menu chỉ xuất hiện ở chế độ xem trước, để bật/tắt điều kiện và quan sát hành vi chặn.</summary>
-    private ToolStripMenuItem BuildPreviewMenu(PreviewDataStore store)
+    private Control BuildPreviewButton(PreviewDataStore store)
     {
-        var previewMenu = new ToolStripMenuItem("&Xem trước (dev)")
+        var button = new ModernButton
         {
-            ForeColor = AgrisTheme.Warning
+            Text = "Xem trước (dev) ▾",
+            Font = AgrisTheme.Ui(9.5F, FontStyle.Bold),
+            BackColor = AgrisTheme.WarningSoft,
+            ForeColor = AgrisTheme.Warning,
+            AutoSize = true,
+            MinimumSize = new Size(0, 34),
+            Margin = new Padding(6, 17, 0, 0),
+            CornerRadius = 17
         };
 
-        previewMenu.DropDownItems.Add(Toggle(
-            "Đã đo tạp chất (bỏ tick để xem chặn cân lần 2)",
+        var menu = new ContextMenuStrip { Renderer = new ToolStripProfessionalRenderer(new AgrisMenuColors()) };
+
+        menu.Items.Add(Toggle("Đã đo tạp chất (bỏ tick để xem chặn cân lần 2)",
             store.ImpurityMeasured, v => store.ImpurityMeasured = v));
-
-        previewMenu.DropDownItems.Add(Toggle(
-            "Đã xác thực danh tính xe (bỏ tick để xem chặn theo R-039)",
+        menu.Items.Add(Toggle("Đã xác thực danh tính xe (bỏ tick để xem chặn theo R-039)",
             store.VehicleIdentityVerified, v => store.VehicleIdentityVerified = v));
-
-        previewMenu.DropDownItems.Add(Toggle(
-            "Chữ đường đang chờ (chỉ cảnh báo, không chặn cân)",
+        menu.Items.Add(Toggle("Chữ đường đang chờ (chỉ cảnh báo, không chặn cân)",
             store.CcsPending, v => store.CcsPending = v));
-
-        previewMenu.DropDownItems.Add(new ToolStripSeparator());
-
-        previewMenu.DropDownItems.Add(Toggle(
-            "Giả định hợp đồng API đã xác minh (thực tế D-02 chưa duyệt)",
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(Toggle("Giả định hợp đồng API đã xác minh (thực tế D-02 chưa duyệt)",
             store.PretendContractVerified, v => store.PretendContractVerified = v));
-
-        previewMenu.DropDownItems.Add(Toggle(
-            "Giả định dung sai đã duyệt (thực tế D-06 chưa duyệt)",
+        menu.Items.Add(Toggle("Giả định dung sai đã duyệt (thực tế D-06 chưa duyệt)",
             store.PretendToleranceApproved, v => store.PretendToleranceApproved = v));
-
-        previewMenu.DropDownItems.Add(new ToolStripSeparator());
-
-        previewMenu.DropDownItems.Add(Toggle(
-            "Bộ điều khiển barie sẵn sàng",
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(Toggle("Bộ điều khiển barie sẵn sàng",
             store.BarrierControllerReady, v => store.BarrierControllerReady = v));
-
-        previewMenu.DropDownItems.Add(Toggle(
-            "Điều kiện an toàn tại chỗ đạt",
+        menu.Items.Add(Toggle("Điều kiện an toàn tại chỗ đạt",
             store.BarrierSafetyOk, v => store.BarrierSafetyOk = v));
-
-        previewMenu.DropDownItems.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripSeparator());
 
         var audit = new ToolStripMenuItem("Xem audit trail toàn hệ thống");
         audit.Click += (_, _) => ShowAuditTrail(store);
-        previewMenu.DropDownItems.Add(audit);
+        menu.Items.Add(audit);
 
-        return previewMenu;
+        button.Click += (_, _) => menu.Show(button, new Point(0, button.Height + 2));
+        button.Disposed += (_, _) => menu.Dispose();
+        return button;
     }
 
     private static void ShowAuditTrail(PreviewDataStore store)
@@ -647,32 +707,6 @@ public sealed class MainForm : Form
 
         using var dialog = new TextPreviewForm(text, "Audit trail (xem trước)");
         dialog.ShowDialog();
-    }
-
-    private void BuildStatusBar()
-    {
-        var status = new StatusStrip
-        {
-            BackColor = AgrisTheme.Surface,
-            Font = new Font(LocalizedFont.Current, 8.5F)
-        };
-        _statusBar = status;
-
-        status.Items.Add(new ToolStripStatusLabel(_previewStore is not null
-            ? Loc.T("status.preview_mode")
-            : Loc.T("status.operation_mode"))
-        {
-            ForeColor = _previewStore is not null ? AgrisTheme.Warning : AgrisTheme.Success,
-            Font = new Font(LocalizedFont.Current, 9F, FontStyle.Bold)
-        });
-
-        status.Items.Add(new ToolStripStatusLabel { Spring = true });
-        status.Items.Add(new ToolStripStatusLabel(Loc.T("status.pending_decisions"))
-        {
-            ForeColor = AgrisTheme.TextMuted
-        });
-
-        Controls.Add(status);
     }
 
     /// <summary>Mở tab hướng dẫn sử dụng. Nội dung đọc từ docs/HUONG_DAN_SU_DUNG.md nếu có.</summary>
@@ -706,19 +740,23 @@ public sealed class MainForm : Form
         var form = scope.ServiceProvider.GetRequiredService<TForm>();
         configure?.Invoke(form);
 
-        // Nhúng form vào tab: bỏ viền cửa sổ và cho fill toàn bộ trang.
+        HostInTab(typeof(TForm), form, scope, select: true);
+        return form;
+    }
+
+    /// <summary>Nhúng form vào một tab mới: bỏ viền cửa sổ, áp theme, fill toàn trang.</summary>
+    private void HostInTab(Type formType, Form form, IServiceScope scope, bool select)
+    {
         form.TopLevel = false;
         form.FormBorderStyle = FormBorderStyle.None;
         form.ControlBox = false;
         form.WindowState = FormWindowState.Normal;
         form.Dock = DockStyle.Fill;
 
-        // Kích thước tối thiểu lấy theo nội dung thật của màn hình. Cửa sổ nhỏ hơn thì tab cuộn,
-        // không co nội dung tới mức bị cắt.
+        // Kích thước tối thiểu theo nội dung thật. Cửa sổ nhỏ hơn thì tab cuộn, không cắt nội dung.
         form.MinimumSize = ResolveMinimumSize(form);
 
-        // Chống chớp nháy: ẩn form trong lúc apply theme + nhúng vào tab,
-        // chỉ hiện khi mọi thứ layout xong.
+        // Chống chớp nháy: ẩn form trong lúc apply theme + nhúng vào tab.
         form.Visible = false;
 
         _tabs.SuspendLayout();
@@ -732,26 +770,21 @@ public sealed class MainForm : Form
 
         page.Controls.Add(form);
 
-        _openTabs[typeof(TForm)] = page;
-        _tabScopes[typeof(TForm)] = scope;
+        _openTabs[formType] = page;
+        _tabScopes[formType] = scope;
         _tabs.TabPages.Add(page);
 
         // Form tự đóng thì tab cũng phải biến mất.
-        form.FormClosed += (_, _) => RemoveTab(typeof(TForm), page);
+        form.FormClosed += (_, _) => RemoveTab(formType, page);
 
         form.Show();
         _tabs.ResumeLayout(true);
 
         _tabs.Visible = true;
-        _tabs.SelectedTab = page;
+        if (select)
+            _tabs.SelectedTab = page;
 
-        return form;
-    }
-
-    private void CloseCurrentTab()
-    {
-        if (_tabs.SelectedTab is not null)
-            CloseTab(_tabs.SelectedTab);
+        SyncNavigationState();
     }
 
     private void CloseTab(TabPage page)
@@ -791,13 +824,7 @@ public sealed class MainForm : Form
             _tabs.TabPages.Remove(page);
 
         page.Dispose();
-    }
-
-    private static ToolStripMenuItem Screen(string text, Action onClick)
-    {
-        var item = new ToolStripMenuItem(text);
-        item.Click += (_, _) => onClick();
-        return item;
+        SyncNavigationState();
     }
 
     private static ToolStripMenuItem Toggle(string text, bool initial, Action<bool> onChanged)
@@ -807,30 +834,30 @@ public sealed class MainForm : Form
         return item;
     }
 
-    private static System.Drawing.Drawing2D.GraphicsPath RoundedRect(Rectangle bounds, int radius)
+    protected override void Dispose(bool disposing)
     {
-        var path = new System.Drawing.Drawing2D.GraphicsPath();
-        path.AddArc(bounds.X, bounds.Y, radius, radius, 180, 90);
-        path.AddArc(bounds.Right - radius, bounds.Y, radius, radius, 270, 90);
-        path.AddArc(bounds.Right - radius, bounds.Bottom - radius, radius, radius, 0, 90);
-        path.AddArc(bounds.X, bounds.Bottom - radius, radius, radius, 90, 90);
-        path.CloseFigure();
-        return path;
+        if (disposing)
+            _headerTips.Dispose();
+
+        base.Dispose(disposing);
     }
 }
 
-/// <summary>Bảng màu menu theo nhận diện Agris.</summary>
+/// <summary>Bảng màu menu/popup theo design system.</summary>
 internal sealed class AgrisMenuColors : ProfessionalColorTable
 {
-    public override Color MenuItemSelected => AgrisTheme.SuccessSoft;
-    public override Color MenuItemSelectedGradientBegin => AgrisTheme.SuccessSoft;
-    public override Color MenuItemSelectedGradientEnd => AgrisTheme.SuccessSoft;
-    public override Color MenuItemBorder => AgrisTheme.BrandGreen;
-    public override Color MenuBorder => AgrisTheme.Border;
+    public override Color MenuItemSelected => AgrisTheme.SurfaceHover;
+    public override Color MenuItemSelectedGradientBegin => AgrisTheme.SurfaceHover;
+    public override Color MenuItemSelectedGradientEnd => AgrisTheme.SurfaceHover;
+    public override Color MenuItemBorder => AgrisTheme.Border;
+    public override Color MenuBorder => AgrisTheme.BorderStrong;
     public override Color MenuItemPressedGradientBegin => AgrisTheme.Surface;
     public override Color MenuItemPressedGradientEnd => AgrisTheme.Surface;
     public override Color ToolStripDropDownBackground => AgrisTheme.Surface;
     public override Color ImageMarginGradientBegin => AgrisTheme.Surface;
     public override Color ImageMarginGradientMiddle => AgrisTheme.Surface;
     public override Color ImageMarginGradientEnd => AgrisTheme.Surface;
+    public override Color CheckBackground => AgrisTheme.PrimarySoft;
+    public override Color CheckSelectedBackground => AgrisTheme.PrimarySoft;
+    public override Color SeparatorDark => AgrisTheme.Border;
 }

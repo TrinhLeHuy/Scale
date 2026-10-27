@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -59,7 +59,47 @@ public sealed record FrmLenhDonInfo(
     string? Thexename,     // Tên thẻ xe
     string? HopDongDauTuMiaName, // Hợp đồng đầu tư
     string? SourceCreatedDate,  // sourceCreatedDate from API
-    string? BusinessUnit);       // BU (TTCS, ATN, ...)
+    string? BusinessUnit,        // BU (TTCS, ATN, ...)
+    // Phân loại mía / thẻ xe (FRM LenhDon)
+    bool? MiaChay = null,              // Miachay: mía cháy
+    string? LoaiMiaChayName = null,    // LoaiMiaChayName: 24h, 36h, ..., >96h
+    bool? ThuHoachMay = null,          // ThuHoachMay: true = máy, false = thủ công
+    bool? TheXeTam = null,             // TheXeTam: lệnh dùng thẻ xe tạm
+    string? SoXeTam = null,            // SoXe: biển số xe tạm (khi TheXeTam, BienSoXe thường rỗng)
+    string? LoaiHopDongName = null,    // LoaiHopDongName: HĐ đầu tư mía, HĐ mua bán mía ngoài...
+    string? DoiTacBocXepName = null,   // DoiTacBocXepCNName ?? DoiTacBocXepDNName: công bốc xếp
+    string? DoiTacThuHoachDNName = null, // DoiTacThuHoachDNName: đối tác thu hoạch doanh nghiệp
+    string? TenNhaMay = null)          // TenNhaMay: tên nhà máy của lệnh đốn
+{
+    /// <summary>Công thu hoạch: cá nhân, không có thì doanh nghiệp.</summary>
+    public string? HarvestPartner => DoiTacThuHoachName.NullIfBlank() ?? DoiTacThuHoachDNName.NullIfBlank();
+
+    /// <summary>
+    /// Biển số dùng để tra cứu/đăng tài/cân:
+    /// - Lệnh thẻ xe tạm có "Số xe tạm" → số xe tạm (xe thực tế chạy bằng thẻ tạm);
+    /// - còn lại → "Biển số xe", rỗng thì lấy "Số xe tạm".
+    /// </summary>
+    public string? VehiclePlate =>
+        TheXeTam == true && !string.IsNullOrWhiteSpace(SoXeTam)
+            ? SoXeTam.NullIfBlank()
+            : !string.IsNullOrWhiteSpace(BienSoXe) ? BienSoXe : SoXeTam.NullIfBlank();
+
+    /// <summary>Lệnh đốn dùng thẻ xe tạm (FRM TheXeTam = true).</summary>
+    public bool IsTemporaryCard => TheXeTam == true;
+
+    /// <summary>
+    /// Phân loại mía cho phiếu cân:
+    /// Mía cháy = FRM Miachay; Mía khúc = thu hoạch máy; Mía cây = thu hoạch thủ công.
+    /// Mía cháy độc lập với khúc/cây (mía cháy thu hoạch máy → cháy + khúc).
+    /// </summary>
+    public (bool IsMiaChay, bool IsMiaCay, bool IsMiaKhuc) SugarcaneForm =>
+        (MiaChay == true, ThuHoachMay != true, ThuHoachMay == true);
+}
+
+internal static class FrmStringExtensions
+{
+    public static string? NullIfBlank(this string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+}
 
 /// <summary>
 /// Cache dữ liệu master FRM vào bộ nhớ. Kéo toàn bộ xe-van-chuyen + the-xe
@@ -86,7 +126,27 @@ public sealed class FrmMasterDataCache
 
     // Danh sách lệnh đốn (harvest-orders)
     private List<FrmLenhDonInfo> _allLenhDon = [];
-    public IReadOnlyList<FrmLenhDonInfo> AllLenhDon => _allLenhDon;
+    /// <summary>
+    /// Lệnh đốn của nhà máy đang đăng nhập (BU). Tổng công ty / chưa có BU thấy tất cả.
+    /// Lọc cả ở đây để mọi màn hình (Đăng tài, Cân, Tạp chất, CCS, Dữ liệu FRM) không lẫn BU khác.
+    /// </summary>
+    public IReadOnlyList<FrmLenhDonInfo> AllLenhDon
+        => string.IsNullOrWhiteSpace(ActiveBusinessUnit) || IsHeadquarters
+            ? _allLenhDon
+            : _allLenhDon.Where(ld => ld.BusinessUnit is null
+                || string.Equals(ld.BusinessUnit, ActiveBusinessUnit, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    /// <summary>Tìm lệnh đốn theo mã lệnh đốn (vd LD2526-00014630) — Shipment của chuyến mía.</summary>
+    public FrmLenhDonInfo? FindLenhDonByCode(string? maLenhDon)
+        => string.IsNullOrWhiteSpace(maLenhDon)
+            ? null
+            : AllLenhDon.FirstOrDefault(ld => string.Equals(ld.MaLD, maLenhDon.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Tìm lệnh đốn theo ID FRM (frm_lenh_don_id lưu trên chuyến lúc đăng tài).</summary>
+    public FrmLenhDonInfo? FindLenhDonBySourceKey(string? sourceKey)
+        => string.IsNullOrWhiteSpace(sourceKey)
+            ? null
+            : AllLenhDon.FirstOrDefault(ld => string.Equals(ld.SourceKey, sourceKey, StringComparison.OrdinalIgnoreCase));
 
     private DateTimeOffset _lastRefreshedAt = DateTimeOffset.MinValue;
     private bool _isLoading;
@@ -151,6 +211,10 @@ public sealed class FrmMasterDataCache
         {
             _isLoading = true;
             _logger.LogInformation("FrmCache: starting refresh from FRM API...");
+
+            // Chưa nạp danh mục đã lưu (refresh chạy trước khi load DB) → nạp trước để có cơ sở gộp ở bước 6.
+            if (_allVehicles.Count == 0)
+                await LoadFromDbAsync();
 
             var businessUnit = ActiveBusinessUnit
                 ?? _configuration.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit")
@@ -297,7 +361,30 @@ public sealed class FrmMasterDataCache
                 newIndex.TryAdd(key, [info]);
             }
 
-            // 6. Swap atomically
+            // 6. Gộp với danh mục đã có (DB local / lần kéo trước) — KHÔNG thay toàn bộ.
+            //    API có lúc chỉ trả một phần (ví dụ 38 xe thay vì 8.074) → thay toàn bộ làm mất xe đang có
+            //    lệnh đốn hợp lệ, đăng tài báo nhầm "Xe không tồn tại". Biển số API trả về → dùng bản API
+            //    (mới nhất); biển số API không trả → giữ bản đã lưu (trạng thái thẻ/xe vẫn được kiểm tra).
+            var previous = _allVehicles;
+            var kept = 0;
+            foreach (var old in previous)
+            {
+                var key = NormalizePlate(old.BienSo);
+                if (string.IsNullOrEmpty(key) || newIndex.ContainsKey(key)) continue;
+                vehicles.Add(old);
+                kept++;
+            }
+            foreach (var old in vehicles.Skip(vehicles.Count - kept))
+            {
+                var key = NormalizePlate(old.BienSo);
+                newIndex.AddOrUpdate(key, _ => [old], (_, list) => { list.Add(old); return list; });
+            }
+
+            _logger.LogInformation(
+                "FrmCache: merged vehicle catalog — API {Api} records, kept {Kept} previously known (plates not returned this time)",
+                vehicles.Count - kept, kept);
+
+            // Swap atomically
             _allVehicles = vehicles;
             _vehicleIndex = newIndex;
             _lastRefreshedAt = DateTimeOffset.UtcNow;
@@ -331,7 +418,17 @@ public sealed class FrmMasterDataCache
                     Thexename: FrmFieldsReader.GetString(item.Fields, "Thexename"),
                     HopDongDauTuMiaName: FrmFieldsReader.GetString(item.Fields, "HopDongDauTuMiaName"),
                     SourceCreatedDate: item.SourceCreatedDate,
-                    BusinessUnit: itemBu));
+                    BusinessUnit: itemBu,
+                    MiaChay: FrmFieldsReader.GetBool(item.Fields, "Miachay"),
+                    LoaiMiaChayName: FrmFieldsReader.GetString(item.Fields, "LoaiMiaChayName").NullIfBlank(),
+                    ThuHoachMay: FrmFieldsReader.GetBool(item.Fields, "ThuHoachMay"),
+                    TheXeTam: FrmFieldsReader.GetBool(item.Fields, "TheXeTam"),
+                    SoXeTam: FrmFieldsReader.GetString(item.Fields, "SoXe").NullIfBlank(),
+                    LoaiHopDongName: FrmFieldsReader.GetString(item.Fields, "LoaiHopDongName").NullIfBlank(),
+                    DoiTacBocXepName: FrmFieldsReader.GetString(item.Fields, "DoiTacBocXepCNName").NullIfBlank()
+                                      ?? FrmFieldsReader.GetString(item.Fields, "DoiTacBocXepDNName").NullIfBlank(),
+                    DoiTacThuHoachDNName: FrmFieldsReader.GetString(item.Fields, "DoiTacThuHoachDNName").NullIfBlank(),
+                    TenNhaMay: FrmFieldsReader.GetString(item.Fields, "TenNhaMay").NullIfBlank()));
             }
             _allLenhDon = lenhDonList;
             _logger.LogInformation("FrmCache: parsed {Count} LenhDon records", lenhDonList.Count);
@@ -568,7 +665,16 @@ public sealed class FrmMasterDataCache
                         Thexename: reader["the_xe_name"] as string,
                         HopDongDauTuMiaName: reader["hop_dong_dau_tu_mia_name"] as string,
                         SourceCreatedDate: reader["source_created_date"] as string,
-                        BusinessUnit: reader["business_unit"] as string));
+                        BusinessUnit: reader["business_unit"] as string,
+                        MiaChay: ReadBool(reader, "mia_chay"),
+                        LoaiMiaChayName: ReadString(reader, "loai_mia_chay_name"),
+                        ThuHoachMay: ReadBool(reader, "thu_hoach_may"),
+                        TheXeTam: ReadBool(reader, "the_xe_tam"),
+                        SoXeTam: ReadString(reader, "so_xe_tam"),
+                        LoaiHopDongName: ReadString(reader, "loai_hop_dong_name"),
+                        DoiTacBocXepName: ReadString(reader, "doi_tac_boc_xep_name"),
+                        DoiTacThuHoachDNName: ReadString(reader, "doi_tac_thu_hoach_dn_name"),
+                        TenNhaMay: ReadString(reader, "ten_nha_may")));
                 }
             }
             }
@@ -618,6 +724,20 @@ public sealed class FrmMasterDataCache
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_frm_lenh_don_ma_ld_bu ON frm_lenh_don (ma_ld, COALESCE(business_unit, ''))", conn))
                 await idx2.ExecuteNonQueryAsync();
 
+            // Cột phân loại mía / thẻ xe tạm (thêm sau). Idempotent; quay lui: DROP COLUMN các cột này.
+            await using (var alter = new Npgsql.NpgsqlCommand(@"
+ALTER TABLE frm_lenh_don
+  ADD COLUMN IF NOT EXISTS mia_chay boolean,
+  ADD COLUMN IF NOT EXISTS loai_mia_chay_name text,
+  ADD COLUMN IF NOT EXISTS thu_hoach_may boolean,
+  ADD COLUMN IF NOT EXISTS the_xe_tam boolean,
+  ADD COLUMN IF NOT EXISTS so_xe_tam text,
+  ADD COLUMN IF NOT EXISTS loai_hop_dong_name text,
+  ADD COLUMN IF NOT EXISTS doi_tac_boc_xep_name text,
+  ADD COLUMN IF NOT EXISTS doi_tac_thu_hoach_dn_name text,
+  ADD COLUMN IF NOT EXISTS ten_nha_may text", conn))
+                await alter.ExecuteNonQueryAsync();
+
             // Upsert vehicles
             foreach (var v in _allVehicles)
             {
@@ -659,13 +779,16 @@ DO UPDATE SET ma_xe=$2,loai_xe=$3,loai_xe_name=$4,tai_trong=$5,trong_tai_toi_da=
                 await using var cmd = new Npgsql.NpgsqlCommand(@"
 INSERT INTO frm_lenh_don (ma_ld,source_key,bien_so_xe,ngay_cap,ngay_het_han,status_code_name,kh_name,
   loai_mia_name,giong_mia_name,tram_name,vu_dau_tu_name,loai_xe_code,loai_xe_name,uu_tien,tai_trong,doi_tac_thu_hoach_name,
-  thua_dat_canh_tac_name,the_xe_name,hop_dong_dau_tu_mia_name,source_created_date,business_unit,synced_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,now())
+  thua_dat_canh_tac_name,the_xe_name,hop_dong_dau_tu_mia_name,source_created_date,business_unit,
+  mia_chay,loai_mia_chay_name,thu_hoach_may,the_xe_tam,so_xe_tam,loai_hop_dong_name,
+  doi_tac_boc_xep_name,doi_tac_thu_hoach_dn_name,ten_nha_may,synced_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,now())
 ON CONFLICT (ma_ld, COALESCE(business_unit, ''))
 DO UPDATE SET source_key=$2,bien_so_xe=$3,ngay_cap=$4,ngay_het_han=$5,status_code_name=$6,kh_name=$7,
   loai_mia_name=$8,giong_mia_name=$9,tram_name=$10,vu_dau_tu_name=$11,loai_xe_code=$12,loai_xe_name=$13,uu_tien=$14,tai_trong=$15,
   doi_tac_thu_hoach_name=$16,thua_dat_canh_tac_name=$17,the_xe_name=$18,hop_dong_dau_tu_mia_name=$19,
-  source_created_date=$20,synced_at=now()
+  source_created_date=$20,mia_chay=$22,loai_mia_chay_name=$23,thu_hoach_may=$24,the_xe_tam=$25,
+  so_xe_tam=$26,loai_hop_dong_name=$27,doi_tac_boc_xep_name=$28,doi_tac_thu_hoach_dn_name=$29,ten_nha_may=$30,synced_at=now()
 ", conn);
                 cmd.Parameters.AddWithValue(ld.MaLD);
                 cmd.Parameters.AddWithValue((object?)ld.SourceKey ?? DBNull.Value);
@@ -688,6 +811,15 @@ DO UPDATE SET source_key=$2,bien_so_xe=$3,ngay_cap=$4,ngay_het_han=$5,status_cod
                 cmd.Parameters.AddWithValue((object?)ld.HopDongDauTuMiaName ?? DBNull.Value);
                 cmd.Parameters.AddWithValue((object?)ld.SourceCreatedDate ?? DBNull.Value);
                 cmd.Parameters.AddWithValue((object?)ld.BusinessUnit ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.MiaChay ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.LoaiMiaChayName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.ThuHoachMay ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.TheXeTam ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.SoXeTam ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.LoaiHopDongName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.DoiTacBocXepName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.DoiTacThuHoachDNName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue((object?)ld.TenNhaMay ?? DBNull.Value);
                 await cmd.ExecuteNonQueryAsync();
             }
 
@@ -717,6 +849,12 @@ DO UPDATE SET source_key=$2,bien_so_xe=$3,ngay_cap=$4,ngay_het_han=$5,status_cod
         if (bool.TryParse(value, out var b)) return b ? "1" : "0";
         return value; // Đã là "1"/"0" hoặc giá trị khác
     }
+
+    private static string? ReadString(System.Data.IDataReader reader, string columnName)
+        => HasColumn(reader, columnName) ? reader[columnName] as string : null;
+
+    private static bool? ReadBool(System.Data.IDataReader reader, string columnName)
+        => HasColumn(reader, columnName) && reader[columnName] is bool b ? b : null;
 
     private static bool HasColumn(System.Data.IDataReader reader, string columnName)
     {

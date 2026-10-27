@@ -1,0 +1,1 @@
+﻿id,trip_id,document_id,source_line_id,item_code,warehouse_id,planned_quantity,planned_uom,confirmed_quantity,confirmed_uom,remaining_quantity,movement_segment_id,created_at,created_by,updated_at,updated_by,deleted_at,version

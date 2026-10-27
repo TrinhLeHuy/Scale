@@ -89,6 +89,12 @@ public class Trip : AuditableEntity
     /// <summary>Mã loại xe từ FRM (100000000/100000001/100000002).</summary>
     public string? FrmLoaiXeCode { get; set; }
 
+    /// <summary>Nhà vận chuyển (ERP transporter) lưu lúc đăng tài vật tư — đẩy lên DigiScale khi cân xong.</summary>
+    public string? Transporter { get; set; }
+
+    /// <summary>Kho — tên tổ chức kho ERP (ví dụ "126501 - Thanh pham - PROC") lưu lúc đăng tài vật tư.</summary>
+    public string? WarehouseName { get; set; }
+
     // --- Phiếu cân ---
 
     /// <summary>Số phiếu cân sau khi cân lần 2 hoàn thành.</summary>

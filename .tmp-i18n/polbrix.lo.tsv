@@ -1,0 +1,15 @@
+ccs.ux_input_sub	ອ່ານ Bx ແລະ Pol ຈາກເຄື່ອງວັດ; ການປ້ອນດ້ວຍມືຕ້ອງໄດ້ຮັບການອະນຸມັດຈາກຜູ້ຈັດການ
+ccs.ux_btn_read_brix	ວັດດ້ວຍເຄື່ອງ Brix
+ccs.ux_btn_read_pol	ວັດດ້ວຍເຄື່ອງ Pol
+ccs.ux_btn_manual	ປ້ອນດ້ວຍມື (ຜູ້ຈັດການອະນຸມັດ)
+ccs.ux_btn_manual_approved	ປ້ອນດ້ວຍມື · ອະນຸມັດໂດຍ: {0}
+ccs.ux_badge_device	ເຄື່ອງວັດ
+ccs.ux_badge_manual	ປ້ອນດ້ວຍມື
+ccs.ux_badge_none	ຍັງບໍ່ວັດ
+ccs.ux_device_reading	ກຳລັງອ່ານຄ່າຈາກເຄື່ອງ {0}...
+ccs.ux_device_unavailable	ອ່ານຄ່າຈາກເຄື່ອງ {0} ບໍ່ໄດ້. ກວດການເຊື່ອມຕໍ່ ຫຼື ກົດ "ປ້ອນດ້ວຍມື" (ຕ້ອງໃຊ້ບັນຊີຜູ້ຈັດການ).
+ccs.ux_device_read_ok	ອ່ານ {0} ຈາກເຄື່ອງແລ້ວ: {1}
+ccs.ux_device_error	ຂໍ້ຜິດພາດໃນການອ່ານເຄື່ອງ {0}: {1}
+ccs.ux_manual_approval	ປ້ອນ Brix/Pol ດ້ວຍມືສຳລັບຖ້ຽວ {0}
+ccs.ux_manual_approved_status	ຜູ້ຈັດການ {0} ອະນຸມັດການປ້ອນ Brix/Pol ດ້ວຍມືແລ້ວ. ປ້ອນຄ່າແລ້ວກົດບັນທຶກ.
+ccs.ux_need_reading	ຍັງບໍ່ມີຄ່າ Brix ແລະ Pol. ກົດ "ວັດດ້ວຍເຄື່ອງ Brix" / "ວັດດ້ວຍເຄື່ອງ Pol" ຫຼື "ປ້ອນດ້ວຍມື" ດ້ວຍບັນຊີຜູ້ຈັດການ.

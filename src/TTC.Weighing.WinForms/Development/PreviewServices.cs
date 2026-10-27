@@ -79,8 +79,25 @@ public sealed class PreviewTripRepository(PreviewDataStore store) : ITripReposit
     {
         var tripNo = store.Trips
             .Where(t => t.FrmLenhDonId == lenhDonId
-                && t.Lifecycle != TripLifecycle.Cancelled
-                && t.Lifecycle != TripLifecycle.Closed)
+                && t.Lifecycle != TripLifecycle.Cancelled)
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => t.TripNo)
+            .FirstOrDefault();
+
+        return Task.FromResult(tripNo);
+    }
+
+    public Task<bool> HasWeighEventsAsync(Guid tripId, CancellationToken ct = default)
+        => Task.FromResult(store.WeighEvents.Any(e => e.TripId == tripId));
+
+    public Task<string?> FindActiveByReferenceAsync(
+        string sourceSystem, string referenceTripNo, CancellationToken ct = default)
+    {
+        var reference = referenceTripNo.Trim();
+        var tripNo = store.Trips
+            .Where(t => t.SourceSystem == sourceSystem
+                && t.ReferenceTripNo == reference
+                && t.Lifecycle != TripLifecycle.Cancelled)
             .OrderByDescending(t => t.CreatedAt)
             .Select(t => t.TripNo)
             .FirstOrDefault();

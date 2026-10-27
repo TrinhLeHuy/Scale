@@ -1,0 +1,15 @@
+ccs.ux_input_sub	Đọc Bx, Pol từ máy đo; nhập tay cần quản lý duyệt
+ccs.ux_btn_read_brix	Đo máy Brix
+ccs.ux_btn_read_pol	Đo máy Pol
+ccs.ux_btn_manual	Nhập tay (quản lý duyệt)
+ccs.ux_btn_manual_approved	Nhập tay · duyệt: {0}
+ccs.ux_badge_device	MÁY ĐO
+ccs.ux_badge_manual	NHẬP TAY
+ccs.ux_badge_none	CHƯA ĐO
+ccs.ux_device_reading	Đang đọc số từ máy {0}...
+ccs.ux_device_unavailable	Chưa đọc được số từ máy {0}. Kiểm tra kết nối máy, hoặc bấm "Nhập tay" (cần tài khoản quản lý).
+ccs.ux_device_read_ok	Đã đọc {0} từ máy: {1}
+ccs.ux_device_error	Lỗi đọc máy {0}: {1}
+ccs.ux_manual_approval	Nhập tay Brix/Pol cho chuyến {0}
+ccs.ux_manual_approved_status	Quản lý {0} đã duyệt nhập tay Brix/Pol. Nhập số rồi bấm Ghi nhận.
+ccs.ux_need_reading	Chưa có số Brix và Pol. Bấm "Đo máy Brix" / "Đo máy Pol", hoặc "Nhập tay" với tài khoản quản lý.

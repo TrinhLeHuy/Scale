@@ -1,0 +1,15 @@
+ccs.ux_input_sub	អាន Bx និង Pol ពីម៉ាស៊ីនវាស់; ការបញ្ចូលដោយដៃត្រូវការការអនុម័តពីអ្នកគ្រប់គ្រង
+ccs.ux_btn_read_brix	វាស់ម៉ាស៊ីន Brix
+ccs.ux_btn_read_pol	វាស់ម៉ាស៊ីន Pol
+ccs.ux_btn_manual	បញ្ចូលដោយដៃ (អ្នកគ្រប់គ្រងអនុម័ត)
+ccs.ux_btn_manual_approved	បញ្ចូលដោយដៃ · អនុម័តដោយ: {0}
+ccs.ux_badge_device	ម៉ាស៊ីនវាស់
+ccs.ux_badge_manual	បញ្ចូលដោយដៃ
+ccs.ux_badge_none	មិនទាន់វាស់
+ccs.ux_device_reading	កំពុងអានតម្លៃពីម៉ាស៊ីន {0}...
+ccs.ux_device_unavailable	មិនអាចអានតម្លៃពីម៉ាស៊ីន {0} បានទេ។ ពិនិត្យការតភ្ជាប់ ឬចុច "បញ្ចូលដោយដៃ" (ត្រូវការគណនីអ្នកគ្រប់គ្រង)។
+ccs.ux_device_read_ok	បានអាន {0} ពីម៉ាស៊ីន: {1}
+ccs.ux_device_error	កំហុសក្នុងការអានម៉ាស៊ីន {0}: {1}
+ccs.ux_manual_approval	បញ្ចូល Brix/Pol ដោយដៃសម្រាប់ជើងដឹក {0}
+ccs.ux_manual_approved_status	អ្នកគ្រប់គ្រង {0} បានអនុម័តការបញ្ចូល Brix/Pol ដោយដៃ។ បញ្ចូលតម្លៃ រួចចុចកត់ត្រា។
+ccs.ux_need_reading	មិនទាន់មានតម្លៃ Brix និង Pol។ ចុច "វាស់ម៉ាស៊ីន Brix" / "វាស់ម៉ាស៊ីន Pol" ឬ "បញ្ចូលដោយដៃ" ជាមួយគណនីអ្នកគ្រប់គ្រង។

@@ -1,0 +1,1 @@
+﻿id,trip_id,type,status,warehouse_id,lane_id,started_at,completed_at,confirmed_by,waiver_approval_ref,waiver_reason,created_at,created_by,updated_at,updated_by,deleted_at,version

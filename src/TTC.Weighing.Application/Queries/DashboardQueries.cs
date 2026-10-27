@@ -77,4 +77,7 @@ public sealed record TripBoardFilter
 
     /// <summary>Chỉ lấy chuyến có cân lần 1 mà chưa có lần 2.</summary>
     public bool FirstWeightOnly { get; init; }
+
+    /// <summary>Tách lưới Mía / Vật tư.</summary>
+    public TripCategory Category { get; init; } = TripCategory.All;
 }

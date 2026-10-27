@@ -37,6 +37,9 @@ public sealed record WeighedTripFilter
 
     /// <summary>Chỉ lấy chuyến đã hoàn thành cả cân lần 1 và lần 2.</summary>
     public bool CompletedOnly { get; init; }
+
+    /// <summary>Tách lưới Mía / Vật tư.</summary>
+    public TripCategory Category { get; init; } = TripCategory.All;
 }
 
 /// <summary>
@@ -56,5 +59,5 @@ public interface IWeighOperationQueries
     /// Lấy danh sách xe đang chờ cân (Registered/TempRegistered/InProgress, chưa có WeighEvent).
     /// </summary>
     Task<IReadOnlyList<WeighedTripRow>> ListPendingAsync(
-        Guid siteId, CancellationToken ct = default);
+        Guid siteId, TripCategory category = TripCategory.All, CancellationToken ct = default);
 }

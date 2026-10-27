@@ -42,13 +42,39 @@ public interface IPrintTemplate
 /// <summary>Helper vẽ phiếu — dùng chung cho tất cả templates.</summary>
 public static class PrintHelper
 {
-    public static readonly Font TitleFont = new("Times New Roman", 16, FontStyle.Bold);
-    public static readonly Font HeaderFont = new("Times New Roman", 10, FontStyle.Bold);
-    public static readonly Font BodyFont = new("Times New Roman", 10);
-    public static readonly Font SmallFont = new("Times New Roman", 8);
-    public static readonly Font CompanyFont = new("Times New Roman", 11, FontStyle.Bold);
-    public static readonly Font AddressFont = new("Times New Roman", 9, FontStyle.Italic);
-    public static readonly Font BigNumberFont = new("Times New Roman", 14, FontStyle.Bold);
+    // Font in theo ngôn ngữ hiện hành (Times New Roman không có chữ Lào/Khmer).
+    // Cache theo họ font — tạo lại khi người dùng đổi ngôn ngữ.
+    private static readonly object _fontLock = new();
+    private static string? _fontFamily;
+    private static Font _titleFont = null!, _headerFont = null!, _bodyFont = null!, _smallFont = null!,
+        _companyFont = null!, _addressFont = null!, _bigNumberFont = null!;
+
+    private static void EnsureFonts()
+    {
+        var family = LocalizedFont.Print;
+        if (family == _fontFamily) return;
+        lock (_fontLock)
+        {
+            if (family == _fontFamily) return;
+            // Không Dispose font cũ: có thể đang được tham chiếu bởi một lượt vẽ khác.
+            _titleFont = new Font(family, 16, FontStyle.Bold);
+            _headerFont = new Font(family, 10, FontStyle.Bold);
+            _bodyFont = new Font(family, 10);
+            _smallFont = new Font(family, 8);
+            _companyFont = new Font(family, 11, FontStyle.Bold);
+            _addressFont = new Font(family, 9, FontStyle.Italic);
+            _bigNumberFont = new Font(family, 14, FontStyle.Bold);
+            _fontFamily = family;
+        }
+    }
+
+    public static Font TitleFont { get { EnsureFonts(); return _titleFont; } }
+    public static Font HeaderFont { get { EnsureFonts(); return _headerFont; } }
+    public static Font BodyFont { get { EnsureFonts(); return _bodyFont; } }
+    public static Font SmallFont { get { EnsureFonts(); return _smallFont; } }
+    public static Font CompanyFont { get { EnsureFonts(); return _companyFont; } }
+    public static Font AddressFont { get { EnsureFonts(); return _addressFont; } }
+    public static Font BigNumberFont { get { EnsureFonts(); return _bigNumberFont; } }
 
     public static int DrawCompanyHeader(Graphics g, Rectangle bounds, int y, string companyName, string address)
     {

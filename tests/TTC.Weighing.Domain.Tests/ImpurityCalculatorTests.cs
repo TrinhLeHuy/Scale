@@ -16,12 +16,12 @@ public class ImpurityCalculatorTests
     }
 
     [Fact]
-    public void Zero_impurity_when_sample_unchanged()
+    public void Second_weighing_equal_to_first_is_invalid()
     {
+        // Lần 2 phải nhỏ hơn lần 1 (quy tắc đo tạp chất).
         var result = ImpurityCalculator.Calculate(20m, 20m);
 
-        Assert.True(result.IsValid);
-        Assert.Equal(0m, result.ImpurityPercent);
+        Assert.False(result.IsValid);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class ImpurityCalculatorTests
         var result = ImpurityCalculator.Calculate(20m, 25m);
 
         Assert.False(result.IsValid);
-        Assert.Contains("lấy lại mẫu", result.InvalidReason);
+        Assert.Contains("cân lại", result.InvalidReason);
     }
 
     /// <summary>

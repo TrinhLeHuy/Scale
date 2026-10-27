@@ -1,0 +1,83 @@
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:19: Phiếu cân mía — {data.SoDangTai}
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:44: Lỗi in: {ex.Message}
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:44: Lỗi
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:110: PHIẾU CÂN MÍA
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:120: Phiếu cân số:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:123: Ngày {d.Ngay.Value:dd} tháng {d.Ngay.Value:MM} năm {d.Ngay.Value:yyyy}
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:127: Số đăng tài:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:128: Tên chủ mía:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:129: Hợp đồng số:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:132: Lệnh đốn:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:133: Số xe:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:136: Công TH:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:137: Công BX:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:140: Giống mía:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:141: Loại mía:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:144: Hình thức TH:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:153: Trọng lượng xỉ:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:153: {d.TrongLuongXi:N3} tấn
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:155: Thời gian cân xỉ:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:158: Trọng lượng bì:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:158: {d.TrongLuongBi:N3} tấn
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:160: Thời gian cân bì:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:163: Tạp chất TT:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:165: Ghi chú:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:170: {d.TrongLuongThanhToan:N3} tấn
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:170: Chờ chính sách
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:171: TL thanh toán:
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:181: Mía cháy
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:182: Mía cây
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:183: Mía khúc
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:186: Ngày in: {DateTime.Now:dd/MM/yyyy HH:mm}
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:203: ĐĐ ĐƠN VỊ NHẬN HÀNG\n(Ký, Ghi rõ họ tên)
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:203: ĐĐ ĐƠN VỊ GIAO HÀNG\n(Ký, Ghi rõ họ tên)
+src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs:203: NGƯỜI CÂN\n(Ký, Ghi rõ họ tên)
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:116: QR và chuyến hợp lệ
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:122: QR ở trạng thái {c.QrStatus}.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:125: QR không thuộc chuyến đang cân.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:128: QR không thuộc nhà máy hiện tại.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:131: Checkpoint không được profile cho phép ở bước này.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:134: Chuyến đã {c.TripLifecycle}.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:137: Chuyến đang PAUSED, phải xử lý sự cố trước (U-13).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:145: Thiết bị đúng làn và phiên độc quyền
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:148: Bàn cân/camera/đầu đọc không thuộc đúng làn đã cấu hình.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:151: Phiên cân không sở hữu độc quyền bàn cân này (B-003).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:159: Danh tính xe đã xác thực
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:163: Chưa xác thực danh tính xe theo D-03. QR và AI vị trí không đủ để kết luận (R-039).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:165: Phương thức: {c.IdentityVerificationMethod ?? 
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:171: AI vị trí hợp lệ
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:174: Cấu hình vùng quan sát sai — báo lỗi, không tự giả định vùng mới.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:177: Kết luận AI vị trí = {c.PositionVerdict}, không đạt.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:180: Ngưỡng confidence AI chưa được duyệt (D-05).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:184: Thiếu confidence từ dịch vụ AI.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:188: Confidence {c.PositionConfidence} dưới ngưỡng {c.Thresholds.PositionConfidenceThreshold}.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:191: Ngưỡng độ mới bằng chứng AI chưa được duyệt (D-05).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:194: Bằng chứng AI đã cũ hoặc thiếu dấu thời gian.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:202: Tín hiệu đầu cân hợp lệ
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:205: Trạng thái đầu cân = {c.ScaleStatus}.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:208: Giá trị ngoài khả năng đo đã cấu hình.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:211: Mất gói tín hiệu làm đứt cửa sổ đánh giá.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:214: Ngưỡng độ mới tín hiệu cân chưa được duyệt (D-04).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:217: Tín hiệu cân đã cũ. Không dùng số cuối như đang trực tuyến.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:225: Trọng lượng ổn định liên tục
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:228: Cửa sổ ổn định chưa được cấu hình cho profile này.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:232: Biên dao động chưa được duyệt (D-04). Không áp một ngưỡng cho mọi đầu cân.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:235: Thiếu số liệu dao động trong cửa sổ.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:239: Dao động {c.ObservedDeltaKg} kg vượt biên {c.Thresholds.StabilityDeltaKg} kg.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:243: Ổn định {c.StableDuration.TotalSeconds:F1}s / {c.Thresholds.StabilityWindow.Value.TotalSeconds:F1}s.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:251: Điều kiện nghiệp vụ trước lượt cân
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:254: Chưa có lượt cân trước hợp lệ cho vai trò này.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:259: Mía chưa đo tạp chất, chặn cân lần 2 (S02 tr.21).
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:262: Điều kiện chính sách FRM chưa đạt theo hợp đồng đã xác nhận.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:270: Lưu được bằng chứng và không có giao dịch treo
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:273: Không lưu được ảnh/bằng chứng, không phát hành lượt cân.
+src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs:277: Còn giao dịch chưa rõ kết quả. Không phát sinh lượt mới bằng cách bấm lại (R-024).
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:88: Mía nhập
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:88: Vật tư
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:127: 📤 Đã đẩy Digi
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:128: ✅ Đã cân đủ
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:129: 🧪 Đã đo CCS
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:130: 🔬 Đã đo tạp chất
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:131: ⚖️ Đã cân lần 1
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:132: ⚖️ Đang cân
+src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs:133: 📋 Đã đăng tài

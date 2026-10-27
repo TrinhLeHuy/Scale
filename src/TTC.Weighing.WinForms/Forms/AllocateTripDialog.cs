@@ -1,4 +1,4 @@
-using TTC.Weighing.Domain.Enums;
+﻿using TTC.Weighing.Domain.Enums;
 using TTC.Weighing.Domain.Rules;
 using TTC.Weighing.WinForms.Controls;
 using TTC.Weighing.WinForms.Localization;
@@ -36,7 +36,7 @@ public sealed class AllocateTripDialog : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        BackColor = Color.FromArgb(243, 245, 248);
+        BackColor = TTC.Weighing.WinForms.Theme.AgrisTheme.Canvas;
         AccessibleName = "Dialog phân bổ trọng lượng ghép xe";
 
         // --- Phương pháp phân bổ ---

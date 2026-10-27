@@ -1,0 +1,1 @@
+﻿id,device_id,sequence,event_type,measurement_session_id,payload_json,processing_status,occurred_at,created_at,created_by,updated_at,updated_by,deleted_at,version,event_id,boot_session_id,site_id,lane_id,received_at,correlation_id,trip_id,payload_hash,processing_note

@@ -1,3 +1,4 @@
+using TTC.Weighing.Domain.Common;
 using TTC.Weighing.Domain.Enums;
 
 namespace TTC.Weighing.Domain.Rules;
@@ -41,12 +42,12 @@ public static class MeasurementAggregationRules
             .ToList();
 
         if (distinct.Count == 0)
-            return new(false, null, false, "Chưa có sự kiện IoT nào trong phiên.");
+            return new(false, null, false, DomainText.T("rule.iot_no_events", "Chưa có sự kiện IoT nào trong phiên."));
 
         var negative = distinct.FirstOrDefault(r => r.ValueKg < 0);
         if (negative is not null)
             return new(false, null, true,
-                $"Sự kiện DELTA có giá trị âm ({negative.ValueKg} kg) — cần xác minh, không tự bỏ qua.");
+                DomainText.T("rule.iot_delta_negative", "Sự kiện DELTA có giá trị âm ({0} kg) — cần xác minh, không tự bỏ qua.", negative.ValueKg));
 
         return new(true, distinct.Sum(r => r.ValueKg), false, null);
     }
@@ -64,7 +65,7 @@ public static class MeasurementAggregationRules
             .ToList();
 
         if (ordered.Count == 0)
-            return new(false, null, false, "Chưa có sự kiện IoT nào trong phiên.");
+            return new(false, null, false, DomainText.T("rule.iot_no_events", "Chưa có sự kiện IoT nào trong phiên."));
 
         var epochs = ordered
             .Select(r => r.CounterEpoch)
@@ -73,19 +74,20 @@ public static class MeasurementAggregationRules
 
         if (epochs.Any(string.IsNullOrWhiteSpace))
             return new(false, null, true,
-                "Sự kiện CUMULATIVE thiếu counter_epoch — không xác định được chu kỳ bộ đếm.");
+                DomainText.T("rule.iot_cumulative_no_epoch", "Sự kiện CUMULATIVE thiếu counter_epoch — không xác định được chu kỳ bộ đếm."));
 
         if (epochs.Count > 1)
             return new(false, null, true,
-                $"Phiên chứa {epochs.Count} chu kỳ bộ đếm khác nhau — bộ đếm đã reset, cần xác minh lượng thiếu.");
+                DomainText.T("rule.iot_multiple_epochs", "Phiên chứa {0} chu kỳ bộ đếm khác nhau — bộ đếm đã reset, cần xác minh lượng thiếu.", epochs.Count));
 
         // Bộ đếm cộng dồn phải không giảm trong cùng chu kỳ.
         for (var i = 1; i < ordered.Count; i++)
         {
             if (ordered[i].ValueKg < ordered[i - 1].ValueKg)
                 return new(false, null, true,
-                    $"Bộ đếm giảm từ {ordered[i - 1].ValueKg} xuống {ordered[i].ValueKg} kg " +
-                    "trong cùng chu kỳ — cần xác minh, không tính max(0, end-start).");
+                    DomainText.T("rule.iot_counter_decreased",
+                        "Bộ đếm giảm từ {0} xuống {1} kg trong cùng chu kỳ — cần xác minh, không tính max(0, end-start).",
+                        ordered[i - 1].ValueKg, ordered[i].ValueKg));
         }
 
         var total = ordered[^1].ValueKg - ordered[0].ValueKg;
@@ -113,13 +115,13 @@ public static class MeasurementAggregationRules
 
         if (reverse > 0 && !reverseDirectionAccepted)
             return new(false, forward, reverse, null,
-                "Có sự kiện chiều trả lại nhưng cấu hình chưa nghiệm thu chiều này — cần xác minh.");
+                DomainText.T("rule.bag_reverse_not_accepted", "Có sự kiện chiều trả lại nhưng cấu hình chưa nghiệm thu chiều này — cần xác minh."));
 
         var net = forward - reverse;
 
         if (net < 0)
             return new(false, forward, reverse, null,
-                $"Số bao trả lại ({reverse}) lớn hơn số bao đi ({forward}) — cần kiểm đếm thực tế.");
+                DomainText.T("rule.bag_reverse_exceeds", "Số bao trả lại ({0}) lớn hơn số bao đi ({1}) — cần kiểm đếm thực tế.", reverse, forward));
 
         return new(true, forward, reverse, net, null);
     }

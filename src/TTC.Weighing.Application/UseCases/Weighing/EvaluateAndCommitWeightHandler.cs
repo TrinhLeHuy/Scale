@@ -1,4 +1,5 @@
 using TTC.Weighing.Application.Abstractions;
+using TTC.Weighing.Domain.Common;
 using TTC.Weighing.Domain.Entities;
 using TTC.Weighing.Domain.Enums;
 using TTC.Weighing.Domain.Rules;
@@ -77,6 +78,7 @@ public sealed class EvaluateAndCommitWeightHandler(
         if (signal is null)
             return Blocked("B-001.5", "Không nhận được tín hiệu đầu cân.");
 
+
         var position = await positionGateway.GetLatestAsync(cmd.LaneId, ct);
         if (position is null)
             return Blocked("B-001.4", "Không nhận được bằng chứng AI vị trí.");
@@ -85,16 +87,23 @@ public sealed class EvaluateAndCommitWeightHandler(
         var identity = await identityVerifier.VerifyAsync(trip.Id, cmd.LaneId, ct);
         var hasUnknown = await integrationState.HasUnresolvedUnknownAsync(trip.Id, ct);
 
-        var activeQr = trip.QrTokens.FirstOrDefault(q => q.IsValidAt(clock.UtcNow));
+        var now = clock.UtcNow;
+        var activeQr = trip.QrTokens.FirstOrDefault(q => q.IsValidAt(now));
+        // Không có QR hiệu lực → xét QR mới nhất của chuyến để báo ĐÚNG lý do (hết hạn / thu hồi),
+        // không rơi xuống "không thuộc nhà máy" như trước.
+        var qr = activeQr ?? trip.QrTokens.OrderByDescending(q => q.IssuedAt).FirstOrDefault();
 
         var context = new WeighCommitContext
         {
             TripLifecycle = trip.Lifecycle,
             ExecutionStatus = trip.ExecutionStatus,
-            QrType = activeQr?.Type ?? QrTokenType.Temp,
-            QrStatus = activeQr?.Status ?? QrTokenStatus.Expired,
-            QrMatchesTrip = activeQr?.TripId == trip.Id || activeQr?.VehicleId == trip.VehicleId,
-            QrMatchesSite = activeQr?.SiteId == trip.SiteId,
+            QrType = qr?.Type ?? QrTokenType.Temp,
+            QrStatus = activeQr is not null ? activeQr.Status
+                : qr is null || qr.Status == QrTokenStatus.Issued ? QrTokenStatus.Expired : qr.Status,
+            QrExpiredAt = activeQr is null ? qr?.ExpiresAt : null,
+            QrMatchesTrip = qr is not null
+                && (qr.TripId == trip.Id || (qr.VehicleId is not null && qr.VehicleId == trip.VehicleId)),
+            QrMatchesSite = qr?.SiteId == trip.SiteId,
             CheckpointAllowedByProfile = profile.Checkpoints.Contains(session.Checkpoint),
 
             DevicesMappedToLane = bridge.SiteId == trip.SiteId,
@@ -128,9 +137,24 @@ public sealed class EvaluateAndCommitWeightHandler(
 
         var decision = WeighCommitRules.Evaluate(context);
 
+        // Khối lượng cân = 0 (hoặc âm) không bao giờ được chốt, kể cả khi bàn cân cấu hình MinCapacity = 0.
+        if (signal.NormalizedKg <= 0)
+        {
+            decision = new WeighCommitDecision(false,
+            [
+                .. decision.Checks,
+                new ConditionCheck("B-001.7",
+                    DomainText.T("rule.weight_positive_name", "Khối lượng cân > 0"), false,
+                    DomainText.T("rule.weight_zero",
+                        "Khối lượng cân = {0:N0} kg. Không được chốt cân với khối lượng bằng 0.", signal.NormalizedKg))
+            ]);
+        }
+
         // Đánh giá thử chỉ trả kết quả để hiển thị, không ghi dữ liệu và không sinh audit.
+        // NormalizedKg = số cân sẽ được chốt nếu commit ngay — UI dùng để đẩy DigiScale
+        // (lấy chính sách) TRƯỚC khi lưu; IsCommitted vẫn false, không có WeighEventId.
         if (cmd.DryRun)
-            return new EvaluateAndCommitWeightResult(false, null, null, decision, pre.Warnings);
+            return new EvaluateAndCommitWeightResult(false, null, signal.NormalizedKg, decision, pre.Warnings);
 
         if (!decision.CanCommit)
         {

@@ -1,9 +1,11 @@
-using TTC.Weighing.Application.Abstractions;
+﻿using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Application.UseCases.Trips;
 using TTC.Weighing.Domain.Entities;
 using TTC.Weighing.Domain.Enums;
+using TTC.Weighing.Infrastructure.Adapters;
 using TTC.Weighing.WinForms.Controls;
+using TTC.Weighing.WinForms.Helpers;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Presenters;
 using TTC.Weighing.WinForms.Services;
@@ -28,34 +30,73 @@ public sealed class TripRegistrationForm : Form
     // ── Form fields (panel trái) ──
     // Chỉ Biển số + Lệnh đốn là editable (tra cứu). Còn lại read-only, lấy từ FRM.
     private readonly TextBox _txtPlate = new() { AccessibleName = Loc.T("field.plate") };
-    private readonly Button _btnPlateDropdown = new() { Text = "▼", AccessibleName = "Mở danh sách biển số" };
+    private readonly Button _btnPlateDropdown = new() { Text = "▼", AccessibleName = Loc.T("reg.open_plate_list") };
     private readonly ListBox _lstPlatePopup = new()
     {
         Visible = false,
         BorderStyle = BorderStyle.FixedSingle,
         IntegralHeight = false
     };
-    private readonly DateTimePicker _dtpFrmFrom = new() { AccessibleName = "Từ ngày FRM" };
-    private readonly DateTimePicker _dtpFrmTo = new() { AccessibleName = "Đến ngày FRM" };
-    private string[] _allPlates = [];
+    private readonly DateTimePicker _dtpFrmFrom = new() { AccessibleName = Loc.T("reg.frm_date_from") };
+    private readonly DateTimePicker _dtpFrmTo = new() { AccessibleName = Loc.T("reg.frm_date_to") };
+
+    // ── Khung ngày đơn hàng ERP (vật tư) — tương tự khung ngày lệnh đốn FRM ──
+    private readonly DateTimePicker _dtpErpFrom = new()
+    {
+        Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy", Width = 130,
+        AccessibleName = Loc.T("reg.erp_date_from")
+    };
+    private readonly DateTimePicker _dtpErpTo = new()
+    {
+        Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy", Width = 130,
+        AccessibleName = Loc.T("reg.erp_date_to")
+    };
+    private readonly Button _btnErpTripDropdown = new()
+    {
+        Text = "▼", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, TabStop = false,
+        AccessibleName = Loc.T("reg.erp_trip_list")
+    };
     private string[] _filteredPlates = [];
 
+    /// <summary>
+    /// Lệnh đốn đăng tài được trong khung ngày — nguồn DUY NHẤT cho cả danh sách biển số và danh sách lệnh đốn.
+    /// </summary>
+    private RegistrableLenhDonList _registrable = RegistrableLenhDonList.Empty;
+    private int _registrableRequestId;
+
     private readonly TextBox _txtShipment = new() { AccessibleName = Loc.T("reg.field_shipment") };
+
+    // ── Tìm theo lệnh đốn (giống ô biển số): gõ/chọn mã lệnh đốn → tự điền biển số + thông tin ──
+    private readonly Button _btnLenhDonDropdown = new() { Text = "▼", AccessibleName = Loc.T("reg.open_lenhdon_list") };
+    private readonly ListBox _lstLenhDonPopup = new()
+    {
+        Visible = false,
+        BorderStyle = BorderStyle.FixedSingle,
+        IntegralHeight = false
+    };
+    private string[] _filteredLenhDonCodes = [];
+
+    /// <summary>
+    /// Lệnh đốn đang chọn (theo biển số hoặc theo mã). Một biển số có thể có nhiều lệnh đốn —
+    /// đăng tài dùng ĐÚNG lệnh đốn này, không tra lại theo biển số.
+    /// </summary>
+    private FrmLenhDonInfo? _selectedLenhDon;
+    private string? _lastLookedUpLenhDon;
     private readonly TextBox _txtTripNo = new() { ReadOnly = true, AccessibleName = Loc.T("field.trip_no") };
     private readonly TextBox _txtDateTime = new() { ReadOnly = true, AccessibleName = Loc.T("field.date_time") };
 
     // ── Trường FRM (cho phép nhập tay khi offline — tự điền từ API khi có kết nối) ──
-    private readonly TextBox _txtCustomerOrSupplier = new() { AccessibleName = "Đối tác vận chuyển" };
-    private readonly TextBox _txtStation = new() { AccessibleName = "Trạm" };
-    private readonly TextBox _txtCropSeason = new() { AccessibleName = "Vụ đầu tư" };
-    private readonly TextBox _txtHarvestMethod = new() { AccessibleName = "Hình thức thu hoạch" };
-    private readonly TextBox _txtSugarcaneOwner = new() { AccessibleName = "Chủ mía" };
-    private readonly TextBox _txtSugarcaneType = new() { AccessibleName = "Loại mía" };
-    private readonly TextBox _txtSugarcaneVariety = new() { AccessibleName = "Giống mía" };
-    private readonly TextBox _txtVehicleType = new() { AccessibleName = "Loại xe" };
-    private readonly TextBox _txtMaThe = new() { ReadOnly = true, AccessibleName = "Mã thẻ xe" };
-    private readonly TextBox _txtMaHopDong = new() { ReadOnly = true, AccessibleName = "Mã hợp đồng" };
-    private readonly TextBox _txtTaiTrong = new() { ReadOnly = true, AccessibleName = "Tải trọng" };
+    private readonly TextBox _txtCustomerOrSupplier = new() { AccessibleName = Loc.T("reg.field_transport_partner") };
+    private readonly TextBox _txtStation = new() { AccessibleName = Loc.T("field.station") };
+    private readonly TextBox _txtCropSeason = new() { AccessibleName = Loc.T("reg.field_crop_investment") };
+    private readonly TextBox _txtHarvestMethod = new() { AccessibleName = Loc.T("field.harvest_method") };
+    private readonly TextBox _txtSugarcaneOwner = new() { AccessibleName = Loc.T("field.sugarcane_owner") };
+    private readonly TextBox _txtSugarcaneType = new() { AccessibleName = Loc.T("field.sugarcane_type") };
+    private readonly TextBox _txtSugarcaneVariety = new() { AccessibleName = Loc.T("field.sugarcane_variety") };
+    private readonly TextBox _txtVehicleType = new() { AccessibleName = Loc.T("field.vehicle_type") };
+    private readonly TextBox _txtMaThe = new() { ReadOnly = true, AccessibleName = Loc.T("reg.field_card_code") };
+    private readonly TextBox _txtMaHopDong = new() { ReadOnly = true, AccessibleName = Loc.T("reg.field_contract_code") };
+    private readonly TextBox _txtTaiTrong = new() { ReadOnly = true, AccessibleName = Loc.T("reg.field_capacity") };
     private readonly TextBox _txtNotes = new() { AccessibleName = Loc.T("field.notes") };
 
     // ── Chọn loại nghiệp vụ (Mía nhập / Vật tư) ──
@@ -66,35 +107,36 @@ public sealed class TripRegistrationForm : Form
     };
 
     // ── Các trường dành riêng cho vật tư (ẩn khi chọn mía) ──
-    private readonly TextBox _txtCommodity = new() { AccessibleName = Loc.T("field.commodity") };
-    private readonly TextBox _txtWarehouse = new() { AccessibleName = "Kho" };
-    private readonly RadioButton _rbMaterialIn = new() { Text = "Nhập", AutoSize = true, Checked = true };
-    private readonly RadioButton _rbMaterialOut = new() { Text = "Xuất", AutoSize = true };
-    private readonly TextBox _txtTripNumber = new() { AccessibleName = "Số TRIP", PlaceholderText = "Số TRIP / Shipment" };
-    private readonly TextBox _txtMaterialPlate = new() { AccessibleName = "Biển số", PlaceholderText = "Biển số xe" };
-    private readonly Button _btnCheckErp = GridBuilder.PrimaryButton("Kiểm tra", new Size(100, 30));
-    private readonly TextBox _txtMaterialShipment = new() { AccessibleName = "Shipment Number", PlaceholderText = "Shipment Number" };
-    private readonly TextBox _txtMaterialPlateDetail = new() { AccessibleName = "Biển số xe", PlaceholderText = "Biển số xe" };
-    private readonly TextBox _txtTrailer = new() { AccessibleName = "Rơ moóc", PlaceholderText = "Rơ moóc (nếu có)" };
-    private readonly TextBox _txtTransporter = new() { AccessibleName = "Nhà vận chuyển", PlaceholderText = "Nhà vận chuyển" };
-    private readonly TextBox _txtDriver = new() { AccessibleName = "Lái xe" };
-    private readonly TextBox _txtMaterialCustomer = new() { AccessibleName = "Khách hàng/NCC", PlaceholderText = "Khách hàng/NCC" };
-    private readonly TextBox _txtReceiveDate = new() { AccessibleName = "Ngày nhận hàng", PlaceholderText = "Ngày nhận hàng" };
-    private readonly TextBox _txtMaterialNotes = new() { AccessibleName = "Ghi chú" };
+    // Dữ liệu vật tư lấy nguyên từ ERP — chỉ đọc, không cho sửa trên app cân.
+    private readonly TextBox _txtCommodity = new() { AccessibleName = Loc.T("field.commodity"), ReadOnly = true };
+    private readonly TextBox _txtWarehouse = new() { AccessibleName = Loc.T("field.warehouse"), ReadOnly = true };
+    private readonly RadioButton _rbMaterialIn = new() { Text = Loc.T("reg.direction_in"), AutoSize = true, Checked = true };
+    private readonly RadioButton _rbMaterialOut = new() { Text = Loc.T("reg.direction_out"), AutoSize = true };
+    private readonly TextBox _txtTripNumber = new() { AccessibleName = Loc.T("reg.field_trip_number"), PlaceholderText = Loc.T("reg.field_trip_number_placeholder") };
+    private readonly TextBox _txtMaterialPlate = new() { AccessibleName = Loc.T("col.plate"), PlaceholderText = Loc.T("field.plate") };
+    private readonly Button _btnCheckErp = GridBuilder.PrimaryButton(Loc.T("reg.btn_check"), new Size(100, 30));
+    private readonly TextBox _txtMaterialShipment = new() { AccessibleName = Loc.T("field.shipment"), PlaceholderText = Loc.T("field.shipment") };
+    private readonly TextBox _txtMaterialPlateDetail = new() { AccessibleName = Loc.T("field.plate"), PlaceholderText = Loc.T("field.plate") };
+    private readonly TextBox _txtTransporter = new() { AccessibleName = Loc.T("field.transporter"), PlaceholderText = Loc.T("field.transporter"), ReadOnly = true };
+    private readonly TextBox _txtDriver = new() { AccessibleName = Loc.T("field.driver"), ReadOnly = true };
+    private readonly TextBox _txtMaterialCustomer = new() { AccessibleName = Loc.T("field.customer"), PlaceholderText = Loc.T("field.customer"), ReadOnly = true };
+    private readonly TextBox _txtReceiveDate = new() { AccessibleName = Loc.T("reg.field_receive_date"), PlaceholderText = Loc.T("reg.field_receive_date"), ReadOnly = true };
+    private readonly TextBox _txtMaterialNotes = new() { AccessibleName = Loc.T("field.notes") };
 
     // ── Panel chứa các trường mía (để ẩn/hiện) ──
     private Panel _pnlSugarcaneFields = null!;
     // ── Panel chi tiết mía (expand/collapse) ──
     private Panel _pnlDetailFields = null!;
-    private readonly Button _btnExpandDetails = new() { Text = "📋 Xem thêm thông tin chuyến", AutoSize = false, Height = 44, Padding = new Padding(4, 0, 4, 0) };
+    private readonly Button _btnExpandDetails = new() { Text = Loc.T("reg.btn_more_info"), AutoSize = false, Height = 44, Padding = new Padding(4, 0, 4, 0) };
     // ── Panel chứa các trường vật tư (để ẩn/hiện) ──
     private Panel _pnlMaterialFields = null!;
 
     // ── Action buttons ──
     private readonly Button _btnSave = GridBuilder.PrimaryButton(Loc.T("reg.btn_register"), new Size(140, 36));
     private readonly Button _btnPrint = GridBuilder.SecondaryButton(Loc.T("reg.btn_print"), new Size(130, 36));
-    private readonly Button _btnRetryDigi = GridBuilder.SecondaryButton("🔄 Đẩy lại Digi", new Size(140, 36));
-    private readonly Button _btnCancel = GridBuilder.SecondaryButton("Hủy phiếu", new Size(110, 36));
+    private readonly Button _btnRetryDigi = GridBuilder.SecondaryButton(Loc.T("reg.btn_retry_digi"), new Size(140, 36));
+    private readonly Button _btnCancel = GridBuilder.SecondaryButton(Loc.T("reg.btn_cancel_ticket"), new Size(110, 36));
+    private readonly Button _btnDelete = GridBuilder.SecondaryButton(Loc.T("reg.btn_delete_ticket"), new Size(110, 36));
     private readonly Button _btnReset = GridBuilder.SecondaryButton(Loc.T("reg.btn_reset"), new Size(130, 36));
 
     // ── Camera views (panel phải trên) ──
@@ -106,6 +148,21 @@ public sealed class TripRegistrationForm : Form
 
     // ── Trip grid (Req 7.1) ──
     private readonly DataGridView _dgvTrips = GridBuilder.ReadOnlyGrid(Loc.T("reg.section_grid"));
+
+    // ── Phân trang + thanh cuộn lớn + phóng to lưới ──
+    private readonly GridPager _pager = new("reg.trips", defaultPageSize: 20);
+    private IReadOnlyList<TripRegistrationRow> _allTripRows = [];
+    private GridScrollBar? _gridScroll;
+    private readonly Button _btnExpandGrid = GridBuilder.SecondaryButton(Loc.T("grid.expand"), new Size(150, 40));
+
+    // ── Tách lưới Mía / Vật tư + xuất Excel ──
+    private readonly TripCategorySwitch _gridCategory = new("reg.trips");
+    private readonly Button _btnExportExcel = GridBuilder.ExportExcelButton();
+    private bool _gridExpanded;
+    private const float TopAreaPercent = 58F; // lưới đủ chỗ cho thanh lọc + vài dòng + thanh phân trang
+    private TableLayoutPanel _root = null!;
+    private Control _topArea = null!;
+    private Control _actionBarCard = null!;
 
     // ── Grid filter tabs (Req 7.2) ──
     private readonly Button _btnTabInFactory = GridBuilder.PrimaryButton(Loc.T("reg.tab_in_factory"), new Size(140, 30));
@@ -166,7 +223,10 @@ public sealed class TripRegistrationForm : Form
         _eventBus = eventBus;
 
         Text = Loc.T("reg.title");
-        MinimumSize = new Size(1280, 860);
+        // Chiều cao tối thiểu phải nhỏ hơn vùng tab thực tế (cửa sổ − ~160px dải thương hiệu/menu/tab/status).
+        // 860 lớn hơn vùng tab → form tràn xuống dưới, thanh phân trang ở chân lưới bị khuất (chỉ thấy khi phóng to lưới).
+        // Phần form nhập liệu tự cuộn khi thiếu chỗ.
+        MinimumSize = new Size(1280, 640);
         BackColor = AgrisTheme.Canvas;
         DoubleBuffered = true;
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
@@ -207,12 +267,17 @@ public sealed class TripRegistrationForm : Form
             Padding = new Padding(10, 8, 10, 0)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 75));   // Top area (form + camera)
+        // Lưới cần đủ chỗ cho vài dòng + thanh lọc + thanh phân trang; form nhập liệu tự cuộn nếu thiếu chỗ.
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, TopAreaPercent));   // Top area (form + camera)
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, FormLayout.ActionRowHeight));   // Action bar
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 25));   // Grid area
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100 - TopAreaPercent));   // Grid area
 
-        root.Controls.Add(BuildTopArea(), 0, 0);
-        root.Controls.Add(BuildActionBar(), 0, 1);
+        _root = root;
+        _topArea = BuildTopArea();
+        _actionBarCard = BuildActionBar();
+
+        root.Controls.Add(_topArea, 0, 0);
+        root.Controls.Add(_actionBarCard, 0, 1);
         root.Controls.Add(BuildGridArea(), 0, 2);
 
         Controls.Add(root);
@@ -221,6 +286,10 @@ public sealed class TripRegistrationForm : Form
         _lstPlatePopup.Font = AgrisTheme.Body(10F);
         Controls.Add(_lstPlatePopup);
         _lstPlatePopup.BringToFront();
+
+        _lstLenhDonPopup.Font = AgrisTheme.Body(10F);
+        Controls.Add(_lstLenhDonPopup);
+        _lstLenhDonPopup.BringToFront();
     }
 
     /// <summary>
@@ -248,7 +317,7 @@ public sealed class TripRegistrationForm : Form
         _cameraIn.Dock = DockStyle.Fill;
         _cameraIn.ApplyPositionLabel();
         camInCard.Controls.Add(_cameraIn);
-        camInCard.Controls.Add(GridBuilder.SectionHeader("Camera Vào"));
+        camInCard.Controls.Add(GridBuilder.SectionHeader(Loc.T("reg.camera_in")));
         top.Controls.Add(camInCard, 1, 0);
 
         // Cột phải: Camera Ra (20%)
@@ -256,7 +325,7 @@ public sealed class TripRegistrationForm : Form
         _cameraOut.Dock = DockStyle.Fill;
         _cameraOut.ApplyPositionLabel();
         camOutCard.Controls.Add(_cameraOut);
-        camOutCard.Controls.Add(GridBuilder.SectionHeader("Camera Ra"));
+        camOutCard.Controls.Add(GridBuilder.SectionHeader(Loc.T("reg.camera_out")));
         top.Controls.Add(camOutCard, 2, 0);
 
         return top;
@@ -357,13 +426,34 @@ public sealed class TripRegistrationForm : Form
         _btnPlateDropdown.TabStop = false;
         platePanel.Controls.Add(_txtPlate, 0, 0);
         platePanel.Controls.Add(_btnPlateDropdown, 1, 0);
-        FormLayout.AddField(caneTable, "Tìm nhanh", platePanel);
+        // Hai ô tìm ngang hàng: theo biển số HOẶC theo lệnh đốn.
+        FormLayout.AddField(caneTable, Loc.T("reg.field_search_plate"), platePanel);
 
-        // Lệnh đốn / Shipment
-        _txtShipment.Font = AgrisTheme.Body(10F);
+        // Lệnh đốn + ▼ dropdown — tìm được như biển số (gõ lọc / chọn danh sách)
+        var lenhDonPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        lenhDonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        lenhDonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
+        lenhDonPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        _txtShipment.Font = AgrisTheme.Body(12F, FontStyle.Bold);
         _txtShipment.Dock = DockStyle.Fill;
-        _txtShipment.PlaceholderText = Loc.T("reg.field_shipment");
-        FormLayout.AddField(caneTable, Loc.T("reg.field_shipment_short"), _txtShipment);
+        _txtShipment.PlaceholderText = Loc.T("reg.field_lenhdon_placeholder");
+        _txtShipment.BackColor = Color.FromArgb(255, 255, 220);
+        _txtShipment.BorderStyle = BorderStyle.FixedSingle;
+        _btnLenhDonDropdown.Dock = DockStyle.Fill;
+        _btnLenhDonDropdown.FlatStyle = FlatStyle.Flat;
+        _btnLenhDonDropdown.FlatAppearance.BorderSize = 1;
+        _btnLenhDonDropdown.Cursor = Cursors.Hand;
+        _btnLenhDonDropdown.TabStop = false;
+        lenhDonPanel.Controls.Add(_txtShipment, 0, 0);
+        lenhDonPanel.Controls.Add(_btnLenhDonDropdown, 1, 0);
+        FormLayout.AddField(caneTable, Loc.T("reg.field_search_lenhdon"), lenhDonPanel);
 
         // ═══════════════════════════════════════════════════════════
         //  PHẦN CHI TIẾT (tự điền khi chọn xe, cho phép sửa tay)
@@ -409,11 +499,18 @@ public sealed class TripRegistrationForm : Form
         _btnExpandDetails.BackColor = AgrisTheme.Surface;
         _btnExpandDetails.Cursor = Cursors.Hand;
         _btnExpandDetails.TextAlign = ContentAlignment.MiddleCenter;
-        _btnExpandDetails.Text = "📋 Xem thêm thông tin chuyến";
-        _btnExpandDetails.Size = new Size(300, 44);
-        _btnExpandDetails.Click += (_, _) => ShowDetailPopup();
-        FormLayout.AddFullWidth(caneTable, _btnExpandDetails, 54);
-        _btnExpandDetails.Margin = new Padding(4, 4, 4, 4);
+        _btnExpandDetails.Text = Loc.T("reg.btn_more_info");
+        _btnExpandDetails.Font = AgrisTheme.Body(9F, FontStyle.Bold);
+        _btnExpandDetails.Dock = DockStyle.Fill;
+        _btnExpandDetails.Margin = Padding.Empty;
+        _btnExpandDetails.AccessibleName = Loc.T("reg.more_info");
+        // Nút nằm trên thanh tiêu đề (luôn nhìn thấy, không bị cắt khi khung thấp) và
+        // mở đúng popup theo nghiệp vụ đang chọn: mía → chi tiết FRM, vật tư → chi tiết ERP.
+        _btnExpandDetails.Click += (_, _) =>
+        {
+            if (_pnlMaterialFields.Visible) ShowMaterialDetailPopup();
+            else ShowDetailPopup();
+        };
 
         // ── Panel chi tiết (ẩn — dữ liệu binding vẫn hoạt động, chỉ không hiện inline) ──
         _pnlDetailFields = new Panel { Dock = DockStyle.Fill, Visible = false };
@@ -466,20 +563,43 @@ public sealed class TripRegistrationForm : Form
         directionPanel.Controls.Add(_rbMaterialOut);
         FormLayout.AddField(materialTable, "Hướng", directionPanel);
 
-        // Số TRIP + Biển số + Nút Kiểm tra (cùng 1 hàng)
+        // Khung ngày đơn hàng ERP — giới hạn tra cứu + danh sách chọn nhanh Số TRIP (như khung ngày FRM).
+        var erpDatePanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            WrapContents = false,
+            Margin = Padding.Empty
+        };
+        // Mặc định hôm nay → hôm nay, giống khung ngày lệnh đốn FRM.
+        _dtpErpFrom.Value = DateTime.Today;
+        _dtpErpTo.Value = DateTime.Today;
+        erpDatePanel.Controls.Add(_dtpErpFrom);
+        erpDatePanel.Controls.Add(new Label
+        {
+            Text = "→", AutoSize = true, TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(6, 6, 6, 0)
+        });
+        erpDatePanel.Controls.Add(_dtpErpTo);
+        FormLayout.AddField(materialTable, Loc.T("reg.erp_date_range"), erpDatePanel);
+        _btnErpTripDropdown.Click += async (_, _) => await ShowErpTripListAsync();
+
+        // Số TRIP (+ ▼ danh sách trong khung ngày) + Biển số + Nút Kiểm tra (cùng 1 hàng)
         var tripCheckPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 5,
+            ColumnCount = 6,
             RowCount = 1,
             Margin = Padding.Empty,
             Padding = Padding.Empty
         };
         tripCheckPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40)); // Số TRIP
-        tripCheckPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60)); // label
+        tripCheckPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30)); // ▼
+        // Cột nhãn/nút đủ rộng cho cỡ chữ phóng to 1.5× — trước đó "Biển số" và "Kiểm tra" bị cắt.
+        tripCheckPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90)); // label
         tripCheckPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35)); // Biển số
         tripCheckPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 8));  // spacer
-        tripCheckPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100)); // nút
+        tripCheckPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150)); // nút
         tripCheckPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         _txtTripNumber.Font = AgrisTheme.Body(10F);
@@ -495,10 +615,11 @@ public sealed class TripRegistrationForm : Form
             ForeColor = AgrisTheme.TextMuted
         };
         tripCheckPanel.Controls.Add(_txtTripNumber, 0, 0);
-        tripCheckPanel.Controls.Add(lblBienSo, 1, 0);
-        tripCheckPanel.Controls.Add(_txtMaterialPlate, 2, 0);
-        tripCheckPanel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 3, 0);
-        tripCheckPanel.Controls.Add(_btnCheckErp, 4, 0);
+        tripCheckPanel.Controls.Add(_btnErpTripDropdown, 1, 0);
+        tripCheckPanel.Controls.Add(lblBienSo, 2, 0);
+        tripCheckPanel.Controls.Add(_txtMaterialPlate, 3, 0);
+        tripCheckPanel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 4, 0);
+        tripCheckPanel.Controls.Add(_btnCheckErp, 5, 0);
         FormLayout.AddField(materialTable, "Số TRIP", tripCheckPanel);
 
         // Thông tin chi tiết ERP (chỉ hiện inline: Shipment + Biển số xe)
@@ -506,26 +627,7 @@ public sealed class TripRegistrationForm : Form
         FormLayout.AddField(materialTable, "Biển số xe", _txtMaterialPlateDetail);
         FormLayout.AddField(materialTable, Loc.T("field.notes"), _txtMaterialNotes);
 
-        // Nút "Xem thêm" cho vật tư — popup hiện toàn bộ chi tiết ERP
-        var btnExpandMaterial = new Button
-        {
-            Text = "📋 Xem thêm thông tin chuyến",
-            AutoSize = false,
-            Height = 38,
-            Width = 280,
-            FlatStyle = FlatStyle.Flat,
-            Font = AgrisTheme.Body(10F, FontStyle.Bold),
-            ForeColor = AgrisTheme.BrandGreen,
-            BackColor = AgrisTheme.Surface,
-            Cursor = Cursors.Hand,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Padding = new Padding(4, 0, 4, 0)
-        };
-        btnExpandMaterial.FlatAppearance.BorderColor = AgrisTheme.BrandGreen;
-        btnExpandMaterial.FlatAppearance.BorderSize = 1;
-        btnExpandMaterial.Click += (_, _) => ShowMaterialDetailPopup();
-        FormLayout.AddFullWidth(materialTable, btnExpandMaterial, 48);
-        btnExpandMaterial.Margin = new Padding(4, 4, 4, 4);
+        // Nút "Xem thêm" dùng chung một nút trên thanh tiêu đề (xem _btnExpandDetails).
 
         // Wire event: Kiểm tra ERP
         _btnCheckErp.Click += async (_, _) => await CheckErpAsync();
@@ -537,17 +639,48 @@ public sealed class TripRegistrationForm : Form
         // Ghi chú đã chuyển lên phần tìm nhanh
         // Thông báo đã chuyển lên trên cùng
 
-        // Layout: card chứa header (Top) → table header rows (Top) → panels (Fill)
-        // Dùng Dock stacking thay vì TableLayoutPanel Percent — đơn giản, không bị co thiếu
-        card.Controls.Add(_pnlMaterialFields);  // Fill — ẩn mặc định
-        card.Controls.Add(_pnlSugarcaneFields); // Fill — hiện mặc định (override material)
-        card.Controls.Add(table);               // Top — notification + profile type rows
+        // Layout: tiêu đề (cố định, có nút "Xem thêm") + vùng nội dung CUỘN ĐƯỢC.
+        // Hai panel mía/vật tư neo Top với chiều cao đúng bằng số dòng — khung thấp hơn nội dung
+        // thì hiện thanh cuộn thay vì cắt mất các dòng cuối (trước đây Dock.Fill nên không bao giờ cuộn).
+        caneTable.Dock = DockStyle.Top;
+        materialTable.Dock = DockStyle.Top;
+        _pnlSugarcaneFields.Dock = DockStyle.Top;
+        _pnlSugarcaneFields.Height = TableHeight(caneTable);
+        _pnlMaterialFields.AutoSize = false;
+        _pnlMaterialFields.Dock = DockStyle.Top;
+        _pnlMaterialFields.Height = TableHeight(materialTable);
+
         table.Dock = DockStyle.Top;
         table.AutoSize = true;
-        card.Controls.Add(header);              // Top — tiêu đề "Thông tin đăng tài"
+
+        var body = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = AgrisTheme.Surface };
+        body.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 8, BackColor = AgrisTheme.Surface }); // đệm đáy
+        body.Controls.Add(_pnlMaterialFields);  // ẩn mặc định
+        body.Controls.Add(_pnlSugarcaneFields); // hiện mặc định
+        body.Controls.Add(table);               // notification + loại nghiệp vụ
+
+        // Nút "Xem thêm thông tin chuyến" bên phải thanh tiêu đề.
+        var headerAction = new Panel
+        {
+            Dock = DockStyle.Right,
+            Width = 330,
+            Padding = new Padding(0, 5, 10, 5),
+            BackColor = Color.Transparent
+        };
+        headerAction.Controls.Add(_btnExpandDetails);
+        header.Controls.Add(headerAction);
+
+        card.AutoScroll = false;
+        card.Controls.Add(body);
+        card.Controls.Add(header);
 
         return card;
     }
+
+    /// <summary>Chiều cao thật của bảng FieldTable (mọi dòng đều cao tuyệt đối).</summary>
+    private static int TableHeight(TableLayoutPanel table)
+        => (int)table.RowStyles.Cast<RowStyle>().Sum(r => r.SizeType == SizeType.Absolute ? r.Height : FormLayout.RowHeight)
+           + table.Padding.Vertical + 4;
 
     /// <summary>
     /// Chuyển đổi giữa mía nhập và vật tư — ẩn/hiện trường tương ứng.
@@ -559,6 +692,9 @@ public sealed class TripRegistrationForm : Form
         _pnlSugarcaneFields.Visible = isSugarcane;
         _pnlMaterialFields.Visible = !isSugarcane;
         // Dock.Fill — hiển thị panel nào visible sẽ tự lấp đầy, không cần chỉnh row height
+
+        // Lưới chuyến đi theo nghiệp vụ đang đăng tài (người dùng vẫn đổi tay được trên lưới).
+        _gridCategory.SetCategory(isSugarcane ? TripCategory.Sugarcane : TripCategory.Material);
     }
 
     /// <summary>Hiện popup chi tiết chuyến xe — 10 field editable, font lớn, rõ ràng.</summary>
@@ -580,21 +716,72 @@ public sealed class TripRegistrationForm : Form
         table.Dock = DockStyle.Top;
         table.Padding = new Padding(12, 8, 12, 8);
 
-        // Tạo các textbox riêng cho popup, sync dữ liệu khi OK
+        // Ô sửa được (sync ngược về form khi Lưu) — trộn chung một danh sách với thông tin FRM chỉ đọc.
         var fields = new (string Label, TextBox Source, TextBox Popup)[]
         {
-            ("Chủ mía", _txtSugarcaneOwner, MakePopupTxt(_txtSugarcaneOwner)),
-            ("Loại mía", _txtSugarcaneType, MakePopupTxt(_txtSugarcaneType)),
-            ("Giống mía", _txtSugarcaneVariety, MakePopupTxt(_txtSugarcaneVariety)),
-            ("Trạm", _txtStation, MakePopupTxt(_txtStation)),
-            ("Vụ đầu tư", _txtCropSeason, MakePopupTxt(_txtCropSeason)),
-            ("Loại xe", _txtVehicleType, MakePopupTxt(_txtVehicleType)),
-            ("Tải trọng (T)", _txtTaiTrong, MakePopupTxt(_txtTaiTrong)),
-            ("Mã thẻ xe", _txtMaThe, MakePopupTxt(_txtMaThe)),
+            (Loc.T("field.sugarcane_owner"), _txtSugarcaneOwner, MakePopupTxt(_txtSugarcaneOwner)),
+            (Loc.T("field.sugarcane_type"), _txtSugarcaneType, MakePopupTxt(_txtSugarcaneType)),
+            (Loc.T("field.sugarcane_variety"), _txtSugarcaneVariety, MakePopupTxt(_txtSugarcaneVariety)),
+            (Loc.T("field.station"), _txtStation, MakePopupTxt(_txtStation)),
+            (Loc.T("reg.field_crop_investment"), _txtCropSeason, MakePopupTxt(_txtCropSeason)),
+            (Loc.T("field.vehicle_type"), _txtVehicleType, MakePopupTxt(_txtVehicleType)),
+            (Loc.T("reg.field_capacity") + " (T)", _txtTaiTrong, MakePopupTxt(_txtTaiTrong)),
+            (Loc.T("reg.field_card_code"), _txtMaThe, MakePopupTxt(_txtMaThe)),
         };
+        Control Edit(int i) => fields[i].Popup;
 
-        foreach (var (label, _, txt) in fields)
-            FormLayout.AddField(table, label, txt);
+        var ld = CurrentLenhDon(PlateText);
+        var info = LenhDonDetailValues(ld);
+        Control Info(string key) => ReadOnlyInfo(info.TryGetValue(key, out var v) ? v : null);
+
+        // Một danh sách duy nhất, xếp theo nhóm: lệnh đốn → hợp đồng & chủ mía → mía → vùng → xe.
+        // Không lặp: mỗi thông tin chỉ một dòng.
+        var rows = new List<(string Label, Control Field)>();
+        if (ld is not null)
+        {
+            rows.Add((Loc.T("reg.detail_ma_ld"), Info("ma_ld")));
+            rows.Add((Loc.T("reg.detail_status"), Info("status")));
+            rows.Add((Loc.T("reg.detail_validity"), Info("validity")));
+            rows.Add((Loc.T("reg.detail_priority"), Info("priority")));
+            rows.Add((Loc.T("reg.detail_contract_type"), Info("contract_type")));
+            rows.Add((Loc.T("reg.detail_contract"), Info("contract")));
+        }
+        rows.Add((fields[0].Label, Edit(0)));                         // Chủ mía
+        if (ld is not null) rows.Add((Loc.T("reg.detail_customer_company"), Info("customer_company")));
+        rows.Add((fields[1].Label, Edit(1)));                         // Loại mía
+        rows.Add((fields[2].Label, Edit(2)));                         // Giống mía
+        if (ld is not null)
+        {
+            rows.Add((Loc.T("reg.detail_burnt"), Info("burnt")));
+            rows.Add((Loc.T("reg.detail_harvest"), Info("harvest")));
+            rows.Add((Loc.T("reg.detail_cane_form"), Info("cane_form")));
+            rows.Add((Loc.T("reg.detail_harvest_partner"), Info("harvest_partner")));
+            rows.Add((Loc.T("reg.detail_plot"), Info("plot")));
+        }
+        rows.Add((fields[3].Label, Edit(3)));                         // Trạm
+        rows.Add((fields[4].Label, Edit(4)));                         // Vụ đầu tư
+        rows.Add((fields[5].Label, Edit(5)));                         // Loại xe
+        rows.Add((fields[6].Label, Edit(6)));                         // Tải trọng
+        rows.Add((fields[7].Label, Edit(7)));                         // Mã thẻ xe
+        if (ld is not null)
+        {
+            rows.Add((Loc.T("reg.detail_temp_card"), Info("temp_card")));
+            if (ld.IsTemporaryCard)
+            {
+                rows.Add((Loc.T("reg.detail_temp_plate"), Info("temp_plate")));
+                rows.Add((Loc.T("reg.detail_original_plate"), Info("original_plate")));
+            }
+            rows.Add((Loc.T("reg.detail_used_plate"), Info("used_plate")));
+        }
+
+        foreach (var (label, field) in rows)
+            FormLayout.AddField(table, label, field);
+
+        if (ld is null)
+            FormLayout.AddFullWidth(table, GridBuilder.Notice(Loc.T("reg.detail_no_lenhdon")), 44);
+        else if (ld.IsTemporaryCard)
+            FormLayout.AddFullWidth(table,
+                GridBuilder.Notice(Loc.T("reg.detail_temp_flow_note", ld.VehiclePlate ?? "—")), 56);
 
         var btnOk = GridBuilder.PrimaryButton("Lưu thay đổi", new Size(160, 42));
         btnOk.DialogResult = DialogResult.OK;
@@ -604,6 +791,7 @@ public sealed class TripRegistrationForm : Form
         var actionBar = FormLayout.ActionBar(btnOk, btnCancel);
         FormLayout.AddFullWidth(table, actionBar, FormLayout.ActionRowHeight);
 
+        popup.Size = new Size(760, 860);
         popup.Controls.Add(table);
         popup.AcceptButton = btnOk;
         popup.CancelButton = btnCancel;
@@ -626,13 +814,36 @@ public sealed class TripRegistrationForm : Form
         };
     }
 
-    /// <summary>Popup chi tiết chuyến vật tư (ERP) — hiện toàn bộ thông tin đơn hàng + nhập tay.</summary>
+    /// <summary>Ô chỉ đọc cho thông tin lấy từ FRM (không sửa trên app cân).</summary>
+    private static TextBox ReadOnlyInfo(string? value) => new()
+    {
+        Text = string.IsNullOrWhiteSpace(value) ? "—" : value,
+        ReadOnly = true,
+        Dock = DockStyle.Fill,
+        Font = AgrisTheme.Body(11F),
+        BackColor = AgrisTheme.ReadOnlyBg,
+        ForeColor = AgrisTheme.ReadOnlyText,
+        BorderStyle = BorderStyle.FixedSingle,
+        TabStop = false
+    };
+
+    /// <summary>
+    /// Giá trị hiển thị của lệnh đốn FRM cho popup Xem thêm: hiệu lực, hợp đồng, mía cháy, thu hoạch,
+    /// phân loại trên phiếu cân (cháy / khúc / cây), thẻ xe tạm và biển số dùng để đăng tài / cân.
+    /// </summary>
+    private static Dictionary<string, string?> LenhDonDetailValues(FrmLenhDonInfo? ld)
+        => LenhDonDetails.Values(ld);
+
+    /// <summary>
+    /// Popup chi tiết chuyến vật tư (ERP) — CHỈ XEM. Dữ liệu luồng vật tư lấy nguyên từ ERP
+    /// (nhà vận chuyển, lái xe, kho, hàng hóa, KH/NCC, ngày nhận) và không được sửa trên app cân.
+    /// </summary>
     private void ShowMaterialDetailPopup()
     {
         using var popup = new Form
         {
-            Text = "📋 Thông tin chi tiết chuyến vật tư",
-            Size = new Size(620, 620),
+            Text = "📋 " + Loc.T("reg.material_detail_title"),
+            Size = new Size(620, 540),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false,
@@ -645,47 +856,96 @@ public sealed class TripRegistrationForm : Form
         table.Dock = DockStyle.Top;
         table.Padding = new Padding(12, 8, 12, 8);
 
-        var fields = new (string Label, TextBox Source, TextBox Popup)[]
+        FormLayout.AddFullWidth(table, GridBuilder.Notice(Loc.T("reg.material_detail_readonly"), AgrisTheme.Info), 44);
+
+        var fields = new (string Label, TextBox Source)[]
         {
-            ("Rơ moóc", _txtTrailer, MakeTxt(_txtTrailer)),
-            ("Nhà vận chuyển", _txtTransporter, MakeTxt(_txtTransporter)),
-            ("Lái xe", _txtDriver, MakeTxt(_txtDriver)),
-            ("Kho", _txtWarehouse, MakeTxt(_txtWarehouse)),
-            ("Hàng hóa", _txtCommodity, MakeTxt(_txtCommodity)),
-            ("Khách hàng/NCC", _txtMaterialCustomer, MakeTxt(_txtMaterialCustomer)),
-            ("Ngày nhận hàng", _txtReceiveDate, MakeTxt(_txtReceiveDate)),
+            (Loc.T("field.transporter"), _txtTransporter),
+            (Loc.T("field.driver"), _txtDriver),
+            (Loc.T("field.warehouse"), _txtWarehouse),
+            (Loc.T("field.commodity"), _txtCommodity),
+            (Loc.T("field.customer"), _txtMaterialCustomer),
+            (Loc.T("reg.field_receive_date"), _txtReceiveDate),
         };
 
-        foreach (var (label, _, txt) in fields)
-            FormLayout.AddField(table, label, txt);
-
-        var btnOk = GridBuilder.PrimaryButton("Lưu thay đổi", new Size(160, 42));
-        btnOk.DialogResult = DialogResult.OK;
-        var btnCancel = GridBuilder.SecondaryButton("Đóng", new Size(120, 42));
-        btnCancel.DialogResult = DialogResult.Cancel;
-
-        var actionBar = FormLayout.ActionBar(btnOk, btnCancel);
-        FormLayout.AddFullWidth(table, actionBar, FormLayout.ActionRowHeight);
-
-        popup.Controls.Add(table);
-        popup.AcceptButton = btnOk;
-        popup.CancelButton = btnCancel;
-
-        if (popup.ShowDialog(this) == DialogResult.OK)
+        foreach (var (label, source) in fields)
         {
-            foreach (var (_, source, txt) in fields)
-                source.Text = txt.Text;
+            FormLayout.AddField(table, label, new TextBox
+            {
+                Text = string.IsNullOrWhiteSpace(source.Text) ? Loc.T("print.none") : source.Text,
+                Font = AgrisTheme.Body(11F),
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                TabStop = false,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = AgrisTheme.ReadOnlyBg,
+                ForeColor = AgrisTheme.ReadOnlyText
+            });
         }
 
-        static TextBox MakeTxt(TextBox source) => new()
+        var btnClose = GridBuilder.SecondaryButton(Loc.T("common.close"), new Size(120, 42));
+        btnClose.DialogResult = DialogResult.Cancel;
+        FormLayout.AddFullWidth(table, FormLayout.ActionBar(btnClose), FormLayout.ActionRowHeight);
+
+        popup.Controls.Add(table);
+        popup.AcceptButton = btnClose;
+        popup.CancelButton = btnClose;
+        popup.ShowDialog(this);
+    }
+
+    /// <summary>
+    /// ▼ cạnh Số TRIP: danh sách đơn hàng ERP trong khung ngày (đã kéo về máy). Chọn → điền TRIP/biển số và kiểm tra luôn.
+    /// </summary>
+    private async Task ShowErpTripListAsync()
+    {
+        if (_dtpErpFrom.Value.Date > _dtpErpTo.Value.Date)
         {
-            Text = source.Text,
-            Font = AgrisTheme.Body(11F),
-            Dock = DockStyle.Fill,
-            PlaceholderText = source.PlaceholderText,
-            ReadOnly = source.ReadOnly,
-            BackColor = source.ReadOnly ? AgrisTheme.ReadOnlyBg : Color.FromArgb(255, 255, 248),
-        };
+            AppendNotification(Loc.T("reg.erp_date_invalid"));
+            return;
+        }
+
+        IReadOnlyList<TTC.Weighing.Infrastructure.Adapters.ErpOrderLine> lines;
+        try
+        {
+            _btnErpTripDropdown.Enabled = false;
+            lines = await _presenter.ListErpOrdersInRangeAsync(_dtpErpFrom.Value, _dtpErpTo.Value, FormToken);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex)
+        {
+            AppendNotification($"⚠ {ex.Message}");
+            return;
+        }
+        finally
+        {
+            if (!IsDisposed) _btnErpTripDropdown.Enabled = true;
+        }
+
+        if (IsDisposed) return;
+        if (lines.Count == 0)
+        {
+            AppendNotification(Loc.T("reg.erp_none_in_range",
+                _dtpErpFrom.Value.ToString("dd/MM/yyyy"), _dtpErpTo.Value.ToString("dd/MM/yyyy")));
+            return;
+        }
+
+        var menu = new ContextMenuStrip { Font = AgrisTheme.Body(10F), ShowImageMargin = false, MaximumSize = new Size(900, 520) };
+        foreach (var line in lines.Take(200))
+        {
+            var trip = line.TripNumber ?? line.ShipmentNumber;
+            var date = TripRegistrationPresenter.ErpDate(line)?.ToString("dd/MM") ?? "--/--";
+            var text = $"{trip}   {line.PlateNumber ?? "—"}   {date}   {line.ItemDescription ?? line.ItemName ?? ""}";
+            var item = new ToolStripMenuItem(text) { Tag = line };
+            item.Click += async (_, _) =>
+            {
+                _txtTripNumber.Text = trip;
+                _txtMaterialPlate.Text = line.PlateNumber ?? "";
+                await CheckErpAsync();
+            };
+            menu.Items.Add(item);
+        }
+        menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
+        menu.Show(_btnErpTripDropdown, new Point(_btnErpTripDropdown.Width - menu.Width, _btnErpTripDropdown.Height));
     }
 
     /// <summary>
@@ -717,7 +977,8 @@ public sealed class TripRegistrationForm : Form
                 // Tìm theo số TRIP/shipment trước, nếu không có thì tìm theo biển số
                 var searchKey = !string.IsNullOrWhiteSpace(tripNumber) ? tripNumber : null;
                 var searchPlate = !string.IsNullOrWhiteSpace(plate) ? plate : null;
-                erpLine = await _presenter.LookupErpOrderAsync(bu, searchKey, searchPlate, FormToken);
+                erpLine = await _presenter.LookupErpOrderAsync(bu, searchKey, searchPlate, FormToken,
+                    _dtpErpFrom.Value, _dtpErpTo.Value);
             }
             catch { /* API lỗi → erpLine remains null */ }
 
@@ -744,16 +1005,18 @@ public sealed class TripRegistrationForm : Form
                 if (string.IsNullOrWhiteSpace(tripNumber) && !string.IsNullOrWhiteSpace(erpLine.ShipmentNumber))
                     _txtTripNumber.Text = erpLine.ShipmentNumber;
 
-                _txtTransporter.Text = erpLine.TransporterName ?? erpLine.Transporter ?? "";
+                _txtTransporter.Text = erpLine.EffectiveTransporter ?? "";
                 _txtDriver.Text = erpLine.DriverName ?? "";
-                _txtWarehouse.Text = !string.IsNullOrWhiteSpace(erpLine.WarehouseCode)
-                    ? $"{erpLine.WarehouseCode} - {erpLine.WarehouseName}"
-                    : erpLine.WarehouseName ?? "";
+                // Kho = tên tổ chức kho ERP (organizationName), ví dụ "126501 - Thanh pham - PROC".
+                _txtWarehouse.Text = erpLine.EffectiveWarehouse ?? "";
                 _txtCommodity.Text = erpLine.ItemDescription ?? erpLine.ItemName ?? "";
                 _txtMaterialCustomer.Text = erpLine.VendorName ?? erpLine.CustomerName ?? "";
-                _txtReceiveDate.Text = erpLine.TransactionDate ?? "";
+                _txtReceiveDate.Text = TripRegistrationPresenter.ErpDate(erpLine)?.ToString("dd/MM/yyyy HH:mm") ?? erpLine.TransactionDate ?? "";
 
                 _txtShipment.Text = erpLine.ShipmentNumber ?? tripNumber;
+                // Hướng theo luồng ERP: ship confirm (SO/TO) và WMS (luồng SO) là xuất, còn lại là nhập.
+                _rbMaterialOut.Checked = erpLine.IsShipConfirmFlow;
+                _rbMaterialIn.Checked = !erpLine.IsShipConfirmFlow;
                 _btnSave.Enabled = true;
 
                 var typeInfo = !string.IsNullOrWhiteSpace(erpLine.TransactionTypeName)
@@ -761,6 +1024,9 @@ public sealed class TripRegistrationForm : Form
                     : "";
                 AppendNotification($"✅ ERP: {erpLine.ShipmentNumber} — {erpLine.ItemDescription ?? erpLine.ItemName}{typeInfo}");
                 AppendNotification($"   KH/NCC: {erpLine.VendorName ?? erpLine.CustomerName} | Org: {erpLine.OrganizationCode} | Biển số: {erpLine.PlateNumber ?? "(không có)"}");
+
+                // Shipment đã đăng tài / xe chưa cân ra → báo ngay khi kiểm tra (F4 cũng chặn lại).
+                await ValidateMaterialRegistrationAsync(_txtPlate.Text.Trim(), isTemp: false);
             }
             else
             {
@@ -813,20 +1079,8 @@ public sealed class TripRegistrationForm : Form
     {
         try
         {
-            var plates = _presenter.GetAllPlates();
-            _allPlates = plates.ToArray();
-
-            if (plates.Count == 0)
-            {
-                // Xe (the-xe/xe-van-chuyen) có thể rỗng — lệnh đốn vẫn dùng được qua GetPlatesInDateRange
-                RefreshPlateFilter();
-                return;
-            }
-
-            // Lọc theo khung ngày mặc định
+            // Danh sách biển số / lệnh đốn đều lấy từ lệnh đốn đăng tài được trong khung ngày.
             RefreshPlateFilter();
-            var stats = _presenter.FrmCacheStats;
-            AppendNotification($"✅ Đã tải {plates.Count} biển số xe từ FRM. (Có thẻ: {stats.withCard}, Chỉ XVC: {stats.withoutCard})");
         }
         catch (Exception ex)
         {
@@ -843,26 +1097,47 @@ public sealed class TripRegistrationForm : Form
         var from = _dtpFrmFrom.Value.Date;
         var to = _dtpFrmTo.Value.Date.AddDays(1).AddSeconds(-1);
 
+        // Hàm này được gọi nhiều lần liên tiếp (mở form, đổi Từ ngày, đổi Đến ngày). Trước đây các lần gọi
+        // chạy chồng trên cùng DbContext → lỗi "second operation" → danh sách lệnh đốn bị gán rỗng âm thầm,
+        // còn biển số lấy từ nhánh dự phòng → hai ô lệch nhau. Nay: tuần tự qua _dbLock, chỉ áp kết quả lần mới nhất.
+        var requestId = ++_registrableRequestId;
+        RegistrableLenhDonList result;
         try
         {
-            _filteredPlates = await _presenter.GetPlatesInDateRangeAsync(from, to, _cts.Token);
+            await _dbLock.WaitAsync(_cts.Token);
+            try
+            {
+                if (requestId != _registrableRequestId) return; // đã có lần gọi mới hơn
+                result = await _presenter.GetRegistrableLenhDonAsync(from, to, _cts.Token);
+            }
+            finally { _dbLock.Release(); }
         }
-        catch
+        catch (OperationCanceledException) { return; } // tab đang đóng
+        catch (ObjectDisposedException) { return; }
+        catch (Exception ex)
         {
-            _filteredPlates = _presenter.GetPlatesInDateRange(from, to);
+            result = RegistrableLenhDonList.Empty;
+            AppendNotification($"⚠ {ex.Message}");
         }
+        if (IsDisposed || requestId != _registrableRequestId) return;
+        _registrable = result;
 
-        // Fallback: nếu thẻ xe rỗng, tìm biển số từ lệnh đốn đã duyệt trong khung ngày (theo NgayCap hoặc NgayCapNhat)
-        if (_filteredPlates.Length == 0)
-        {
-            var ldPlates = _presenter.GetLenhDonPlatesInDateRange(from, to);
-            if (ldPlates.Length > 0)
-                _filteredPlates = ldPlates;
-        }
-
+        // Cả hai ô cùng một nguồn → biển số nào hiện thì lệnh đốn của nó cũng hiện, và ngược lại.
+        _filteredPlates = _registrable.Plates;
+        _filteredLenhDonCodes = _registrable.Codes;
         _lstPlatePopup.Visible = false;
+        _lstLenhDonPopup.Visible = false;
 
-        AppendNotification($"🔍 {_filteredPlates.Length} xe hiệu lực từ {from:dd/MM/yyyy} đến {_dtpFrmTo.Value:dd/MM/yyyy}");
+        AppendNotification(Loc.T("reg.search_range_info", _filteredPlates.Length, _filteredLenhDonCodes.Length,
+            from.ToString("dd/MM/yyyy"), _dtpFrmTo.Value.ToString("dd/MM/yyyy")));
+
+        // Trống → nói rõ lệnh đốn trong khung ngày bị loại vì lý do gì.
+        if (_filteredLenhDonCodes.Length == 0
+            && (_registrable.AlreadyRegistered + _registrable.NotApproved + _registrable.NoPlate) > 0)
+        {
+            AppendNotification(Loc.T("reg.registrable_excluded",
+                _registrable.AlreadyRegistered, _registrable.NotApproved, _registrable.NoPlate));
+        }
     }
 
     /// <summary>
@@ -963,7 +1238,10 @@ public sealed class TripRegistrationForm : Form
             Padding = new Padding(8, 2, 8, 2)
         };
 
-        var bar = FormLayout.ActionBar(_btnSave, _btnPrint, _btnRetryDigi, _btnCancel, _btnReset);
+        // Nút Xóa phiếu: chữ đỏ để phân biệt với Hủy phiếu (xóa là thao tác khó hoàn tác).
+        _btnDelete.ForeColor = AgrisTheme.Danger;
+        _btnDelete.FlatAppearance.BorderColor = AgrisTheme.Danger;
+        var bar = FormLayout.ActionBar(_btnSave, _btnPrint, _btnRetryDigi, _btnCancel, _btnDelete, _btnReset);
         bar.Dock = DockStyle.Fill;
 
         card.Controls.Add(bar);
@@ -985,52 +1263,56 @@ public sealed class TripRegistrationForm : Form
 
         var header = GridBuilder.SectionHeader(Loc.T("reg.section_grid"));
 
-        // ── Filter toolbar: tabs + date range ──
-        var filterBar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 42,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            BackColor = AgrisTheme.SurfaceMuted,
-            Padding = new Padding(8, 5, 8, 5)
-        };
-
+        // ── Thanh công cụ: Mía/Vật tư + tab + khoảng ngày | Xuất Excel + Phóng to ──
         _btnTabInFactory.Margin = new Padding(0, 0, 4, 0);
         _btnTabExited.Margin = new Padding(0, 0, 4, 0);
         _btnTabCancelled.Margin = new Padding(0, 0, 16, 0);
 
-        var lblFrom = new Label
+        var lblFrom = GridToolbar.FilterLabel(Loc.T("reg.filter_from"));
+        var lblTo = GridToolbar.FilterLabel("→", new Padding(6, 9, 6, 0));
+
+        _dtpFrom.Margin = new Padding(0, 4, 0, 0);
+        _dtpTo.Margin = new Padding(0, 4, 0, 0);
+
+        _btnExpandGrid.Margin = new Padding(8, 0, 0, 0);
+        _btnExpandGrid.Click += (_, _) => ToggleGridExpanded();
+
+        _btnExportExcel.Margin = new Padding(8, 0, 0, 0);
+        _btnExportExcel.Click += async (_, _) => await ExportTripGridAsync();
+
+        _gridCategory.CategoryChanged += async (_, _) =>
         {
-            Text = Loc.T("reg.filter_from"),
-            AutoSize = true,
-            Font = AgrisTheme.Body(9F),
-            ForeColor = AgrisTheme.TextMuted,
-            Margin = new Padding(0, 6, 4, 0)
+            _pager.Reset();
+            GridBuilder.ApplyCategoryHeader(card, header, Loc.T("reg.section_grid"), _gridCategory.Category);
+            await LoadGridAsync();
         };
 
-        var lblTo = new Label
-        {
-            Text = "→",
-            AutoSize = true,
-            Font = AgrisTheme.Body(9F),
-            ForeColor = AgrisTheme.TextMuted,
-            Margin = new Padding(4, 6, 4, 0)
-        };
+        var filterBar = new GridToolbar(
+            [_gridCategory, GridToolbar.Divider(), _btnTabInFactory, _btnTabExited, _btnTabCancelled,
+             GridToolbar.Group(lblFrom, _dtpFrom, lblTo, _dtpTo)],
+            [_btnExportExcel, _btnExpandGrid]);
 
-        _dtpFrom.Margin = new Padding(0, 2, 0, 0);
-        _dtpTo.Margin = new Padding(0, 2, 0, 0);
-
-        filterBar.Controls.AddRange([
-            _btnTabInFactory, _btnTabExited, _btnTabCancelled,
-            lblFrom, _dtpFrom, lblTo, _dtpTo
-        ]);
+        GridBuilder.ApplyCategoryHeader(card, header, Loc.T("reg.section_grid"), _gridCategory.Category);
 
         GridBuilder.AttachEmptyState(_dgvTrips, Loc.T("reg.no_trips"));
 
+        _pager.PageChanged += (_, _) =>
+        {
+            BindCurrentPage();
+            if (_dgvTrips.Rows.Count > 0)
+                _dgvTrips.FirstDisplayedScrollingRowIndex = 0;
+        };
+
+        // Chế độ thường không phân trang (lưới cuộn dọc); bật khi Phóng to lưới.
+        _pager.PagingEnabled = false;
+
+        // Thứ tự Add ngược thứ tự dock: lưới (Fill) → pager (Bottom) → thanh lọc → tiêu đề.
         card.Controls.Add(_dgvTrips);
+        card.Controls.Add(_pager);
         card.Controls.Add(filterBar);
         card.Controls.Add(header);
+
+        _gridScroll = GridScrollBar.Attach(_dgvTrips);
 
         return card;
     }
@@ -1108,8 +1390,8 @@ public sealed class TripRegistrationForm : Form
         _dtpFrom.Value = DateTime.Today.AddDays(-7); // Mặc định 7 ngày gần nhất
         _dtpTo.Value = DateTime.Today.AddDays(1);
 
-        _dtpFrom.ValueChanged += async (_, _) => await LoadGridAsync();
-        _dtpTo.ValueChanged += async (_, _) => await LoadGridAsync();
+        _dtpFrom.ValueChanged += async (_, _) => { _pager.Reset(); await LoadGridAsync(); };
+        _dtpTo.ValueChanged += async (_, _) => { _pager.Reset(); await LoadGridAsync(); };
     }
 
     /// <summary>Khởi tạo timer tự động refresh lưới mỗi 30 giây (Req 7.5).</summary>
@@ -1166,10 +1448,18 @@ public sealed class TripRegistrationForm : Form
         _btnPlateDropdown.Click += OnPlateDropdownClicked;
         _lstPlatePopup.Click += OnPlatePopupClick;
         _lstPlatePopup.KeyDown += OnPlatePopupKeyDown;
+
+        _txtShipment.TextChanged += OnLenhDonTextChanged;
+        _txtShipment.KeyDown += OnLenhDonKeyDown;
+        _txtShipment.Leave += OnLenhDonLeave;
+        _btnLenhDonDropdown.Click += OnLenhDonDropdownClicked;
+        _lstLenhDonPopup.Click += (_, _) => { if (_lstLenhDonPopup.SelectedItem is string c) SelectLenhDonFromPopup(c); };
+        _lstLenhDonPopup.KeyDown += OnLenhDonPopupKeyDown;
         _btnSave.Click += OnSaveClicked;
         _btnPrint.Click += OnPrintClicked;
         _btnRetryDigi.Click += async (_, _) => await RetryPushDangTaiDigiAsync();
         _btnCancel.Click += async (_, _) => await CancelSelectedTripAsync();
+        _btnDelete.Click += async (_, _) => await DeleteSelectedTripAsync();
         _btnReset.Click += OnResetClicked;
     }
 
@@ -1193,7 +1483,7 @@ public sealed class TripRegistrationForm : Form
 
         if (_filteredPlates.Length == 0)
         {
-            AppendNotification("⚠ Không có xe nào hiệu lực trong khung ngày đã chọn.");
+            AppendNotification(Loc.T("reg.no_lenhdon_in_range"));
             return;
         }
 
@@ -1227,12 +1517,9 @@ public sealed class TripRegistrationForm : Form
 
         var search = text.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
 
-        // Tìm trong danh sách đã filter — fallback tìm trực tiếp trong cache nếu chưa load
-        var source = _filteredPlates.Length > 0
-            ? _filteredPlates
-            : _presenter.GetPlatesInDateRange(_dtpFrmFrom.Value.Date, _dtpFrmTo.Value.Date.AddDays(1));
-
-        var filtered = source
+        // Gợi ý chỉ lấy từ danh sách lệnh đốn đăng tài được — cùng nguồn với ô lệnh đốn.
+        // Biển số gõ tay ngoài danh sách vẫn tra cứu được (Enter / rời ô) để báo đúng lý do.
+        var filtered = _filteredPlates
             .Where(p => p.Replace(" ", "").Replace("-", "").Replace(".", "")
                 .ToUpperInvariant()
                 .Contains(search))
@@ -1382,51 +1669,491 @@ public sealed class TripRegistrationForm : Form
         {
             var normalizedPlate = NormalizePlate(plate);
 
-            // 1. Tìm LenhDon theo biển số (từ cache — nhanh, không cần API)
-            var lenhDon = _presenter.FindLenhDonByPlate(plate);
+            // Thứ tự chọn lệnh đốn cho biển số:
+            // 1) lệnh đốn đã chọn theo mã của đúng xe này;
+            // 2) lệnh đốn đăng tài được trong khung ngày (ưu tiên trước) — đúng lệnh đang hiện ở ô lệnh đốn;
+            // 3) tra toàn bộ cache (để báo đúng lý do: chưa duyệt, hết hạn, đã đăng tài...).
+            var lenhDon = _selectedLenhDon is { } chosen && NormalizePlate(chosen.VehiclePlate) == normalizedPlate
+                ? chosen
+                : _registrable.Available.FirstOrDefault(ld => NormalizePlate(ld.VehiclePlate) == normalizedPlate)
+                  ?? _presenter.FindLenhDonByPlate(plate);
+
             if (lenhDon is not null)
             {
-                // Điền dữ liệu lệnh đốn ngay lập tức
-                _txtShipment.Text = lenhDon.MaLD;
-                _txtVehicleType.Text = lenhDon.LoaixeName ?? "";
-                _txtSugarcaneOwner.Text = lenhDon.KHName ?? "";
-                _txtSugarcaneType.Text = lenhDon.LoaiMiaName ?? "";
-                _txtSugarcaneVariety.Text = lenhDon.GiongMiaName ?? "";
-                _txtStation.Text = lenhDon.TramName ?? "";
-                _txtCropSeason.Text = lenhDon.VudautuName ?? "";
-                _txtHarvestMethod.Text = lenhDon.DoiTacThuHoachName ?? "";
-                _txtTaiTrong.Text = lenhDon.TaiTrong.HasValue ? $"{lenhDon.TaiTrong:N1}" : "";
-                _txtMaThe.Text = lenhDon.Thexename ?? "";
-
-                // Nhà vận chuyển từ the-xe (cache)
-                var vehicles = _presenter.FindVehicleByPlate(plate);
-                _txtCustomerOrSupplier.Text = vehicles.FirstOrDefault(v => v.DoiTacVanChuyenName is not null)?.DoiTacVanChuyenName ?? "";
-
-                AppendNotification($"✅ Lệnh đốn: {lenhDon.MaLD} | Chủ mía: {lenhDon.KHName} | Loại mía: {lenhDon.LoaiMiaName} | Giống: {lenhDon.GiongMiaName} | Trạm: {lenhDon.TramName} | Loại xe: {lenhDon.LoaixeName}");
-
-                // Đánh dấu đã lookup thành công
-                _lastLookedUpPlate = normalizedPlate;
-
-                // 2. Check lệnh đốn đã đăng tài → popup ngay
-                var existingTrip = await _presenter.FindActiveTripByLenhDonAsync(lenhDon.SourceKey, FormToken);
-                if (existingTrip is not null)
-                {
-                    AppendNotification($"⚠ Lệnh đốn {lenhDon.MaLD} đã được đăng tài (số: {existingTrip}).");
-                    Helpers.DigiScalePopup.Show(this,
-                        "XE ĐÃ ĐĂNG TÀI",
-                        $"Biển số: {plate}\nLệnh đốn: {lenhDon.MaLD}\nSố đăng tài: {existingTrip}\n\nPhải hủy phiếu cũ trước khi đăng tài lại.",
-                        false, "Lệnh đốn đã có phiếu đăng tài active");
-                    return;
-                }
-
-                _selectedPlan = null; // Không dùng plan từ CheckPlanAsync — dữ liệu đã có từ lệnh đốn
+                await ApplyLenhDonAsync(lenhDon, plate);
             }
             else
             {
+                _selectedLenhDon = null;
                 AppendNotification($"❌ Không tìm thấy lệnh đốn cho biển số {plate}. Có thể đăng tài tạm.");
                 _selectedPlan = null;
                 _lastLookedUpPlate = normalizedPlate;
             }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            AppendNotification($"⚠ Lỗi: {ex.Message}");
+        }
+        finally
+        {
+            _lookupInProgress = false;
+            SetUiBusy(false);
+        }
+    }
+
+    /// <summary>
+    /// Điền form từ một lệnh đốn (chung cho tìm theo biển số và theo mã lệnh đốn),
+    /// ghi nhớ lệnh đốn đã chọn, và cảnh báo nếu lệnh đốn đã có phiếu đăng tài active.
+    /// </summary>
+    /// <param name="viewOnly">true = chỉ điền để xem (bấm từ lưới chuyến): bỏ qua kiểm tra đăng tài và cảnh báo.</param>
+    private async Task ApplyLenhDonAsync(FrmLenhDonInfo lenhDon, string? plate, bool viewOnly = false)
+    {
+        var effectivePlate = string.IsNullOrWhiteSpace(plate) ? lenhDon.VehiclePlate ?? "" : plate;
+
+        _selectedLenhDon = lenhDon;
+        _lastLookedUpLenhDon = lenhDon.MaLD;
+        _lastLookedUpPlate = NormalizePlate(effectivePlate);
+
+        SetTextSilently(_txtShipment, lenhDon.MaLD, OnLenhDonTextChanged);
+        if (!string.IsNullOrWhiteSpace(effectivePlate))
+            SetTextSilently(_txtPlate, effectivePlate, OnPlateTextChanged);
+
+        _txtVehicleType.Text = lenhDon.LoaixeName ?? "";
+        _txtSugarcaneOwner.Text = lenhDon.KHName ?? "";
+        _txtSugarcaneType.Text = lenhDon.LoaiMiaName ?? "";
+        _txtSugarcaneVariety.Text = lenhDon.GiongMiaName ?? "";
+        _txtStation.Text = lenhDon.TramName ?? "";
+        _txtCropSeason.Text = lenhDon.VudautuName ?? "";
+        _txtHarvestMethod.Text = HarvestMethodText(lenhDon) ?? "";
+        _txtTaiTrong.Text = lenhDon.TaiTrong.HasValue ? $"{lenhDon.TaiTrong:N1}" : "";
+        // Chỉ mã thẻ thật; trạng thái thẻ xe tạm hiện ở dòng "Thẻ xe tạm" riêng (không ghép chữ vào mã thẻ).
+        _txtMaThe.Text = lenhDon.Thexename ?? "";
+
+        // Nhà vận chuyển từ the-xe (cache)
+        var vehicles = string.IsNullOrWhiteSpace(effectivePlate) ? [] : _presenter.FindVehicleByPlate(effectivePlate);
+        _txtCustomerOrSupplier.Text = vehicles.FirstOrDefault(v => v.DoiTacVanChuyenName is not null)?.DoiTacVanChuyenName ?? "";
+
+        // Xem chuyến đã đăng tài: chỉ hiển thị, không kiểm tra / cảnh báo đăng tài.
+        if (viewOnly) return;
+
+        if (lenhDon.IsTemporaryCard)
+            AppendNotification(Loc.T("reg.temp_card_notice", lenhDon.MaLD, lenhDon.SoXeTam ?? effectivePlate));
+        if (lenhDon.MiaChay == true)
+            AppendNotification(Loc.T("reg.burnt_cane_notice", lenhDon.MaLD, lenhDon.LoaiMiaChayName ?? "—"));
+
+        AppendNotification($"✅ Lệnh đốn: {lenhDon.MaLD} | Biển số: {effectivePlate} | Chủ mía: {lenhDon.KHName} | Loại mía: {lenhDon.LoaiMiaName} | Giống: {lenhDon.GiongMiaName} | Trạm: {lenhDon.TramName} | Loại xe: {lenhDon.LoaixeName}");
+
+        _selectedPlan = null; // Không dùng plan từ CheckPlanAsync — dữ liệu đã có từ lệnh đốn
+
+        // Lệnh chưa duyệt / hết hạn / ngoài thời gian / xe không tồn tại / thẻ hủy → báo ngay khi tra cứu (F4 cũng chặn lại)
+        if (ValidateLenhDonForRegistration(lenhDon, effectivePlate) is { } invalid
+            && !await ShowRegistrationBlockedAsync(invalid, lenhDon, effectivePlate))
+            return;
+
+        // Lệnh đốn đã đăng tài → báo ngay
+        var existingTrip = await _presenter.FindActiveTripByLenhDonAsync(lenhDon.SourceKey, FormToken);
+        if (existingTrip is not null)
+        {
+            AppendNotification($"⚠ Lệnh đốn {lenhDon.MaLD} đã được đăng tài (số: {existingTrip}).");
+            Helpers.DigiScalePopup.Show(this,
+                "XE ĐÃ ĐĂNG TÀI",
+                $"Biển số: {effectivePlate}\nLệnh đốn: {lenhDon.MaLD}\nSố đăng tài: {existingTrip}\n\nPhải hủy phiếu cũ trước khi đăng tài lại.",
+                false, "Lệnh đốn đã có phiếu đăng tài active");
+        }
+    }
+
+    /// <summary>
+    /// Lý do DigiScale từ chối đăng tài, ngắn gọn và chỉ đúng đối tượng lỗi:
+    /// DT-04 → thẻ xe nào chưa được duyệt; DT-03 → xe nào chưa có trong hợp đồng vận chuyển nào.
+    /// Lệnh đốn "Đã duyệt" không có nghĩa thẻ xe / hợp đồng vận chuyển đã duyệt — nói rõ để người vận hành
+    /// biết cần xử lý ở đâu trên FRM. Các lỗi khác → câu đã dịch chung.
+    /// </summary>
+    private static string DescribeRegistrationRejection(string? raw, FrmLenhDonInfo? ld, string plate)
+    {
+        var lines = Helpers.DigiScaleErrors.Describe(raw).Reason
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+            .ToList();
+
+        var dt03 = Loc.T("digi.err_dt03");
+        var dt04 = Loc.T("digi.err_dt04");
+
+        // Lệnh đốn dùng THẺ XE TẠM: không có thẻ / hợp đồng vận chuyển trên FRM (DigiScale báo trạng thái thẻ '-1').
+        // Không phải thẻ "Nháp" — nói đúng là DigiScale chưa nhận đăng tài cho lệnh đốn thẻ xe tạm.
+        if (ld?.IsTemporaryCard == true && (lines.Contains(dt03) || lines.Contains(dt04)))
+        {
+            var others = lines.Where(l => l != dt03 && l != dt04);
+            return string.Join(Environment.NewLine,
+                new[] { Loc.T("reg.reject_temp_card", ld.MaLD, ld.VehiclePlate ?? plate) }.Concat(others));
+        }
+
+        var card = ld?.Thexename?.Trim();
+        var contract = TripRegistrationPresenter.TransportContractOf(card);
+
+        var cardLine = string.IsNullOrWhiteSpace(card) ? dt04 : Loc.T("reg.reject_card_draft", card);
+        var result = lines
+            .Select(line => line == dt04 ? cardLine
+                : line == dt03 ? Loc.T("reg.reject_no_contract", plate, contract ?? "—")
+                : line)
+            .OrderBy(line => line == cardLine ? 0 : 1) // gốc vấn đề (thẻ xe) lên trước
+            .ToList();
+
+        return string.Join(Environment.NewLine, result);
+    }
+
+    /// <summary>
+    /// Kiểm tra đăng tài vật tư (ERP), tương ứng các bước chặn của mía:
+    /// 1) Shipment/TRIP ERP đã có chuyến active (chưa hủy/đóng) → mỗi chứng từ chỉ đăng tài 1 lần;
+    /// 2) xe đang có chuyến chưa cân ra → phải cân ra trước.
+    /// ERP không trả trạng thái duyệt / hạn chứng từ / thẻ xe nên không có các bước tương ứng của lệnh đốn.
+    /// Trả true nếu được đăng tài.
+    /// </summary>
+    private async Task<bool> ValidateMaterialRegistrationAsync(string plate, bool isTemp)
+    {
+        if (!isTemp)
+        {
+            var shipment = _txtShipment.Text.Trim();
+            var existingTrip = await _presenter.FindActiveTripByErpShipmentAsync(shipment, FormToken);
+            if (existingTrip is not null)
+            {
+                var title = Loc.T("reg.erp_already_registered_title");
+                var message = Loc.T("reg.erp_already_registered_msg", shipment, existingTrip);
+                AppendNotification($"⛔ {title}: {message.Replace("\n", " ")}");
+                Helpers.DigiScalePopup.ShowWarning(this, title, message);
+                return false;
+            }
+        }
+
+        var activeTrip = await _presenter.FindActiveTripByPlateAsync(plate, FormToken);
+        if (activeTrip is not null)
+        {
+            var title = Loc.T("reg.vehicle_not_weighed_out_title");
+            var message = Loc.T("reg.vehicle_not_weighed_out_msg", plate, activeTrip);
+            AppendNotification($"⛔ {title}: {message.Replace("\n", " ")}");
+            Helpers.DigiScalePopup.ShowWarning(this, title, message);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Kiểm tra lệnh đốn có đăng tài được không (dùng khi tra cứu và khi bấm Đăng tài):
+    /// 1) thời điểm đăng tài phải nằm trong [Ngày cấp, Ngày hết hạn];
+    /// 2) xe của lệnh đốn phải có trong danh mục xe vận chuyển trên Scale.
+    /// Trả (tiêu đề, nội dung) lỗi, hoặc null nếu hợp lệ.
+    /// </summary>
+    private (string Title, string Message, bool VehicleMissing)? ValidateLenhDonForRegistration(FrmLenhDonInfo ld, string? plate)
+    {
+        var now = DateTimeOffset.Now;
+        string Fmt(DateTimeOffset? d) => d?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "—";
+
+        // 1. Lệnh đốn phải "Đã duyệt" (Nháp, Hủy, Đã tính tiền... đều chặn)
+        if (!TripRegistrationPresenter.IsApproved(ld))
+            return (Loc.T("reg.lenhdon_not_approved_title"),
+                Loc.T("reg.lenhdon_not_approved_msg", ld.MaLD, ld.StatusCodeName ?? "—"), false);
+
+        var (from, to) = TripRegistrationPresenter.RegistrationWindow(ld);
+
+        // 2. Lệnh đốn hết hạn
+        if (to is { } expiry && now > expiry)
+            return (Loc.T("reg.lenhdon_expired_title"),
+                Loc.T("reg.lenhdon_expired_msg", ld.MaLD, Fmt(expiry), now.ToString("dd/MM/yyyy HH:mm")), false);
+
+        // 3. Chưa tới ngày cấp (ví dụ đăng tài 22/10, lệnh cấp 23/10)
+        if (from is { } issued && now < issued)
+            return (Loc.T("reg.lenhdon_out_of_window_title"),
+                Loc.T("reg.lenhdon_out_of_window_msg", ld.MaLD, Fmt(issued), Fmt(to), now.ToString("dd/MM/yyyy HH:mm")), false);
+
+        var vehiclePlate = string.IsNullOrWhiteSpace(plate) ? ld.VehiclePlate : plate;
+        if (string.IsNullOrWhiteSpace(vehiclePlate)) return null;
+
+        // Thẻ xe tạm: xe chưa có trong danh mục xe vận chuyển / thẻ xe FRM → không kiểm tra 4, 5.
+        if (ld.IsTemporaryCard) return null;
+
+        // 4. Xe phải có trong danh mục xe vận chuyển trên Scale
+        if (!_presenter.HasVehicleCatalog)
+        {
+            // Chưa tải được danh mục xe → không kết luận "xe không tồn tại", chỉ nhắc.
+            AppendNotification(Loc.T("reg.vehicle_catalog_not_loaded", vehiclePlate));
+            return null;
+        }
+
+        var vehicles = _presenter.FindVehicleByPlate(vehiclePlate);
+        if (vehicles.Count == 0)
+            return (Loc.T("reg.vehicle_not_found_title"),
+                Loc.T("reg.vehicle_not_found_msg", vehiclePlate, ld.MaLD), true);
+
+        // 5. Thẻ xe phải đang hiệu lực (không hủy). Chỉ chặn khi CÓ bằng chứng thẻ không hiệu lực:
+        //    danh mục thẻ FRM kéo về không đầy đủ, nên "không tìm thấy thẻ" KHÔNG được coi là lỗi
+        //    (DigiScale là nơi kiểm tra cuối — lỗi DT-03/DT-04 được báo kèm mã thẻ / hợp đồng, xem OnSaveClicked).
+        //    Tên thẻ trên lệnh đốn dạng "{HĐ vận chuyển}-{xe}-{mã thẻ}" → khớp theo mã thẻ ở cuối.
+        var ldCard = _presenter.FindCardForLenhDon(ld.Thexename);
+        if (ldCard is not null)
+        {
+            if (!IsCardActive(ldCard))
+                return (Loc.T("reg.card_not_active_title"),
+                    Loc.T("reg.card_not_active_msg", ldCard.MaThe ?? "—", vehiclePlate, ldCard.StatusName ?? "—"), false);
+            return null;
+        }
+
+        var cards = vehicles.Where(v => !string.IsNullOrWhiteSpace(v.MaThe)).ToList();
+        if (cards.Count > 0 && !cards.Any(IsCardActive))
+            return (Loc.T("reg.card_not_active_title"),
+                Loc.T("reg.card_not_active_msg", cards[0].MaThe ?? "—", vehiclePlate, cards[0].StatusName ?? "—"), false);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Hình thức thu hoạch từ lệnh đốn FRM: "Thu hoạch máy" / "Thu hoạch thủ công", kèm "Mía cháy (thời gian)" nếu cháy.
+    /// FRM không trả ThuHoachMay → fallback tên đối tác thu hoạch như trước.
+    /// </summary>
+    private static string? HarvestMethodText(FrmLenhDonInfo ld)
+    {
+        var method = ld.ThuHoachMay switch
+        {
+            true => Loc.T("reg.harvest_machine"),
+            false => Loc.T("reg.harvest_manual"),
+            null => ld.DoiTacThuHoachName
+        };
+
+        if (ld.MiaChay != true) return method;
+
+        var burnt = string.IsNullOrWhiteSpace(ld.LoaiMiaChayName)
+            ? Loc.T("reg.burnt_cane")
+            : $"{Loc.T("reg.burnt_cane")} ({ld.LoaiMiaChayName})";
+        return string.IsNullOrWhiteSpace(method) ? burnt : $"{method} - {burnt}";
+    }
+
+    /// <summary>Thẻ xe đang hiệu lực vận chuyển: không Hủy / hết hạn / Inactive / Nháp.</summary>
+    private static bool IsCardActive(FrmVehicleInfo card)
+    {
+        var s = card.StatusName?.ToUpperInvariant() ?? "";
+        return !(s.Contains("HỦY") || s.Contains("HUỶ") || s.Contains("HẾT HẠN") || s.Contains("INACTIVE")
+                 || s.Contains("CANCEL") || s.Contains("NHÁP") || s.Contains("DRAFT"));
+    }
+
+    /// <summary>
+    /// Báo lỗi không đăng tài được. Riêng "Xe không tồn tại": hỏi sync lại danh mục xe xuống app cân,
+    /// sync xong kiểm tra lại. Trả true nếu sau khi sync lệnh đốn đã hợp lệ (cho đăng tài tiếp).
+    /// </summary>
+    private async Task<bool> ShowRegistrationBlockedAsync(
+        (string Title, string Message, bool VehicleMissing) invalid, FrmLenhDonInfo ld, string? plate)
+    {
+        AppendNotification($"⛔ {invalid.Title}: {invalid.Message.Replace("\n", " ")}");
+
+        if (!invalid.VehicleMissing)
+        {
+            Helpers.DigiScalePopup.ShowWarning(this, invalid.Title, invalid.Message);
+            return false;
+        }
+
+        var answer = MessageBox.Show(this,
+            invalid.Message + "\n\n" + Loc.T("reg.vehicle_sync_prompt"),
+            invalid.Title, MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (answer != DialogResult.Yes) return false;
+
+        AppendNotification(Loc.T("reg.vehicle_syncing"));
+        try
+        {
+            await _presenter.RefreshFrmCacheAsync(FormToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Helpers.DigiScalePopup.ShowWarning(this, invalid.Title, Loc.T("reg.vehicle_sync_failed", ex.Message));
+            return false;
+        }
+
+        if (ValidateLenhDonForRegistration(ld, plate) is { } stillInvalid)
+        {
+            AppendNotification($"⛔ {stillInvalid.Title}: {stillInvalid.Message.Replace("\n", " ")}");
+            Helpers.DigiScalePopup.ShowWarning(this, stillInvalid.Title,
+                (stillInvalid.VehicleMissing ? Loc.T("reg.vehicle_still_missing") + "\n\n" : "") + stillInvalid.Message);
+            return false;
+        }
+
+        AppendNotification(Loc.T("reg.vehicle_sync_ok", plate ?? ld.VehiclePlate ?? "—"));
+        return true;
+    }
+
+    /// <summary>Gán Text mà không kích hoạt autocomplete/lookup của ô đó.</summary>
+    private static void SetTextSilently(TextBox box, string text, EventHandler handler)
+    {
+        box.TextChanged -= handler;
+        box.Text = text;
+        box.SelectionStart = text.Length;
+        box.TextChanged += handler;
+    }
+
+    /// <summary>
+    /// Lệnh đốn dùng cho đăng tài: lệnh đã chọn (nếu đúng xe đang nhập), nếu không thì tra theo biển số.
+    /// </summary>
+    private FrmLenhDonInfo? CurrentLenhDon(string? plate)
+    {
+        if (_selectedLenhDon is { } chosen
+            && (string.IsNullOrWhiteSpace(plate) || NormalizePlate(chosen.VehiclePlate) == NormalizePlate(plate)))
+            return chosen;
+
+        return string.IsNullOrWhiteSpace(plate) ? null : _presenter.FindLenhDonByPlate(plate);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  Tìm theo lệnh đốn — cùng cách dùng với ô biển số
+    // ═══════════════════════════════════════════════════════════
+
+    private bool IsSugarcaneMode => _cboProfileType.SelectedIndex == 0;
+
+    private void OnLenhDonDropdownClicked(object? sender, EventArgs e)
+    {
+        if (!IsSugarcaneMode) { _lstLenhDonPopup.Visible = false; return; }
+
+        if (_lstLenhDonPopup.Visible) { _lstLenhDonPopup.Visible = false; return; }
+
+        if (_filteredLenhDonCodes.Length == 0)
+        {
+            AppendNotification(Loc.T("reg.no_lenhdon_in_range"));
+            return;
+        }
+
+        ShowLenhDonPopup(_filteredLenhDonCodes.Take(200).ToArray());
+        _lstLenhDonPopup.Focus();
+        if (_lstLenhDonPopup.Items.Count > 0) _lstLenhDonPopup.SelectedIndex = 0;
+    }
+
+    private void OnLenhDonTextChanged(object? sender, EventArgs e)
+    {
+        // Gõ lại mã → bỏ lệnh đốn đã chọn trước đó (sẽ tra lại khi Enter/rời ô)
+        if (_selectedLenhDon is not null
+            && !string.Equals(_selectedLenhDon.MaLD, _txtShipment.Text.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedLenhDon = null;
+            _lastLookedUpLenhDon = null;
+        }
+
+        if (!IsSugarcaneMode) { _lstLenhDonPopup.Visible = false; return; }
+
+        var search = _txtShipment.Text.Trim();
+        if (search.Length == 0) { _lstLenhDonPopup.Visible = false; return; }
+
+        var filtered = _filteredLenhDonCodes
+            .Where(c => c.Contains(search, StringComparison.OrdinalIgnoreCase))
+            .Take(30)
+            .ToArray();
+
+        if (filtered.Length == 0) { _lstLenhDonPopup.Visible = false; return; }
+        ShowLenhDonPopup(filtered);
+    }
+
+    private void ShowLenhDonPopup(string[] codes)
+    {
+        _lstLenhDonPopup.Items.Clear();
+        _lstLenhDonPopup.Items.AddRange(codes);
+
+        var host = _txtShipment.Parent!;
+        _lstLenhDonPopup.Location = PointToClient(host.PointToScreen(new Point(0, host.Height)));
+        _lstLenhDonPopup.Width = host.Width;
+        _lstLenhDonPopup.Height = Math.Min(codes.Length * _lstLenhDonPopup.ItemHeight + 4, 250);
+        _lstLenhDonPopup.BringToFront();
+        _lstLenhDonPopup.Visible = true;
+    }
+
+    private void OnLenhDonKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+
+            if (_lstLenhDonPopup.Visible && _lstLenhDonPopup.Items.Count > 0)
+                SelectLenhDonFromPopup(_lstLenhDonPopup.Items[0]?.ToString());
+            else
+            {
+                _lstLenhDonPopup.Visible = false;
+                _ = LookupByLenhDonAsync(_txtShipment.Text);
+            }
+            return;
+        }
+
+        if (!_lstLenhDonPopup.Visible) return;
+
+        if (e.KeyCode == Keys.Down)
+        {
+            _lstLenhDonPopup.Focus();
+            if (_lstLenhDonPopup.Items.Count > 0) _lstLenhDonPopup.SelectedIndex = 0;
+            e.Handled = true;
+        }
+        else if (e.KeyCode == Keys.Escape)
+        {
+            _lstLenhDonPopup.Visible = false;
+            e.Handled = true;
+        }
+    }
+
+    private void OnLenhDonPopupKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter && _lstLenhDonPopup.SelectedItem is string code)
+        {
+            SelectLenhDonFromPopup(code);
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+        }
+        else if (e.KeyCode == Keys.Escape)
+        {
+            _lstLenhDonPopup.Visible = false;
+            _txtShipment.Focus();
+            e.Handled = true;
+        }
+    }
+
+    private async void SelectLenhDonFromPopup(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return;
+        _lstLenhDonPopup.Visible = false;
+        SetTextSilently(_txtShipment, code, OnLenhDonTextChanged);
+        _txtShipment.Focus();
+        await LookupByLenhDonAsync(code);
+    }
+
+    private async void OnLenhDonLeave(object? sender, EventArgs e)
+    {
+        await Task.Yield();
+        if (_lstLenhDonPopup.Focused || _lstLenhDonPopup.ContainsFocus) return;
+        _lstLenhDonPopup.Visible = false;
+
+        if (!IsSugarcaneMode || _lookupInProgress) return;
+
+        var code = _txtShipment.Text.Trim();
+        if (code.Length < 3) return;
+        if (string.Equals(_lastLookedUpLenhDon, code, StringComparison.OrdinalIgnoreCase)) return;
+
+        await LookupByLenhDonAsync(code);
+    }
+
+    /// <summary>Tra mã lệnh đốn trong cache FRM → điền biển số + toàn bộ thông tin chuyến.</summary>
+    private async Task LookupByLenhDonAsync(string code)
+    {
+        if (!IsSugarcaneMode || _lookupInProgress) return;
+        code = code.Trim();
+        if (code.Length == 0) return;
+
+        _lookupInProgress = true;
+        SetUiBusy(true);
+        try
+        {
+            var lenhDon = _presenter.FindLenhDonByCode(code);
+            if (lenhDon is null)
+            {
+                _selectedLenhDon = null;
+                _lastLookedUpLenhDon = code;
+                AppendNotification(Loc.T("reg.lenhdon_not_found", code));
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(lenhDon.VehiclePlate))
+                AppendNotification(Loc.T("reg.lenhdon_no_plate", lenhDon.MaLD));
+
+            await ApplyLenhDonAsync(lenhDon, lenhDon.VehiclePlate);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -1504,7 +2231,7 @@ public sealed class TripRegistrationForm : Form
             // Mía: có lệnh đốn FRM → luôn chính thức.
             // Vật tư: có shipment number → chính thức. Chỉ tạm khi không có gì.
             var isTemp = isSugarcane
-                ? _presenter.FindLenhDonByPlate(plate) is null
+                ? CurrentLenhDon(plate) is null
                 : string.IsNullOrWhiteSpace(_txtShipment.Text.Trim()) && _selectedPlan is null;
 
             // ═══════════════════════════════════════════════════════════
@@ -1512,38 +2239,14 @@ public sealed class TripRegistrationForm : Form
             // ═══════════════════════════════════════════════════════════
             if (isSugarcane)
             {
-                var ldCheck = _presenter.FindLenhDonByPlate(plate);
+                var ldCheck = CurrentLenhDon(plate);
 
                 if (ldCheck is not null)
                 {
-                    var now = DateTimeOffset.Now;
-
-                    // 1. Lệnh đốn Nháp → chặn
-                    if (ldCheck.StatusCodeName != "Đã duyệt" && ldCheck.StatusCodeName != null)
-                    {
-                        Helpers.DigiScalePopup.ShowWarning(this,
-                            "Lệnh đốn chưa duyệt",
-                            $"Lệnh đốn {ldCheck.MaLD} chưa ở trạng thái duyệt.\n\nTrạng thái hiện tại: {ldCheck.StatusCodeName}");
+                    // 1–5. Chưa duyệt (Nháp) / hết hạn / ngoài thời gian đăng tài / xe không tồn tại / thẻ xe hủy
+                    if (ValidateLenhDonForRegistration(ldCheck, plate) is { } invalid
+                        && !await ShowRegistrationBlockedAsync(invalid, ldCheck, plate))
                         return;
-                    }
-
-                    // 2. Lệnh đốn hết hạn (tính đến phút)
-                    if (ldCheck.NgayHetHan is not null && DateTimeOffset.TryParse(ldCheck.NgayHetHan, out var ngayHetHan) && ngayHetHan < now)
-                    {
-                        Helpers.DigiScalePopup.ShowWarning(this,
-                            "Lệnh đốn hết hạn",
-                            $"Lệnh đốn {ldCheck.MaLD} đã hết hạn.\n\nNgày hết hạn: {ngayHetHan:dd/MM/yyyy HH:mm}\nThời gian hiện tại: {now:dd/MM/yyyy HH:mm}");
-                        return;
-                    }
-
-                    // 3. Lệnh đốn chưa tới ngày cấp
-                    if (ldCheck.NgayCap is not null && DateTimeOffset.TryParse(ldCheck.NgayCap, out var ngayCap) && ngayCap > now)
-                    {
-                        Helpers.DigiScalePopup.ShowWarning(this,
-                            "Lệnh đốn chưa hiệu lực",
-                            $"Lệnh đốn {ldCheck.MaLD} có thời gian cấp lớn hơn thời gian hiện tại.\n\nNgày cấp: {ngayCap:dd/MM/yyyy HH:mm}\nThời gian hiện tại: {now:dd/MM/yyyy HH:mm}");
-                        return;
-                    }
 
                     // 4. Lệnh đốn đã đăng tài (check trong DB trips active)
                     var existingTrip = await _presenter.FindActiveTripByLenhDonAsync(ldCheck.SourceKey, FormToken);
@@ -1554,31 +2257,7 @@ public sealed class TripRegistrationForm : Form
                             $"Lệnh đốn {ldCheck.MaLD} đã được đăng tài.\n\nSố đăng tài: {existingTrip}\n\nMỗi lệnh đốn chỉ được đăng tài 1 lần\n(trừ khi phiếu cũ đã hủy hoặc xóa).");
                         return;
                     }
-
-                    // 5. Check thẻ xe (từ FrmVehicleInfo)
-                    var vehicles = _presenter.FindVehicleByPlate(plate);
-                    if (vehicles.Count > 0)
-                    {
-                        var theXe = vehicles.FirstOrDefault(v => v.MaThe is not null);
-                        if (theXe is not null)
-                        {
-                            var status = theXe.StatusName?.ToUpperInvariant() ?? "";
-                            if (status.Contains("HỦY") || status.Contains("HẾT HẠN") || status.Contains("INACTIVE") || status.Contains("CANCEL"))
-                            {
-                                Helpers.DigiScalePopup.ShowWarning(this,
-                                    "Thẻ xe không hợp lệ",
-                                    $"Lệnh đốn có thẻ xe đã Hủy hoặc hết hạn.\n\nThẻ xe: {theXe.MaThe}\nTrạng thái: {theXe.StatusName}");
-                                return;
-                            }
-                            if (status.Contains("NHÁP") || status.Contains("DRAFT"))
-                            {
-                                Helpers.DigiScalePopup.ShowWarning(this,
-                                    "Thẻ xe chưa duyệt",
-                                    $"Lệnh đốn có thẻ xe chưa được duyệt.\n\nThẻ xe: {theXe.MaThe}\nTrạng thái: {theXe.StatusName}");
-                                return;
-                            }
-                        }
-                    }
+                    // (Thẻ xe hủy / chưa duyệt đã kiểm tra trong ValidateLenhDonForRegistration ở trên.)
                 }
 
                 // 6. Xe chưa cân ra → chặn đăng tài tiếp
@@ -1591,6 +2270,11 @@ public sealed class TripRegistrationForm : Form
                     return;
                 }
             }
+            else if (!await ValidateMaterialRegistrationAsync(plate, isTemp))
+            {
+                // Vật tư (ERP): Shipment/TRIP đã đăng tài hoặc xe chưa cân ra → chặn như mía.
+                return;
+            }
 
             var cmd = BuildRegisterCommand(isTemp);
 
@@ -1598,9 +2282,41 @@ public sealed class TripRegistrationForm : Form
                 ? Loc.T("reg.registering_temp", plate)
                 : Loc.T("reg.registering_full", plate, _selectedPlan?.ReferenceNo ?? _txtShipment.Text.Trim()));
 
+            // Mía chính thức: đẩy phiếu đăng tài DigiScale TRƯỚC — DigiScale nhận thì mới lưu.
+            var ldForPush = isSugarcane && !isTemp ? CurrentLenhDon(plate) : null;
+            var maLenhDonForPush = ldForPush?.MaLD ?? _txtShipment.Text.Trim();
+
+            PublishRegistrationBeforeSave? pushFirst = isSugarcane && !isTemp
+                ? async (tripNo, ct) =>
+                {
+                    AppendNotification($"📤 DigiScale (mía): BU={ldForPush?.BusinessUnit}, LenhDon={ldForPush?.SourceKey}, MaLenhDon={maLenhDonForPush}, SoDangTai={tripNo}");
+                    try
+                    {
+                        var push = await _presenter.PushDangTaiAsync(
+                            ldForPush?.SourceKey ?? "", maLenhDonForPush, DateTime.Now, ldForPush?.LoaixeCode ?? "",
+                            tripNo, ldForPush?.UuTien, ldForPush?.BusinessUnit, ct);
+                        return push.IsSuccess ? null : push.ErrorMessage ?? "—";
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        return ex.Message; // mất kết nối / timeout → coi như DigiScale chưa nhận
+                    }
+                }
+                : null;
+
             var result = isTemp
                 ? await _presenter.RegisterTempAsync(cmd, FormToken)
-                : await _presenter.RegisterAsync(cmd, FormToken);
+                : await _presenter.RegisterAsync(cmd, FormToken, pushFirst);
+
+            if (!result.IsSuccess && result.RejectedByUpstream)
+            {
+                // DigiScale từ chối → không có gì được lưu. Chỉ hiện lý do ngắn gọn (không JSON / HTTP / mã kỹ thuật);
+                // nội dung gốc vẫn có trong Nhật ký API.
+                var reason = DescribeRegistrationRejection(result.FailureReason, ldForPush, plate);
+                AppendNotification(Loc.T("reg.digiscale_rejected_log", result.TripNo ?? "—", reason.Replace(Environment.NewLine, " · ")));
+                Helpers.DigiScalePopup.ShowWarning(this, Loc.T("reg.digiscale_rejected_title"), reason);
+                return;
+            }
 
             if (!result.IsSuccess)
             {
@@ -1628,45 +2344,21 @@ public sealed class TripRegistrationForm : Form
 
             if (!isTemp)
             {
-                try
+                if (isSugarcane)
                 {
-                    if (isSugarcane)
-                    {
-                        // ═══ MÍA → push phiếu đăng tài FRM (new_phieudangtai) ═══
-                        var ldForPush = _presenter.FindLenhDonByPlate(plate);
-                        var lenhDonId = ldForPush?.SourceKey ?? "";
-                        var maLenhDon = ldForPush?.MaLD ?? _txtShipment.Text.Trim();
-                        var loaiXeMa = ldForPush?.LoaixeCode ?? "";
-
-                        var pushResult = await _presenter.PushDangTaiAsync(
-                            lenhDonId, maLenhDon, DateTime.Now, loaiXeMa,
-                            result.TripNo ?? "", ldForPush?.UuTien, ldForPush?.BusinessUnit, FormToken);
-
-                        AppendNotification($"📤 DigiScale (mía): BU={ldForPush?.BusinessUnit}, LenhDon={lenhDonId}, MaLenhDon={maLenhDon}, SoDangTai={result.TripNo}");
-
-                        digiOk = pushResult.IsSuccess;
-                        digiStatus = digiOk
-                            ? $"✅ DigiScale: {pushResult.ErrorMessage}"
-                            : $"❌ DigiScale: {pushResult.ErrorMessage}";
-                    }
-                    else
-                    {
-                        // ═══ VẬT TƯ → chưa có API đăng tài riêng trên DigiScale ═══
-                        // DigiScale chỉ có new_phieudangtai (FRM/mía). Vật tư sẽ push phiếu cân (oracle-tickets) sau khi cân.
-                        // Đăng tài vật tư chỉ lưu DB local — đẩy lên DigiScale khi có API.
-                        digiOk = true;
-                        digiStatus = "ℹ Vật tư: Đăng tài lưu local. Đẩy DigiScale khi cân.";
-                        AppendNotification(digiStatus);
-                    }
-
-                    if (!string.IsNullOrEmpty(digiStatus))
-                        AppendNotification(digiStatus);
+                    // MÍA: DigiScale đã nhận phiếu đăng tài trước khi lưu (xem pushFirst ở trên).
+                    digiOk = true;
+                    digiStatus = Loc.T("reg.digiscale_accepted");
                 }
-                catch (Exception pushEx)
+                else
                 {
-                    digiStatus = $"❌ DigiScale lỗi: {pushEx.Message}";
-                    AppendNotification(digiStatus);
+                    // ═══ VẬT TƯ → chưa có API đăng tài riêng trên DigiScale ═══
+                    // Vật tư sẽ push phiếu cân (oracle-tickets) sau khi cân. Đăng tài vật tư chỉ lưu DB local.
+                    digiOk = true;
+                    digiStatus = "ℹ Vật tư: Đăng tài lưu local. Đẩy DigiScale khi cân.";
                 }
+
+                AppendNotification(digiStatus);
             }
             else if (isTemp && isSugarcane)
             {
@@ -1847,6 +2539,84 @@ public sealed class TripRegistrationForm : Form
         }
     }
 
+    /// <summary>
+    /// Xóa phiếu đăng tài (mía + vật tư). Chưa cân → được xóa, lệnh đốn / Shipment đăng tài lại được.
+    /// Đã cân → không được xóa. UI chặn sớm theo trạng thái; server kiểm tra lại theo lượt cân thực tế.
+    /// </summary>
+    internal async Task DeleteSelectedTripAsync()
+    {
+        if (_dgvTrips.CurrentRow?.DataBoundItem is not TripRegistrationRow row)
+        {
+            MessageBox.Show(Loc.T("reg.delete_no_trip"),
+                Loc.T("reg.cancel_no_selection"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Chỉ phiếu chưa cân: đăng tài (tạm / chính thức) hoặc đã hủy. Đã cân lần 1 trở đi → chặn.
+        if (row.Lifecycle is not (TripLifecycle.TempRegistered or TripLifecycle.Registered or TripLifecycle.Cancelled))
+        {
+            MessageBox.Show(Loc.T("reg.delete_weighed", row.TripNo),
+                Loc.T("reg.delete_not_allowed_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var confirmUserId = ShowInputDialog(
+            Loc.T("reg.delete_confirm_title"),
+            Loc.T("reg.delete_confirm_prompt", row.TripNo, row.Plate),
+            _presenter.OperatorName);
+        if (string.IsNullOrWhiteSpace(confirmUserId))
+        {
+            AppendNotification(Loc.T("reg.cancel_no_identity"));
+            return;
+        }
+
+        var reason = ShowInputDialog(Loc.T("reg.delete_reason_title"), Loc.T("reg.delete_reason_prompt"), string.Empty);
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            AppendNotification(Loc.T("reg.delete_no_reason"));
+            return;
+        }
+
+        SetUiBusy(true);
+        try
+        {
+            var result = await _presenter.DeleteAsync(new DeleteTripCommand(
+                TripId: row.TripId,
+                ExpectedVersion: row.Version,
+                Reason: reason,
+                ConfirmUserId: confirmUserId,
+                CorrelationId: Guid.NewGuid().ToString("N")), FormToken);
+
+            if (!result.IsSuccess)
+            {
+                AppendNotification(Loc.T("reg.delete_failed", result.FailureReason ?? "—"));
+                MessageBox.Show(Loc.T("reg.delete_failed", result.FailureReason ?? "—"),
+                    Loc.T("reg.delete_not_allowed_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            AppendNotification(Loc.T("reg.delete_ok", row.TripNo));
+            ResetForm();
+            await LoadGridAsync();
+            MessageBox.Show(Loc.T("reg.delete_ok", row.TripNo),
+                Loc.T("reg.delete_ok_title"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (OperationCanceledException)
+        {
+            // Form đang đóng.
+        }
+        catch (Exception ex)
+        {
+            AppendNotification(Loc.T("reg.delete_failed", ex.Message));
+            MessageBox.Show(Loc.T("reg.delete_failed", ex.Message),
+                Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            SetUiBusy(false);
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════
     //  UI busy state (task 6.5)
     // ═══════════════════════════════════════════════════════════
@@ -1877,15 +2647,16 @@ public sealed class TripRegistrationForm : Form
         var isSugarcane = _cboProfileType.SelectedIndex == 0;
 
         // Lấy dữ liệu từ LenhDon nếu form fields rỗng (mía)
-        var ld = isSugarcane ? _presenter.FindLenhDonByPlate(PlateText) : null;
+        var ld = isSugarcane ? CurrentLenhDon(PlateText) : null;
 
         // Vật tư: lấy từ panel vật tư, Mía: lấy từ panel mía + LenhDon
         var ownerOrCustomer = isSugarcane
             ? _txtCustomerOrSupplier.Text.Trim().NullIfEmpty() ?? ld?.KHName ?? _selectedPlan?.OwnerOrCustomer
             : _txtMaterialCustomer.Text.Trim().NullIfEmpty();
 
+        // Mía: hàng hóa = Mía cháy / Mía khúc / Mía cây theo lệnh đốn (cháy, thu hoạch máy/thủ công).
         var commodityType = isSugarcane
-            ? _selectedPlan?.CommodityType ?? ld?.LoaiMiaName
+            ? SugarcaneCommodity.Label(ld) ?? _selectedPlan?.CommodityType ?? ld?.LoaiMiaName
             : _txtCommodity.Text.Trim().NullIfEmpty();
 
         var driverRef = isSugarcane
@@ -1909,19 +2680,22 @@ public sealed class TripRegistrationForm : Form
             OwnerOrCustomer: ownerOrCustomer,
             WarehouseCode: isSugarcane ? _selectedPlan?.WarehouseCode : _txtWarehouse.Text.Trim().NullIfEmpty(),
             TractorPlate: PlateText,
-            TrailerPlate: isSugarcane ? null : _txtTrailer.Text.Trim().NullIfEmpty(),
+            TrailerPlate: null, // Bỏ rơ moóc: ERP không có, luồng vật tư không nhập tay
             DriverRef: driverRef,
             VehicleType: GetSelectedVehicleType(),
             SugarcaneType: isSugarcane ? (_txtSugarcaneType.Text.Trim().NullIfEmpty() ?? ld?.LoaiMiaName) : null,
             SugarcaneVariety: isSugarcane ? (_txtSugarcaneVariety.Text.Trim().NullIfEmpty() ?? ld?.GiongMiaName) : null,
             SugarcaneOwner: isSugarcane ? (_txtSugarcaneOwner.Text.Trim().NullIfEmpty() ?? ld?.KHName) : ownerOrCustomer,
-            HarvestMethod: isSugarcane ? (_txtHarvestMethod.Text.Trim().NullIfEmpty() ?? (ld?.DoiTacThuHoachName is not null ? "Thu hoạch" : null)) : null,
+            HarvestMethod: isSugarcane ? (_txtHarvestMethod.Text.Trim().NullIfEmpty() ?? (ld is null ? null : HarvestMethodText(ld))) : null,
             Station: isSugarcane ? (_txtStation.Text.Trim().NullIfEmpty() ?? ld?.TramName) : null,
             CropSeason: isSugarcane ? (_txtCropSeason.Text.Trim().NullIfEmpty() ?? ld?.VudautuName) : null,
             FrmLenhDonId: ld?.SourceKey,
             FrmMaLenhDon: ld?.MaLD,
             FrmLenhDonBu: ld?.BusinessUnit,
             FrmLoaiXeCode: ld?.LoaixeCode,
+            // Vật tư: nhà vận chuyển kéo từ ERP (người dùng có thể sửa) — lưu trên chuyến để đẩy DigiScale khi cân xong.
+            Transporter: isSugarcane ? null : _txtTransporter.Text.Trim().NullIfEmpty(),
+            WarehouseName: isSugarcane ? null : _txtWarehouse.Text.Trim().NullIfEmpty(),
             CorrelationId: Guid.NewGuid().ToString("N"),
             IssueTemporaryQrOnly: isTemp,
             OrganizationUnitCode: WinForms.Program.ActiveOrganizationUnitCode);
@@ -1983,8 +2757,8 @@ public sealed class TripRegistrationForm : Form
             return;
         }
 
-        // Mía — push phiếu đăng tài FRM
-        var ld = _presenter.FindLenhDonByPlate(plate);
+        // Mía — push phiếu đăng tài FRM. Ưu tiên đúng lệnh đốn của phiếu (ô Lệnh đốn), không đoán theo biển số.
+        var ld = _presenter.FindLenhDonByCode(_txtShipment.Text) ?? CurrentLenhDon(plate);
         var lenhDonId = ld?.SourceKey ?? _txtShipment.Text.Trim();
         var maLenhDon = ld?.MaLD ?? _txtShipment.Text.Trim();
         var loaiXe = ld?.LoaixeCode ?? "";
@@ -2029,8 +2803,10 @@ public sealed class TripRegistrationForm : Form
     /// </summary>
     private TripReceiptData BuildReceiptData(Guid tripId)
     {
-        // Lấy dữ liệu từ LenhDon khi form fields rỗng (do ẩn)
-        var ld = _presenter.FindLenhDonByPlate(PlateText);
+        var isMaterial = _cboProfileType.SelectedIndex != 0;
+
+        // Lấy dữ liệu từ LenhDon khi form fields rỗng (do ẩn). Vật tư không dùng lệnh đốn FRM.
+        var ld = isMaterial ? null : _presenter.FindLenhDonByCode(_txtShipment.Text) ?? CurrentLenhDon(PlateText);
 
         // Transporter: ưu tiên DoiTacVanChuyenName từ thẻ xe (FrmVehicleInfo),
         // fallback về DoiTacThuHoachName từ lệnh đốn (FrmLenhDonInfo).
@@ -2045,25 +2821,35 @@ public sealed class TripRegistrationForm : Form
             Gate: null,
             Plate: PlateText.NullIfEmpty(),
             TrailerPlate: null,
-            Transporter: transporter,
-            DriverName: null,
+            // Vật tư: nhà vận chuyển / lái xe lấy nguyên từ ERP (ô vật tư); mía: theo thẻ xe / lệnh đốn FRM.
+            Transporter: isMaterial ? _txtTransporter.Text.Trim().NullIfEmpty() : transporter,
+            DriverName: isMaterial ? _txtDriver.Text.Trim().NullIfEmpty() : null,
             DriverIdCard: null,
             ShipmentNo: _txtShipment.Text.Trim().NullIfEmpty() ?? ld?.MaLD,
             Warehouse: _txtWarehouse.Text.Trim().NullIfEmpty(),
             Commodity: _txtCommodity.Text.Trim().NullIfEmpty() ?? ld?.LoaiMiaName,
-            CustomerOrSupplier: _txtCustomerOrSupplier.Text.Trim().NullIfEmpty() ?? ld?.KHName,
-            SugarcaneType: _txtSugarcaneType.Text.Trim().NullIfEmpty() ?? ld?.LoaiMiaName,
+            CustomerOrSupplier: isMaterial
+                ? _txtMaterialCustomer.Text.Trim().NullIfEmpty()
+                : _txtCustomerOrSupplier.Text.Trim().NullIfEmpty() ?? ld?.KHName,
+            // Loại mía trên phiếu = Mía cháy / Mía khúc / Mía cây theo lệnh đốn (song ngữ theo BU).
+            SugarcaneType: Printing.PrintText.CaneForm(ld)
+                           ?? _txtSugarcaneType.Text.Trim().NullIfEmpty() ?? ld?.LoaiMiaName,
             SugarcaneOwner: _txtSugarcaneOwner.Text.Trim().NullIfEmpty() ?? ld?.KHName,
             SugarcaneVariety: _txtSugarcaneVariety.Text.Trim().NullIfEmpty() ?? ld?.GiongMiaName,
-            HarvestMethod: _txtHarvestMethod.Text.Trim().NullIfEmpty(),
+            HarvestMethod: Printing.PrintText.HarvestMethod(ld?.ThuHoachMay) ?? _txtHarvestMethod.Text.Trim().NullIfEmpty(),
             Station: _txtStation.Text.Trim().NullIfEmpty() ?? ld?.TramName,
             CropSeason: _txtCropSeason.Text.Trim().NullIfEmpty() ?? ld?.VudautuName,
             QrToken: _lastQrToken,
             QueueSequenceNumber: _lastQueueSequenceNumber,
-            Factory: _presenter.SiteName,
+            // Nhà máy theo lệnh đốn FRM (TenNhaMay), không có thì theo đơn vị của tài khoản đăng nhập.
+            Factory: ld?.TenNhaMay ?? _presenter.SiteName,
             FactoryAddress: _presenter.SiteAddress,
             VehicleType: _txtVehicleType.Text.Trim().NullIfEmpty() ?? ld?.LoaixeName,
-            IsMaterial: _cboProfileType.SelectedIndex != 0);
+            IsMaterial: isMaterial,
+            HarvestPartner: ld?.HarvestPartner ?? transporter,
+            LoadingPartner: ld?.DoiTacBocXepName,
+            HopDong: ld?.HopDongDauTuMiaName,
+            Notes: (isMaterial ? _txtMaterialNotes.Text : _txtNotes.Text).Trim().NullIfEmpty());
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -2214,10 +3000,43 @@ public sealed class TripRegistrationForm : Form
         return form.ShowDialog() == DialogResult.OK ? txtInput.Text.Trim() : null;
     }
 
+    /// <summary>Xuất toàn bộ danh sách chuyến đang lọc (mọi trang) ra Excel.</summary>
+    private async Task ExportTripGridAsync()
+    {
+        var tab = _activeTab switch
+        {
+            TripGridTab.Exited => _btnTabExited.Text,
+            TripGridTab.Cancelled => _btnTabCancelled.Text,
+            _ => _btnTabInFactory.Text
+        };
+
+        try
+        {
+            await ExportHelper.ExportGridAsync(
+                this, _dgvTrips, _allTripRows,
+                new ExportHelper.ExportRequest(
+                    $"{Loc.T("reg.section_grid")} - {_gridCategory.CategoryLabel}",
+                    $"dang-tai_{_gridCategory.FileSuffix}",
+                    [
+                        Loc.T("export.filter_category", _gridCategory.CategoryLabel),
+                        Loc.T("export.filter_tab", tab),
+                        Loc.T("export.filter_range", _dtpFrom.Value.ToString("dd/MM/yyyy"), _dtpTo.Value.ToString("dd/MM/yyyy"))
+                    ],
+                    _gridCategory.CategoryLabel),
+                busyControl: _btnExportExcel);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"{Loc.T("export.error")}{Environment.NewLine}{ex.Message}",
+                Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     /// <summary>Chuyển tab lọc, cập nhật giao diện tab và tải lại dữ liệu lưới.</summary>
     private async Task SetActiveTabAsync(TripGridTab tab)
     {
         _activeTab = tab;
+        _pager.Reset();
         ApplyTabStyles();
         await LoadGridAsync();
     }
@@ -2262,12 +3081,12 @@ public sealed class TripRegistrationForm : Form
             {
                 Tab = _activeTab,
                 FromUtc = ToUtcStartOfDay(_dtpFrom.Value),
-                ToUtc = ToUtcStartOfDay(_dtpTo.Value)
+                ToUtc = ToUtcStartOfDay(_dtpTo.Value),
+                Category = _gridCategory.Category
             };
 
-            var rows = await _presenter.LoadGridAsync(filter, _cts.Token);
-
-            GridBuilder.BindAndColorize(_dgvTrips, rows, r => r.Lifecycle.ToString());
+            _allTripRows = await _presenter.LoadGridAsync(filter, _cts.Token);
+            BindCurrentPage();
         }
         catch (OperationCanceledException)
         {
@@ -2282,6 +3101,66 @@ public sealed class TripRegistrationForm : Form
             _gridRefreshInFlight = false;
             _dbLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Bind trang hiện tại của lưới. Giữ vị trí cuộn và dòng đang chọn khi timer nạp lại,
+    /// để người vận hành không bị nhảy về đầu bảng giữa chừng.
+    /// </summary>
+    private void BindCurrentPage()
+    {
+        var firstRow = _dgvTrips.FirstDisplayedScrollingRowIndex;
+        var selectedId = _lastRegisteredTripId;
+
+        // Chế độ thường: toàn bộ danh sách, cuộn dọc. Phóng to lưới: phân trang.
+        var page = _pager.Page(_allTripRows);
+        GridBuilder.BindAndColorize(_dgvTrips, page, r => r.Lifecycle.ToString());
+
+        if (selectedId is { } id)
+        {
+            _dgvTrips.ClearSelection();
+            foreach (DataGridViewRow gridRow in _dgvTrips.Rows)
+            {
+                if (gridRow.DataBoundItem is TripRegistrationRow r && r.TripId == id)
+                {
+                    gridRow.Selected = true;
+                    break;
+                }
+            }
+        }
+
+        if (firstRow > 0 && firstRow < _dgvTrips.Rows.Count)
+        {
+            try { _dgvTrips.FirstDisplayedScrollingRowIndex = firstRow; }
+            catch (InvalidOperationException) { /* lưới chưa layout xong */ }
+        }
+
+        _gridScroll?.Sync();
+    }
+
+    /// <summary>
+    /// Phóng to lưới: ẩn vùng nhập liệu + camera + thanh nút để lưới chiếm toàn màn hình.
+    /// Bấm lại để thu về.
+    /// </summary>
+    private void ToggleGridExpanded()
+    {
+        _gridExpanded = !_gridExpanded;
+
+        _root.SuspendLayout();
+        _root.RowStyles[0] = _gridExpanded ? new RowStyle(SizeType.Absolute, 0) : new RowStyle(SizeType.Percent, TopAreaPercent);
+        _root.RowStyles[1] = _gridExpanded ? new RowStyle(SizeType.Absolute, 0) : new RowStyle(SizeType.Absolute, FormLayout.ActionRowHeight);
+        _root.RowStyles[2] = _gridExpanded ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.Percent, 100 - TopAreaPercent);
+        _topArea.Visible = !_gridExpanded;
+        _actionBarCard.Visible = !_gridExpanded;
+        _root.ResumeLayout(true);
+
+        _btnExpandGrid.Text = _gridExpanded ? Loc.T("grid.collapse") : Loc.T("grid.expand");
+        _btnExpandGrid.AccessibleName = _btnExpandGrid.Text;
+
+        // Phân trang chỉ khi phóng to lưới; chế độ thường hiện mọi dòng và cuộn dọc.
+        _pager.PagingEnabled = _gridExpanded;
+        BindCurrentPage();
+        _gridScroll?.Sync();
     }
 
     /// <summary>
@@ -2313,22 +3192,34 @@ public sealed class TripRegistrationForm : Form
         PopulateFromGridRow(row);
     }
 
-    /// <summary>Điền thông tin từ dòng lưới lên form để xem chi tiết hoặc thao tác tiếp.</summary>
+    /// <summary>
+    /// Bấm dòng lưới → CHỈ XEM thông tin chuyến đã đăng tài. Không chạy kiểm tra đăng tài
+    /// (lệnh đốn hết hạn, xe đã đăng tài, thẻ xe...) và không bật popup cảnh báo.
+    /// </summary>
     private async void PopulateFromGridRow(TripRegistrationRow row)
     {
         _txtTripNo.Text = row.TripNo;
-        _txtShipment.Text = row.ShipmentNo ?? string.Empty;
-        _txtPlate.Text = row.Plate ?? string.Empty;
+        // Gán im lặng để không kích hoạt tra cứu biển số / lệnh đốn (kèm kiểm tra đăng tài).
+        SetTextSilently(_txtShipment, row.ShipmentNo ?? string.Empty, OnLenhDonTextChanged);
+        SetTextSilently(_txtPlate, row.Plate ?? string.Empty, OnPlateTextChanged);
         _txtDateTime.Text = row.EntryTime?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? string.Empty;
         _lastRegisteredTripId = row.TripId;
         _txtVehicleType.Text = row.VehicleType ?? string.Empty;
 
-        // Lookup FRM cache theo biển số → điền lại thông tin đầy đủ
-        if (!string.IsNullOrWhiteSpace(row.Plate))
-        {
-            _lastLookedUpPlate = null; // Reset để cho phép lookup lại
-            await LookupAndPopulateAsync(row.Plate);
-        }
+        // Điền lại thông tin đầy đủ: ưu tiên đúng lệnh đốn của phiếu, sau đó mới theo biển số
+        _selectedLenhDon = null;
+        _lastLookedUpPlate = null; // Reset để cho phép lookup lại
+        _lastLookedUpLenhDon = null;
+        var rowLenhDon = IsSugarcaneMode && !string.IsNullOrWhiteSpace(row.ShipmentNo)
+            ? _presenter.FindLenhDonByCode(row.ShipmentNo)
+            : null;
+
+        rowLenhDon ??= IsSugarcaneMode && !string.IsNullOrWhiteSpace(row.Plate)
+            ? _presenter.FindLenhDonByPlate(row.Plate)
+            : null;
+
+        if (rowLenhDon is not null)
+            await ApplyLenhDonAsync(rowLenhDon, row.Plate, viewOnly: true);
 
         AppendNotification(Loc.T("reg.grid_selected", row.TripNo, row.Plate));
     }
@@ -2400,9 +3291,25 @@ public sealed class TripRegistrationForm : Form
     //  Form state
     // ═══════════════════════════════════════════════════════════
 
-    /// <summary>Reset form về trạng thái trống, chuẩn bị đăng tài mới.</summary>
+    /// <summary>
+    /// Reset form về trạng thái trống, chuẩn bị đăng tài mới — GIỮ NGUYÊN nghiệp vụ đang chọn.
+    /// Đang ở Vật tư thì làm mới phần Vật tư và ở lại Vật tư; đang ở Mía thì làm mới phần Mía.
+    /// (Trước đây luôn ép về Mía và không xoá các ô vật tư.)
+    /// </summary>
     public void ResetForm()
     {
+        // ── Phần vật tư (ERP) ──
+        foreach (var txt in new[]
+        {
+            _txtTripNumber, _txtMaterialPlate, _txtMaterialShipment, _txtMaterialPlateDetail,
+            _txtTransporter, _txtDriver, _txtMaterialCustomer, _txtReceiveDate,
+            _txtMaterialNotes
+        })
+        {
+            txt.Clear();
+        }
+
+        // ── Phần mía (FRM) + trường dùng chung ──
         _txtPlate.Clear();
         _txtTripNo.Clear();
         _txtShipment.Clear();
@@ -2421,7 +3328,11 @@ public sealed class TripRegistrationForm : Form
         _txtCommodity.Clear();
         _txtWarehouse.Clear();
         _txtNotes.Clear();
-        _cboProfileType.SelectedIndex = 0;
+
+        // Lần đầu mở form chưa chọn nghiệp vụ → mặc định Mía. Các lần sau giữ nguyên lựa chọn.
+        if (_cboProfileType.SelectedIndex < 0)
+            _cboProfileType.SelectedIndex = 0;
+
         _selectedPlan = null;
         _lastErpOrderLine = null;
         _tempQrChosen = false;
@@ -2429,11 +3340,17 @@ public sealed class TripRegistrationForm : Form
         _lastQrToken = null;
         _lastQueueSequenceNumber = null;
         _lastLookedUpPlate = null;
+        _selectedLenhDon = null;
+        _lastLookedUpLenhDon = null;
+        _lstLenhDonPopup.Visible = false;
 
         _activeTab = TripGridTab.InFactory;
         ApplyTabStyles();
 
-        _txtPlate.Focus();
+        // Con trỏ về ô nhập đầu tiên của đúng nghiệp vụ đang làm.
+        var isMaterial = _cboProfileType.SelectedIndex == 1;
+        if (isMaterial) _txtTripNumber.Focus();
+        else _txtPlate.Focus();
     }
 
     /// <summary>
@@ -2449,7 +3366,7 @@ public sealed class TripRegistrationForm : Form
             var plate = PlateText;
             if (!string.IsNullOrWhiteSpace(plate))
             {
-                var ld = _presenter.FindLenhDonByPlate(plate);
+                var ld = CurrentLenhDon(plate);
                 if (ld?.LoaixeName is not null)
                     text = ld.LoaixeName.ToUpperInvariant();
             }
@@ -2469,9 +3386,14 @@ public sealed class TripRegistrationForm : Form
     /// <summary>Ghi nhận sự kiện vào panel thông báo. Thread-safe.</summary>
     public void AppendNotification(string message)
     {
+        // Tác vụ nền (tải danh sách xe/lệnh đốn, đẩy DigiScale...) có thể xong SAU khi tab đã đóng —
+        // khi đó khung thông báo đã bị dispose, bỏ qua thay vì ném lỗi.
+        if (IsDisposed || Disposing || _rtbNotifications.IsDisposed) return;
+
         if (_rtbNotifications.InvokeRequired)
         {
-            _rtbNotifications.Invoke(() => AppendNotification(message));
+            try { _rtbNotifications.BeginInvoke(() => AppendNotification(message)); }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
             return;
         }
 

@@ -1,6 +1,7 @@
-using TTC.Weighing.Application.Abstractions;
+﻿using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.WinForms.Controls;
 using TTC.Weighing.WinForms.Localization;
+using TTC.Weighing.WinForms.Printing;
 using TTC.Weighing.WinForms.Theme;
 
 namespace TTC.Weighing.WinForms.Forms;
@@ -44,6 +45,10 @@ public sealed class TripReceiptPreviewForm : Form
     // ── Printer list cache ──
     private IReadOnlyList<PrinterInfo>? _printers;
 
+    /// <summary>Khổ xem trước phiếu đăng tài (rộng × cao = 1 : 0.8).</summary>
+    private const int ReceiptWidth = 860;
+    private const double ReceiptAspect = 0.8;
+
     /// <summary>Kết quả in (null nếu chưa in hoặc hủy).</summary>
     public PrintTicketResult? PrintResult { get; private set; }
 
@@ -57,10 +62,15 @@ public sealed class TripReceiptPreviewForm : Form
         _isReprint = isReprint;
 
         Text = isReprint ? Loc.T("receipt.title_reprint") : Loc.T("receipt.title");
-        ClientSize = new Size(620, 700);
+        // Khổ rộng để nhãn song ngữ (Khmer/Lào + Việt) và giá trị dài hiển thị đủ; phần thừa thì cuộn.
+        var receiptSize = new Size(ReceiptWidth, (int)(ReceiptWidth * ReceiptAspect));
+        var work = Screen.FromPoint(Cursor.Position).WorkingArea;
+        ClientSize = new Size(Math.Min(receiptSize.Width + 80, work.Width - 40),
+            Math.Min(receiptSize.Height + 160, (int)(work.Height * 0.92)));
+        MinimumSize = new Size(600, 480);
         StartPosition = FormStartPosition.CenterParent;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
         MinimizeBox = false;
         BackColor = AgrisTheme.Canvas;
         Font = AgrisTheme.Body();
@@ -79,7 +89,7 @@ public sealed class TripReceiptPreviewForm : Form
 
         var receiptPanel = new DoubleBufferedPanel
         {
-            Size = new Size(560, 560),
+            Size = receiptSize,
             BackColor = Color.White,
             Location = new Point(10, 10)
         };
@@ -219,6 +229,22 @@ public sealed class TripReceiptPreviewForm : Form
 
             if (PrintResult.IsSuccess)
             {
+                // Service chỉ ghi nhận phiếu + audit; in ra máy đúng mẫu đang xem trước.
+                using (var doc = new System.Drawing.Printing.PrintDocument())
+                {
+                    doc.PrinterSettings.PrinterName = printerName;
+                    doc.PrinterSettings.Copies = (short)_nudCopies.Value;
+                    doc.DocumentName = Text;
+                    doc.PrintPage += (_, pe) =>
+                    {
+                        // Cùng tỉ lệ khung như xem trước; khổ giấy hẹp thì chữ tự xuống dòng thay vì bị cắt.
+                        var area = pe.MarginBounds;
+                        var height = Math.Min(area.Height, (int)(area.Width * ReceiptAspect));
+                        RenderReceipt(pe.Graphics!, new Rectangle(area.Left, area.Top, area.Width, height));
+                    };
+                    doc.Print();
+                }
+
                 var reprintNote = _isReprint ? Loc.T("receipt.print_reprint_note") : string.Empty;
                 MessageBox.Show(
                     Loc.T("receipt.print_ok", reprintNote, PrintResult.TicketNumber),
@@ -250,172 +276,69 @@ public sealed class TripReceiptPreviewForm : Form
     // ═══════════════════════════════════════════════════════════
 
     private void OnPaintReceipt(object? sender, PaintEventArgs e)
+        => RenderReceipt(e.Graphics, ((Control)sender!).Width, ((Control)sender).Height);
+
+    /// <summary>
+    /// Vẽ phiếu đăng tài. Nhãn song ngữ theo BU (ví dụ KSK: Khmer/Việt), ô trống in "Không có",
+    /// cột giá trị tự giãn theo nhãn dài nhất để nhãn song ngữ không đè lên giá trị.
+    /// </summary>
+    private void RenderReceipt(Graphics g, int pageWidth, int pageHeight)
+        => RenderReceipt(g, new Rectangle(0, 0, pageWidth, pageHeight));
+
+    /// <summary>
+    /// Bố cục hai cột "nhãn : giá trị" tự xuống dòng (dùng chung <see cref="TicketCanvas"/> với phiếu cân):
+    /// nhãn song ngữ dài (Khmer/Lào + Việt) xuống dòng trong cột nhãn, giá trị dài xuống dòng trong cột giá trị —
+    /// không đè lên cột bên cạnh, không tràn mép phiếu. Tên dài (chủ mía, KH/NCC, kho...) chiếm cả chiều ngang.
+    /// </summary>
+    private void RenderReceipt(Graphics g, Rectangle bounds)
     {
-        var g = e.Graphics;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-        var pageWidth = ((Control)sender!).Width;
-        var pageHeight = ((Control)sender).Height;
-        var margin = 30;
-        var contentWidth = pageWidth - margin * 2;
-        var y = margin;
-
-        // ── Viền phiếu — dùng màu BrandGreenDark ──
-        using var borderPen = new Pen(AgrisTheme.BrandGreenDark, 2f);
-        g.DrawRectangle(borderPen, 2, 2, pageWidth - 4, pageHeight - 4);
-
-        // ── Company header — centered, bold ──
-        using var companyFont = new Font(AgrisTheme.FontFamily, 12F, FontStyle.Bold);
-        var companySz = g.MeasureString(_data.Factory ?? "", companyFont, contentWidth);
-        var companyText = _data.Factory ?? "";
-        g.DrawString(companyText, companyFont, Brushes.Black,
-            margin + (contentWidth - companySz.Width) / 2, y);
-        y += (int)companySz.Height + 2;
-
-        // Factory address
-        if (!string.IsNullOrWhiteSpace(_data.FactoryAddress))
-        {
-            using var addrFont = new Font(AgrisTheme.FontFamily, 8.5F, FontStyle.Italic);
-            var addrSz = g.MeasureString(_data.FactoryAddress, addrFont, contentWidth);
-            g.DrawString(_data.FactoryAddress, addrFont, Brushes.Black,
-                margin + (contentWidth - addrSz.Width) / 2, y);
-            y += (int)addrSz.Height + 4;
-        }
-
-        y += 8;
-
-        // ── Title — centered, bold, large, system color ──
-        using var titleFont = new Font(AgrisTheme.FontFamily, 18F, FontStyle.Bold);
+        using var c = new TicketCanvas(g, bounds);
         using var titleBrush = new SolidBrush(AgrisTheme.BrandGreenDark);
-        var titleText = Loc.T("print.dangtai_title");
-        var titleSz = g.MeasureString(titleText, titleFont);
-        g.DrawString(titleText, titleFont, titleBrush,
-            margin + (contentWidth - titleSz.Width) / 2, y);
-        y += (int)titleSz.Height + 4;
+        using var reprintBrush = new SolidBrush(AgrisTheme.Danger);
 
-        // ── Nhãn BẢN IN LẠI ──
-        if (_isReprint)
-        {
-            using var reprintFont = new Font(AgrisTheme.FontFamily, 10F, FontStyle.Bold);
-            using var reprintBrush = new SolidBrush(AgrisTheme.Danger);
-            var reprintText = Loc.T("receipt.reprint_label");
-            var reprintSz = g.MeasureString(reprintText, reprintFont);
-            g.DrawString(reprintText, reprintFont, reprintBrush,
-                margin + (contentWidth - reprintSz.Width) / 2, y);
-            y += (int)reprintSz.Height + 4;
-        }
+        // ── Nhà máy + tiêu đề ──
+        c.Centered(PrintText.V(_data.Factory), c.Company, 2);
+        if (!string.IsNullOrWhiteSpace(_data.FactoryAddress)) c.Centered(_data.FactoryAddress, c.Address, 2);
+        c.Y += 6;
+        c.Centered(PrintText.L("print.dangtai_title"), c.Title, 2, titleBrush);
+        if (_isReprint) c.Centered(PrintText.L("receipt.reprint_label"), c.Subtitle, 2, reprintBrush);
+        c.Y += 10;
 
-        y += 10;
+        var date = new TicketCell(PrintText.L("print.field_date"), _data.DateTime);
+        List<TicketRow> rows = _data.IsMaterial
+            ?
+            [
+                new(new(PrintText.L("print.field_shipment"), _data.ShipmentNo, c.Big), date),
+                new(new(PrintText.L("print.dangtai_so_dangtai"), _data.TripNo, c.Big),
+                    new(PrintText.L("print.field_plate"), _data.Plate, c.Big)),
+                new(new(PrintText.L("print.field_customer"), _data.CustomerOrSupplier), Wide: true),
+                new(new(PrintText.L("print.field_commodity"), _data.Commodity), Wide: true),
+                new(new(PrintText.L("print.field_warehouse"), _data.Warehouse), Wide: true),
+                new(new(PrintText.L("print.field_transporter"), _data.Transporter),
+                    // ERP không có loại xe / rơ moóc → in lái xe cạnh nhà vận chuyển.
+                    new(PrintText.L("field.driver"), _data.DriverName)),
+                new(new(PrintText.L("print.field_ghi_chu"), _data.Notes), Wide: true)
+            ]
+            :
+            [
+                new(new(PrintText.L("print.dangtai_lenh_don"), _data.ShipmentNo, c.Big), date),
+                new(new(PrintText.L("print.dangtai_so_dangtai"), _data.TripNo, c.Big),
+                    new(PrintText.L("print.field_so_xe"), _data.Plate, c.Big)),
+                new(new(PrintText.L("print.field_chu_mia"), _data.SugarcaneOwner), Wide: true),
+                new(new(PrintText.L("print.field_hop_dong"), _data.HopDong),
+                    new(PrintText.L("print.field_loai_xe"), _data.VehicleType)),
+                new(new(PrintText.L("print.field_cong_thu_hoach"), _data.HarvestPartner ?? _data.Transporter),
+                    new(PrintText.L("print.field_cong_boc_xep"), _data.LoadingPartner)),
+                new(new(PrintText.L("print.field_giong_mia"), _data.SugarcaneVariety),
+                    new(PrintText.L("print.field_loai_mia"), _data.SugarcaneType)),
+                new(new(PrintText.L("print.field_hinh_thuc_thu_hoach"), _data.HarvestMethod), Wide: true),
+                new(new(PrintText.L("print.field_ghi_chu"), _data.Notes), Wide: true)
+            ];
+        c.Rows(rows);
 
-        // ── Fields — matching phiếu đăng tài mẫu ──
-        using var labelFont = new Font(AgrisTheme.FontFamily, 9.5F, FontStyle.Regular);
-        using var valueFont = new Font(AgrisTheme.FontFamily, 9.5F, FontStyle.Bold);
-        using var valueBoldFont = new Font(AgrisTheme.FontFamily, 11F, FontStyle.Bold);
-        using var textBrush = new SolidBrush(AgrisTheme.TextPrimary);
-        using var italicFont = new Font(AgrisTheme.FontFamily, 9.5F, FontStyle.Italic);
-
-        var labelX = margin;
-        var valueX = margin + 140;
-        var rightColX = margin + 310;
-        var rightValX = rightColX + 90;
-        var lineHeight = 22;
-
-        // Row 1: Lệnh đốn số (bold)  +  Ngày tháng năm (right, italic)
-        DrawFieldBold(g, _data.IsMaterial ? "Shipment" : Loc.T("print.dangtai_lenh_don"), _data.ShipmentNo, labelFont, valueBoldFont, textBrush, labelX, valueX, ref y, lineHeight);
-        if (!string.IsNullOrWhiteSpace(_data.DateTime))
-            g.DrawString(_data.DateTime, italicFont, textBrush, rightColX, y - lineHeight);
-
-        // Row 2: Số đăng tài (bold)
-        DrawFieldBold(g, Loc.T("print.dangtai_so_dangtai"), _data.TripNo, labelFont, valueBoldFont, textBrush, labelX, valueX, ref y, lineHeight);
-
-        if (_data.IsMaterial)
-        {
-            // ── VẬT TƯ ──
-            DrawField(g, "Khách hàng/NCC", _data.CustomerOrSupplier, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, "Hàng hóa", _data.Commodity, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, "Kho", _data.Warehouse, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, "Biển số xe", _data.Plate, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawFieldInline(g, Loc.T("print.field_loai_xe"), _data.VehicleType, labelFont, valueFont, textBrush, rightColX, rightValX, y - lineHeight);
-            if (!string.IsNullOrWhiteSpace(_data.TrailerPlate))
-                DrawField(g, "Rơ moóc", _data.TrailerPlate, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, "Nhà vận tải", _data.Transporter, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        }
-        else
-        {
-            // ── MÍA ──
-            DrawField(g, Loc.T("print.field_chu_mia"), _data.SugarcaneOwner, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, Loc.T("print.field_hop_dong"), _data.ShipmentNo, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawField(g, Loc.T("print.field_so_xe"), _data.Plate, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawFieldInline(g, Loc.T("print.field_loai_xe"), _data.VehicleType, labelFont, valueFont, textBrush, rightColX, rightValX, y - lineHeight);
-            DrawField(g, Loc.T("print.field_cong_thu_hoach"), _data.Transporter, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawFieldInline(g, Loc.T("print.field_cong_boc_xep"), null, labelFont, valueFont, textBrush, rightColX, rightValX, y - lineHeight);
-            DrawField(g, Loc.T("print.field_giong_mia"), _data.SugarcaneVariety, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-            DrawFieldInline(g, Loc.T("print.field_loai_mia"), _data.SugarcaneType, labelFont, valueFont, textBrush, rightColX, rightValX, y - lineHeight);
-            DrawField(g, Loc.T("print.field_hinh_thuc_thu_hoach"), _data.HarvestMethod, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-        }
-
-        // Ghi chú (chung)
-        DrawField(g, Loc.T("print.field_ghi_chu"), null, labelFont, valueFont, textBrush, labelX, valueX, ref y, lineHeight);
-
-        // ── Barcode (Code 128) ──
-        var barcodeValue = _data.ShipmentNo ?? _data.QrToken;
-        if (!string.IsNullOrWhiteSpace(barcodeValue))
-        {
-            y += 12;
-            if (!Printing.Code128Renderer.Draw(g, barcodeValue, labelX, y, 280, 45))
-            {
-                // Fallback: vẽ text nếu encode thất bại
-                using var fallbackFont = new Font(AgrisTheme.MonoFamily, 11F, FontStyle.Bold);
-                g.DrawString(barcodeValue, fallbackFont, Brushes.Black, labelX, y);
-            }
-            y += 48;
-
-            // Barcode text below
-            using var bcTextFont = new Font(AgrisTheme.MonoFamily, 9F);
-            g.DrawString(barcodeValue, bcTextFont, Brushes.Black, labelX, y);
-        }
-
-        // ── Print timestamp — bottom right ──
-        var printTime = System.DateTime.Now.ToString("dd/MM/yyyy HH:mm");
-        var printLabel = Loc.T("print.dangtai_ngay_in", printTime);
-        using var tsFont = new Font(AgrisTheme.FontFamily, 8.5F, FontStyle.Italic);
-        using var tsBrush = new SolidBrush(AgrisTheme.TextMuted);
-        var tsSz = g.MeasureString(printLabel, tsFont);
-        g.DrawString(printLabel, tsFont, tsBrush,
-            pageWidth - margin - tsSz.Width, pageHeight - margin - tsSz.Height - 4);
-    }
-
-    private static void DrawField(
-        Graphics g, string label, string? value,
-        Font labelFont, Font valueFont, Brush brush,
-        int labelX, int valueX, ref int y, int lineHeight)
-    {
-        var displayValue = string.IsNullOrWhiteSpace(value) ? "" : value;
-        g.DrawString(label, labelFont, brush, labelX, y);
-        g.DrawString(": " + displayValue, valueFont, brush, valueX, y);
-        y += lineHeight;
-    }
-
-    private static void DrawFieldBold(
-        Graphics g, string label, string? value,
-        Font labelFont, Font boldFont, Brush brush,
-        int labelX, int valueX, ref int y, int lineHeight)
-    {
-        var displayValue = string.IsNullOrWhiteSpace(value) ? "" : value;
-        g.DrawString(label, labelFont, brush, labelX, y);
-        g.DrawString(": " + displayValue, boldFont, brush, valueX, y);
-        y += lineHeight + 2;
-    }
-
-    private static void DrawFieldInline(
-        Graphics g, string label, string? value,
-        Font labelFont, Font valueFont, Brush brush,
-        int labelX, int valueX, int y)
-    {
-        var displayValue = string.IsNullOrWhiteSpace(value) ? "" : value;
-        g.DrawString(label, labelFont, brush, labelX, y);
-        g.DrawString(": " + displayValue, valueFont, brush, valueX, y);
+        // ── Mã vạch (Code 128) + ngày in ──
+        c.Separator(6, 12);
+        c.BarcodeAndPrintedAt(_data.ShipmentNo ?? _data.QrToken);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -470,4 +393,8 @@ public sealed record TripReceiptData(
     string? Factory = null,
     string? FactoryAddress = null,
     string? VehicleType = null,
-    bool IsMaterial = false);
+    bool IsMaterial = false,
+    string? HarvestPartner = null,   // Công thu hoạch
+    string? LoadingPartner = null,   // Công bốc xếp
+    string? HopDong = null,          // Hợp đồng (đầu tư mía)
+    string? Notes = null);

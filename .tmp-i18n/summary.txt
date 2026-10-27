@@ -1,0 +1,83 @@
+TOTAL KEYS (union): 1133
+vi: keys=1133 missing=0 todo=0 sameAsVi=0 containsVietnamese=0
+en: keys=1130 missing=3 todo=0 sameAsVi=0 containsVietnamese=0
+lo: keys=1130 missing=3 todo=245 sameAsVi=0 containsVietnamese=94
+km: keys=1130 missing=3 todo=245 sameAsVi=0 containsVietnamese=92
+USED KEYS: 836  UNDEFINED IN vi: 2
+  undefined: col.item_code
+  undefined: key
+HARDCODED VI LITERALS: 983
+    164  src\TTC.Weighing.WinForms\Forms\TripRegistrationForm.cs
+     63  src\TTC.Weighing.WinForms\Forms\WeighOperationForm.cs
+     60  src\TTC.Weighing.WinForms\Forms\ErpSyncForm.cs
+     59  src\TTC.Weighing.WinForms\Forms\CcsForm.cs
+     52  src\TTC.Weighing.WinForms\Forms\FrmSyncForm.cs
+     52  src\TTC.Weighing.WinForms\Forms\WarehouseForm.cs
+     41  src\TTC.Weighing.WinForms\Forms\QualityForm.cs
+     40  src\TTC.Weighing.Domain\Rules\WeighCommitRules.cs
+     34  src\TTC.Weighing.WinForms\Forms\WeighTicketPreviewForm.cs
+     30  src\TTC.Weighing.WinForms\Helpers\PrintHelper.cs
+     26  src\TTC.Weighing.Domain\Rules\ReconciliationRules.cs
+     22  src\TTC.Weighing.WinForms\Development\PreviewServices.cs
+     21  src\TTC.Weighing.WinForms\Forms\LoginForm.cs
+     20  src\TTC.Weighing.Application\UseCases\Weighing\ExceptionHandlers.cs
+     16  src\TTC.Weighing.Domain\Rules\GateDecisionRules.cs
+     13  src\TTC.Weighing.WinForms\Forms\ReportForm.cs
+     13  src\TTC.Weighing.Application\UseCases\Measurement\MeasurementSessionHandlers.cs
+     13  src\TTC.Weighing.Application\UseCases\Trips\TripHandlers.cs
+     12  src\TTC.Weighing.Application\UseCases\Integration\SubmitTripResultHandler.cs
+     11  src\TTC.Weighing.WinForms\Development\PreviewQueries.cs
+     11  src\TTC.Weighing.WinForms\Forms\MainForm.cs
+     10  src\TTC.Weighing.Domain\Rules\AllocationRules.cs
+     10  src\TTC.Weighing.Infrastructure\Queries\EfTripDetailQueries.cs
+     10  src\TTC.Weighing.Application\UseCases\Weighing\EvaluateAndCommitWeightHandler.cs
+     10  src\TTC.Weighing.Application\UseCases\Weighing\OpenWeighSessionHandler.cs
+      9  src\TTC.Weighing.Domain\Rules\MeasurementAggregationRules.cs
+      9  src\TTC.Weighing.Infrastructure\Queries\EfTripRegistrationQueries.cs
+      8  src\TTC.Weighing.WinForms\Program.cs
+      8  src\TTC.Weighing.WinForms\Forms\TripDetailForm.cs
+      8  src\TTC.Weighing.Application\UseCases\Gate\GateHandlers.cs
+      8  src\TTC.Weighing.Application\UseCases\Quality\QualityHandlers.cs
+      8  src\TTC.Weighing.Application\UseCases\Reconcile\AllocateTripHandler.cs
+      7  src\TTC.Weighing.WinForms\Controls\ColumnFilterPopup.cs
+      7  src\TTC.Weighing.WinForms\Development\LayoutInspector.cs
+      7  src\TTC.Weighing.WinForms\Forms\TripReceiptPreviewForm.cs
+      6  src\TTC.Weighing.WinForms\Presenters\TripRegistrationPresenter.cs
+      5  src\TTC.Weighing.Domain\BusinessRules\CcsCalculator.cs
+      5  src\TTC.Weighing.Infrastructure\Repositories\FrmPlanLookupAdapter.cs
+      5  src\TTC.Weighing.WinForms\Forms\ConfigurationForm.cs
+      5  src\TTC.Weighing.Application\UseCases\Trips\CancelTripHandler.cs
+      4  src\TTC.Weighing.Infrastructure\Adapters\QrScanHandlerAdapter.cs
+      4  src\TTC.Weighing.Infrastructure\Adapters\WeighTicketPrintAdapter.cs
+      4  src\TTC.Weighing.Infrastructure\Queries\EfWeighPreconditionQuery.cs
+      4  src\TTC.Weighing.WinForms\Development\PreviewDataStore.cs
+      3  src\TTC.Weighing.Domain\Rules\ImpurityCalculator.cs
+      3  src\TTC.Weighing.Infrastructure\Adapters\FrmSyncAdapter.cs
+      3  src\TTC.Weighing.WinForms\Forms\AllocateTripDialog.cs
+      3  src\TTC.Weighing.Application\UseCases\Reconcile\ReconcileTripHandler.cs
+      2  src\TTC.Weighing.Infrastructure\Adapters\DigiScaleTicketAdapter.cs
+      2  src\TTC.Weighing.Infrastructure\Adapters\FrmMasterDataCache.cs
+      2  src\TTC.Weighing.Infrastructure\Queries\EfWeighOperationQueries.cs
+      2  src\TTC.Weighing.WinForms\Controls\TripSearchBox.cs
+      2  src\TTC.Weighing.WinForms\Forms\ExceptionQueueForm.cs
+      2  src\TTC.Weighing.WinForms\Forms\GuideForm.cs
+      2  src\TTC.Weighing.WinForms\Forms\IntegrationMonitorForm.cs
+      2  src\TTC.Weighing.WinForms\Helpers\DigiScalePopup.cs
+      2  src\TTC.Weighing.WinForms\Localization\AppLanguage.cs
+      2  src\TTC.Weighing.WinForms\Theme\ThemedControls.cs
+      2  src\TTC.Weighing.Application\UseCases\Trips\UpdateSugarcaneTypeHandler.cs
+      1  src\TTC.Weighing.Domain\ValueObjects\WeightMeasurement.cs
+      1  src\TTC.Weighing.Infrastructure\Adapters\DeviceStatusMonitorAdapter.cs
+      1  src\TTC.Weighing.Infrastructure\Adapters\SampleScaleGatewayAdapter.cs
+      1  src\TTC.Weighing.Integration\Contracts\IntegrationContracts.cs
+      1  src\TTC.Weighing.WinForms\Controls\CameraAiStatusControl.cs
+      1  src\TTC.Weighing.WinForms\Controls\GridScrollBar.cs
+      1  src\TTC.Weighing.WinForms\Development\DatabaseModeServices.cs
+      1  src\TTC.Weighing.WinForms\Forms\DashboardForm.cs
+      1  src\TTC.Weighing.WinForms\Forms\SplashForm.cs
+      1  src\TTC.Weighing.WinForms\Localization\Loc.cs
+      1  src\TTC.Weighing.WinForms\Presenters\QualityPresenter.cs
+      1  src\TTC.Weighing.WinForms\Presenters\WeighOperationPresenter.cs
+      1  src\TTC.Weighing.WinForms\Services\DigiScaleAuthService.cs
+      1  src\TTC.Weighing.Application\UseCases\Trips\CheckPlanHandler.cs
+      1  src\TTC.Weighing.Application\UseCases\Trips\QueueTripHandler.cs
