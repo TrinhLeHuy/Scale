@@ -141,9 +141,9 @@ public sealed class MetricTile : Control
 
     private static Font CaptionFont => AgrisTheme.Body(8.5F, FontStyle.Bold);
     private static Font NoteFont => AgrisTheme.Caption();
-    private const int PadX = 16;
-    private const int PadTop = 12;
-    private const int PadBottom = 10;
+    private static int PadX => Theme.UiScale.Px(16);
+    private static int PadTop => Theme.UiScale.Px(12);
+    private static int PadBottom => Theme.UiScale.Px(10);
 
     private static int LineHeight(Font font) => TextRenderer.MeasureText("Ág", font, Size.Empty, TextFormatFlags.NoPadding).Height;
 
@@ -234,7 +234,7 @@ public sealed class MetricTile : Control
 /// </summary>
 public sealed class PipelineStageBox : Control
 {
-    private const int ArrowWidth = 16;
+    private static int ArrowWidth => Theme.UiScale.Px(16);
     private readonly ToolTip _tip = new() { InitialDelay = 300 };
 
     public PipelineStageBox(string title, string subtitle)
@@ -391,7 +391,7 @@ public class ModernButton : Button
     /// <summary>Bán kính bo góc.</summary>
     public int CornerRadius { get; set; } = AgrisTheme.RadiusMd;
 
-    private const int IconSlot = 26;
+    private static int IconSlot => Theme.UiScale.Px(26);
 
     /// <summary>Ký tự icon (Segoe Fluent/MDL2) vẽ trước chữ. Bỏ qua nếu máy không có font icon.</summary>
     public string? IconGlyph { get; set; }

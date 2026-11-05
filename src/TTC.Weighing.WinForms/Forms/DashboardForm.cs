@@ -5,6 +5,7 @@ using TTC.Weighing.WinForms.Helpers;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -467,7 +468,7 @@ public sealed class DashboardForm : Form
                     ? "Paused"
                     : r.Lifecycle.ToString());
 
-            _lblUpdatedAt.Text = Loc.T("dashboard.updated_at", DateTime.Now.ToString("HH:mm:ss"), _user.DisplayName);
+            _lblUpdatedAt.Text = Loc.T("dashboard.updated_at", VnTime.Now.ToString("HH:mm:ss"), _user.DisplayName);
         }
         catch (OperationCanceledException)
         {
@@ -479,7 +480,7 @@ public sealed class DashboardForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"{Loc.T("dashboard.load_error")}{Environment.NewLine}{ex.Message}",
+            Helpers.AppMessageBox.Show($"{Loc.T("dashboard.load_error")}{Environment.NewLine}{ex.Message}",
                 Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
@@ -510,7 +511,7 @@ public sealed class DashboardForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"{Loc.T("export.error")}{Environment.NewLine}{ex.Message}",
+            Helpers.AppMessageBox.Show(this, $"{Loc.T("export.error")}{Environment.NewLine}{ex.Message}",
                 Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }

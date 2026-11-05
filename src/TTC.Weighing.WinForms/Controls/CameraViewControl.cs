@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
@@ -18,6 +19,12 @@ public sealed class CameraViewControl : UserControl
     private readonly Label _lblOfflineMessage;
 
     private bool _isOnline;
+    private bool? _shownOnline;
+
+    // ── Xem trực tiếp (chụp ảnh định kỳ theo cấu hình màn Kết nối camera) ──
+    private ICameraConnectionService? _liveService;
+    private string? _liveStation;
+    private CancellationTokenSource? _liveCts;
 
     /// <summary>Id cổng mà camera thuộc về.</summary>
     public Guid GateId { get; set; }
@@ -25,13 +32,20 @@ public sealed class CameraViewControl : UserControl
     /// <summary>Vị trí camera: "In" (Camera Vào) hoặc "Out" (Camera Ra).</summary>
     public string CameraPosition { get; set; } = "In";
 
+    /// <summary>
+    /// true = ảnh phủ kín khung (cắt bớt mép theo tỉ lệ khung), không có dải đen hai bên.
+    /// false (mặc định) = hiện trọn ảnh, có thể có dải đen.
+    /// </summary>
+    public bool FillFrame { get; set; }
+
     public CameraViewControl()
     {
         BackColor = AgrisTheme.Surface;
         BorderStyle = BorderStyle.FixedSingle;
         // Ngưỡng tối thiểu vừa phải: khung hình vẫn co giãn đầy ô chứa (Dock.Fill),
         // nhưng không ép chiều cao lớn tới mức tràn khi panel camera bị chia hẹp.
-        MinimumSize = new Size(140, 60);
+        // Bề rộng tối thiểu 96: ô camera ở màn Cân là cột 10% — màn hình 1366/1280 chỉ còn ~110px.
+        MinimumSize = new Size(96, 60);
 
         // --- Header: title + status dot ---
         var pnlHeader = new Panel
@@ -146,6 +160,9 @@ public sealed class CameraViewControl : UserControl
         }
 
         _isOnline = status.IsOnline;
+        // Xem trực tiếp gọi mỗi giây: trạng thái không đổi thì không vẽ lại.
+        if (_shownOnline == status.IsOnline) return;
+        _shownOnline = status.IsOnline;
 
         if (status.IsOnline)
         {
@@ -189,20 +206,168 @@ public sealed class CameraViewControl : UserControl
             return;
         }
 
-        if (image is not null)
-        {
-            _picCamera.Image = image;
-            _lblOfflineMessage.Visible = false;
-        }
-        else
-        {
-            _picCamera.Image = null;
-            _lblOfflineMessage.Visible = true;
-        }
+        SetLiveImage(image);
     }
 
     /// <summary>Trạng thái kết nối camera hiện tại.</summary>
     public bool IsOnline => _isOnline;
+
+    /// <summary>
+    /// Hiển thị trực tiếp camera của màn hình <paramref name="station"/> (Weigh / Registration) tại vị trí
+    /// <see cref="CameraPosition"/>, đúng cấu hình đã lưu ở màn Kết nối camera.
+    /// Chỉ lấy ảnh khi khung đang hiện (tab đang mở, cửa sổ không thu nhỏ). Dừng khi control bị hủy.
+    /// </summary>
+    public void StartLive(ICameraConnectionService service, string station)
+    {
+        _liveService = service;
+        _liveStation = station;
+        if (IsHandleCreated) RestartLive();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (_liveService is not null) RestartLive();
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        StopLive();
+        base.OnHandleDestroyed(e);
+    }
+
+    private void RestartLive()
+    {
+        StopLive();
+        _liveCts = new CancellationTokenSource();
+        _ = LiveLoopAsync(_liveService!, _liveStation!, _liveCts.Token);
+    }
+
+    private void StopLive()
+    {
+        _liveCts?.Cancel();
+        _liveCts?.Dispose();
+        _liveCts = null;
+    }
+
+    internal static int LiveIntervalMs =>
+        Math.Clamp(Program.AppConfiguration?.GetValue<int?>("Cameras:LiveIntervalMs") ?? 250, 100, 10000);
+
+    /// <summary>Chạy trên luồng giao diện; chỉ phần giải mã / thu nhỏ ảnh chạy nền.</summary>
+    private async Task LiveLoopAsync(ICameraConnectionService service, string station, CancellationToken ct)
+    {
+        var interval = LiveIntervalMs;
+        while (!ct.IsCancellationRequested)
+        {
+            var delay = interval;
+            var started = Environment.TickCount64;
+            try
+            {
+                // Luôn lấy trực tiếp, kể cả khi tab đang ẩn / cửa sổ thu nhỏ: khi quay lại là ảnh mới ngay,
+                // trạng thái Online/Offline luôn đúng.
+                {
+                    if (service.FindEnabled(station, CameraPosition) is null)
+                    {
+                        ShowNotConfigured();
+                        delay = Math.Max(interval, 3000);
+                    }
+                    else
+                    {
+                        var bytes = await service.CaptureAsync(station, CameraPosition, ct);
+                        if (ct.IsCancellationRequested) break;
+                        if (bytes is null)
+                        {
+                            UpdateStatus(new CameraStatus(false, service.GetLive(station, CameraPosition).Error));
+                            delay = Math.Max(interval, 3000); // mất kết nối: thử lại thưa hơn
+                        }
+                        else
+                        {
+                            var target = _picCamera.ClientSize;
+                            var fill = FillFrame;
+                            var image = await Task.Run(() => DecodeToFit(bytes, target, fill), ct);
+                            if (ct.IsCancellationRequested) { image?.Dispose(); break; }
+                            SetLiveImage(image);
+                            UpdateStatus(new CameraStatus(image is not null, null));
+                            // Camera mất 0,3–1 s mới trả ảnh: trừ thời gian đó để giữ đúng nhịp khung hình.
+                            delay = (int)Math.Max(100, interval - (Environment.TickCount64 - started));
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception)
+            {
+                if (IsDisposed) break;
+                UpdateStatus(new CameraStatus(false, Loc.T("control.camera_check_error")));
+            }
+
+            try { await Task.Delay(delay, ct); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+
+    /// <summary>Giải mã JPEG và thu nhỏ vừa khung (ảnh camera 2–4 MP, vẽ ảnh gốc mỗi giây tốn CPU).</summary>
+    private static Image? DecodeToFit(byte[] bytes, Size target, bool fill)
+    {
+        try
+        {
+            using var ms = new MemoryStream(bytes);
+            using var src = Image.FromStream(ms);
+
+            // Vùng ảnh gốc được dùng: cả ảnh, hoặc (fill) phần giữa cắt theo tỉ lệ khung.
+            var srcRect = new Rectangle(0, 0, src.Width, src.Height);
+            if (fill && target.Width > 0 && target.Height > 0)
+            {
+                var targetRatio = (double)target.Width / target.Height;
+                var srcRatio = (double)src.Width / src.Height;
+                if (srcRatio > targetRatio)
+                {
+                    var cw = Math.Max(1, (int)Math.Round(src.Height * targetRatio));
+                    srcRect = new Rectangle((src.Width - cw) / 2, 0, cw, src.Height);
+                }
+                else
+                {
+                    var ch = Math.Max(1, (int)Math.Round(src.Width / targetRatio));
+                    srcRect = new Rectangle(0, (src.Height - ch) / 2, src.Width, ch);
+                }
+            }
+
+            var scale = target.Width <= 0 || target.Height <= 0
+                ? 1d
+                : Math.Min(1d, Math.Min((double)target.Width / srcRect.Width, (double)target.Height / srcRect.Height));
+            var w = Math.Max(1, (int)Math.Round(srcRect.Width * scale));
+            var h = Math.Max(1, (int)Math.Round(srcRect.Height * scale));
+            var bmp = new Bitmap(w, h);
+            using var g = Graphics.FromImage(bmp);
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+            g.DrawImage(src, new Rectangle(0, 0, w, h), srcRect, GraphicsUnit.Pixel);
+            return bmp;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private void SetLiveImage(Image? image)
+    {
+        var old = _picCamera.Image;
+        _picCamera.Image = image;
+        if (!ReferenceEquals(old, image)) old?.Dispose();
+        _lblOfflineMessage.Visible = image is null;
+    }
+
+    private void ShowNotConfigured()
+    {
+        SetLiveImage(null);
+        _isOnline = false;
+        _shownOnline = null;
+        _pnlStatusDot.BackColor = AgrisTheme.TextMuted;
+        _lblStatus.Text = Loc.T("control.camera_offline");
+        _lblStatus.ForeColor = AgrisTheme.TextMuted;
+        _lblOfflineMessage.Text = Loc.T("control.camera_not_configured");
+        _lblOfflineMessage.Visible = true;
+    }
 
     private void SetTitle(string title)
     {
@@ -228,8 +393,9 @@ public sealed class CameraViewControl : UserControl
         _pnlStatusDot.BackColor = AgrisTheme.Danger;
         _lblStatus.Text = Loc.T("control.camera_offline");
         _lblStatus.ForeColor = AgrisTheme.Danger;
-        _lblOfflineMessage.Visible = true;
-        _picCamera.Image = null;
+        _lblOfflineMessage.Text = Loc.T("control.camera_disconnected");
+        // Không giữ ảnh cũ như đang trực tuyến.
+        SetLiveImage(null);
 
         AccessibleDescription = $"{_lblTitle.Text} — {Loc.T("control.camera_offline")}: {Loc.T("control.camera_disconnected")}";
     }
@@ -249,6 +415,7 @@ public sealed class CameraViewControl : UserControl
     {
         if (disposing)
         {
+            StopLive();
             _picCamera.Image?.Dispose();
         }
 

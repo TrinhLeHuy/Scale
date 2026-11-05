@@ -20,7 +20,8 @@ public sealed class SimulatedScaleSignalGateway(IClock clock) : IScaleSignalGate
     private readonly Guid _deviceId = Guid.NewGuid();
     private readonly Random _random = new(20260911);
 
-    private decimal _targetKg = 30_050.000m;
+    /// <summary>Null = chưa có số cân (chưa nhập tay) → không trả tín hiệu.</summary>
+    private decimal? _targetKg;
     private DateTimeOffset _lastChangeAt = clock.UtcNow;
 
     /// <summary>
@@ -33,16 +34,26 @@ public sealed class SimulatedScaleSignalGateway(IClock clock) : IScaleSignalGate
         _lastChangeAt = clock.UtcNow;
     }
 
-    /// <summary>Trọng lượng mục tiêu hiện tại.</summary>
-    public decimal TargetWeight => _targetKg;
+    /// <summary>Xóa số cân (xe rời cân / bắt đầu lượt mới) → hiển thị "chưa có dữ liệu".</summary>
+    public void Clear()
+    {
+        _targetKg = null;
+        _lastChangeAt = clock.UtcNow;
+    }
+
+    /// <summary>Trọng lượng mục tiêu hiện tại (null = chưa có dữ liệu).</summary>
+    public decimal? TargetWeight => _targetKg;
 
     public Task<ScaleSignalSnapshot?> GetCurrentAsync(
         Guid weighbridgeId, CancellationToken ct = default)
     {
+        if (_targetKg is not { } targetKg)
+            return Task.FromResult<ScaleSignalSnapshot?>(null);
+
         var elapsed = clock.UtcNow - _lastChangeAt;
         var settled = elapsed > SettleAfter;
         var noise = settled ? 0m : (decimal)(_random.NextDouble() - 0.5) * 4m;
-        var kg = _targetKg + noise;
+        var kg = targetKg + noise;
 
         var snapshot = new ScaleSignalSnapshot
         {

@@ -62,9 +62,14 @@ internal static class Program
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: false)
             .AddJsonFile("appsettings.Development.json", optional: true)
+            // Cấu hình riêng của máy trạm (chuỗi kết nối DB, mã nhà máy, tài khoản FRM) do bộ cài tạo ra.
+            .AddJsonFile("appsettings.Local.json", optional: true)
             .AddEnvironmentVariables("TTC_WEIGHING_")
             .Build();
         AppConfiguration = configuration;
+
+        // Hệ số co giao diện theo màn hình máy này — phải có trước khi tạo font/form đầu tiên.
+        Theme.UiScale.Initialize(configuration);
 
         // ── Localization: khởi tạo trước UI. Ngôn ngữ mặc định lấy từ cấu hình,
         //    sau khi đăng nhập sẽ đổi theo culture/ngôn ngữ của tài khoản (từ web portal). ──
@@ -96,11 +101,20 @@ internal static class Program
             return RunLayoutCheck(provider);
         }
 
+        // Chụp ảnh màn hình cho tài liệu: --capture-docs <thư mục> [--lang vi|en|lo|km] [--wait 2500]
+        var captureIndex = Array.FindIndex(args, a => a.Equals("--capture-docs", StringComparison.OrdinalIgnoreCase));
+        if (captureIndex >= 0)
+        {
+            provider ??= services.BuildServiceProvider();
+            return RunDocCapture(provider, configuration, localizer, args, captureIndex);
+        }
+
         WinFormsApp.ThreadException += (_, e) => ReportFatal(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => ReportFatal(e.ExceptionObject as Exception);
 
         // ── Splash screen — hiện logo trong khi khởi động ──
-        using var splash = new SplashForm();
+        // Mọi form dựng ở kích thước thiết kế 1920x1080 rồi thu phóng theo màn hình máy (Theme.UiScale).
+        using var splash = Theme.UiScale.Create(() => new SplashForm(), scaleWindow: true);
         splash.Show();
         WinFormsApp.DoEvents();
 
@@ -110,7 +124,7 @@ internal static class Program
             var apiBaseUrl = configuration.GetValue<string>("DigiScaleApi:BaseUrl");
             var requiredTenantId = configuration.GetValue<string>("DigiScaleApi:TenantId");
 
-            var loginForm = new LoginForm(apiBaseUrl, requiredTenantId);
+            var loginForm = Theme.UiScale.Create(() => new LoginForm(apiBaseUrl, requiredTenantId));
 
             // Đóng splash SAU khi LoginForm đã hiện xong — không chớp
             loginForm.Shown += (_, _) =>
@@ -142,6 +156,9 @@ internal static class Program
             // Build DI SAU login (chỉ 1 lần)
             provider ??= services.BuildServiceProvider();
 
+            // Mở cổng COM đầu cân ngay (chạy nền) để màn Cân có số khi mở.
+            _ = provider.GetRequiredService<IScaleConnectionService>();
+
             // FRM cache: set BU TRƯỚC khi load → load đúng BU từ DB
             {
                 var cache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
@@ -155,17 +172,12 @@ internal static class Program
                 try { cache.LoadFromDbAsync().GetAwaiter().GetResult(); }
                 catch { /* DB chưa có data → sẽ kéo API sau */ }
 
-                // Refresh API background — không block UI
-                _ = Task.Run(async () =>
-                {
-                    try { await cache.RefreshAsync(); }
-                    catch { }
-                });
+                // Kéo API: do BackgroundDataSync chạy liên tục (khởi động ngay trước khi mở MainForm).
             }
 
             try
             {
-                var mainForm = provider.GetRequiredService<MainForm>();
+                var mainForm = Theme.UiScale.Create(() => provider.GetRequiredService<MainForm>());
                 mainForm.SetLoggedInUser(loginForm.AuthenticatedUser ?? "Admin");
                 LoggedInUserName = loginForm.AuthenticatedUser ?? "Admin";
                 LoggedInUserAccount = loginForm.LoginResult?.UserName ?? loginForm.AuthenticatedUser ?? "admin";
@@ -233,7 +245,17 @@ internal static class Program
                 }
             }
 
+            // Kéo FRM + ERP liên tục (kéo xong → chờ BackgroundSync:IntervalSeconds → kéo tiếp) cho dữ liệu luôn mới nhất.
+            {
+                var syncFrm = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
+                var syncErp = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.ErpOrderLineAdapter>();
+                syncErp.ActiveAccessToken = loginForm.LoginResult?.AccessToken;
+                BackgroundDataSync.Start(syncFrm, syncErp,
+                    ActiveOrganizationUnitCode ?? syncFrm.ActiveBusinessUnit ?? "TTCS", configuration);
+            }
+
             WinFormsApp.Run(mainForm);
+            BackgroundDataSync.Current?.Dispose(); // đăng xuất / thoát → dừng kéo nền
 
             // Nếu MainForm đóng do đăng xuất → quay lại login; ngược lại → thoát app.
             if (!mainForm.IsLogout)
@@ -280,6 +302,7 @@ internal static class Program
         services.AddScoped<OpenWeighSessionHandler>();
         services.AddScoped<EvaluateAndCommitWeightHandler>();
         services.AddScoped<ApproveManualWeightHandler>();
+        services.AddScoped<UpdateWeighbridgeLimitsHandler>();
         services.AddScoped<RequestReweighHandler>();
         services.AddScoped<PauseResumeHandler>();
 
@@ -322,14 +345,14 @@ internal static class Program
         services.AddTransient<CcsForm>();
         services.AddTransient<TripDetailForm>();
         services.AddTransient<ExceptionQueueForm>();
-        services.AddTransient<IntegrationMonitorForm>();
         services.AddTransient<ConfigurationForm>();
         services.AddTransient<ReportForm>();
-        services.AddTransient<GuideForm>();
         services.AddTransient<FrmSyncForm>();
         services.AddTransient<ErpSyncForm>();
         services.AddTransient<ApiLogForm>();
         services.AddTransient<WarehouseForm>();
+        services.AddTransient<ScaleConnectionForm>();
+        services.AddTransient<CameraConnectionForm>();
     }
 
     /// <summary>
@@ -377,7 +400,13 @@ internal static class Program
 
         // Thiết bị: chưa có adapter thật đã nghiệm thu (D-03, D-05).
         // Luôn dùng simulated cho đến khi có thiết bị thật kết nối.
-        services.AddSingleton<IScaleSignalGateway, SimulatedScaleSignalGateway>();
+        // Cân xe: cổng COM theo cấu hình máy trạm (màn Kết nối cân); bàn chưa cấu hình / số nhập tay đã duyệt
+        // đi qua SimulatedScaleSignalGateway như trước.
+        services.AddSingleton<SimulatedScaleSignalGateway>();
+        services.AddSingleton<IScaleSignalGateway, ScaleSignalRouter>();
+        // Cân mẫu tạp chất: cổng COM nếu đã cấu hình, không thì adapter cũ.
+        services.AddScoped<TTC.Weighing.Infrastructure.Adapters.SampleScaleGatewayAdapter>();
+        services.AddScoped<ISampleScaleGateway, SampleScaleRouter>();
         services.AddSingleton<IPositionEvidenceGateway, SimulatedPositionEvidenceGateway>();
         services.AddSingleton<IBarrierControllerGateway, SimulatedBarrierControllerGateway>();
         services.AddSingleton<ICameraAiService, SimulatedCameraAiService>();
@@ -388,7 +417,12 @@ internal static class Program
     {
         // Kiểm tra ở cả màn hình rộng và màn hình nhỏ, vì vùng tab thấp hơn cửa sổ
         // khoảng 160px do dải thương hiệu, menu, dải tab, status bar và chân trang.
-        Size[] viewports = [new(1920, 860), new(1400, 700), new(1024, 420)];
+        // Vùng thiết kế nhân hệ số UiScale: máy nhỏ thấy đúng bố cục của máy 1920x1080, chỉ nhỏ hơn,
+        // nên kết quả ở mọi hệ số phải giống kết quả ở hệ số 1.
+        var f = Theme.UiScale.Factor;
+        Size[] viewports = new Size[] { new(1920, 860), new(1400, 700), new(1024, 420) }
+            .Select(v => new Size((int)Math.Round(v.Width * f), (int)Math.Round(v.Height * f)))
+            .ToArray();
 
         var report = new System.Text.StringBuilder();
         var failed = false;
@@ -403,7 +437,9 @@ internal static class Program
 
                 try
                 {
-                    var form = (Form)scope.ServiceProvider.GetRequiredService(type);
+                    Form form;
+                    using (Theme.UiScale.DesignScope())
+                        form = (Form)scope.ServiceProvider.GetRequiredService(type);
                     var findings = LayoutInspector.Inspect(form, viewport, MainForm.ResolveMinimumSize);
 
                     if (findings.Count > 0) failed = true;
@@ -433,12 +469,75 @@ internal static class Program
         return failed ? 1 : 0;
     }
 
+    /// <summary>
+    /// Chụp ảnh từng màn hình để đưa vào docs. Chỉ mở màn hình, không thao tác nghiệp vụ,
+    /// không kéo nền FRM/ERP. Danh tính = Admin cục bộ, BU = FrmPlanLookup:DefaultBusinessUnit.
+    /// </summary>
+    private static int RunDocCapture(ServiceProvider provider, IConfiguration configuration,
+        Localizer localizer, string[] args, int captureIndex)
+    {
+        string? ArgValue(string name)
+        {
+            var i = Array.FindIndex(args, a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
+            return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        }
+
+        var outputDir = captureIndex + 1 < args.Length && !args[captureIndex + 1].StartsWith("--")
+            ? Path.GetFullPath(args[captureIndex + 1])
+            : Path.Combine(AppContext.BaseDirectory, "doc-screenshots");
+        Directory.CreateDirectory(outputDir);
+
+        if (ArgValue("--lang") is { Length: > 0 } lang)
+            localizer.SetLanguage(AppLanguageInfo.FromCode(lang));
+
+        var waitMs = int.TryParse(ArgValue("--wait"), out var w) ? w : 2500;
+        if (ArgValue("--dump-ui") is { Length: > 0 } dumpDir)
+        {
+            DocScreenshotCapture.DumpDir = Path.GetFullPath(dumpDir);
+            Directory.CreateDirectory(DocScreenshotCapture.DumpDir);
+        }
+        var log = new List<string>();
+
+        try
+        {
+            DocScreenshotCapture.CaptureLogin(outputDir,
+                configuration.GetValue<string>("DigiScaleApi:BaseUrl"),
+                configuration.GetValue<string>("DigiScaleApi:TenantId"));
+            log.Add("OK    01-dang-nhap.png  (LoginForm)");
+
+            var defaultBu = configuration.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit");
+            ActiveOrganizationUnitCode = defaultBu;
+            Infrastructure.Queries.OrganizationUnitFilter.CurrentOrgUnit = defaultBu;
+            Infrastructure.Integration.ApiCallLogContext.OrgUnit = defaultBu;
+            ApiCallLogContext.Actor = LoggedInUserAccount;
+
+            var cache = provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.FrmMasterDataCache>();
+            cache.ActiveBusinessUnit = defaultBu;
+            try { cache.LoadFromDbAsync().GetAwaiter().GetResult(); } catch { /* DB trống vẫn chụp được */ }
+            provider.GetRequiredService<TTC.Weighing.Infrastructure.Adapters.DigiScaleTicketAdapter>()
+                .ActiveBusinessUnit = defaultBu;
+            PortalScaleRules.Configure(null);
+
+            var mainForm = Theme.UiScale.Create(() => provider.GetRequiredService<MainForm>());
+            mainForm.SetLoggedInUser(LoggedInUserName);
+            DocScreenshotCapture.CaptureScreens(mainForm, outputDir, waitMs, log);
+            WinFormsApp.Run(mainForm);
+        }
+        catch (Exception ex)
+        {
+            log.Add($"FATAL {ex}");
+        }
+
+        File.WriteAllLines(Path.Combine(outputDir, "capture-log.txt"), log);
+        return log.Any(l => !l.StartsWith("OK")) ? 1 : 0;
+    }
+
     private static Type[] ScreenTypes() =>
     [
         typeof(DashboardForm), typeof(TripRegistrationForm), typeof(WeighOperationForm),
         typeof(QualityForm), typeof(CcsForm), typeof(ApiLogForm), typeof(TripDetailForm),
-        typeof(ExceptionQueueForm), typeof(IntegrationMonitorForm), typeof(ConfigurationForm),
-        typeof(ReportForm)
+        typeof(ExceptionQueueForm), typeof(ConfigurationForm),
+        typeof(ReportForm), typeof(ScaleConnectionForm), typeof(CameraConnectionForm)
     ];
 
     private static int RunSmokeCheck(IServiceProvider provider)
@@ -447,7 +546,7 @@ internal static class Program
         {
             typeof(MainForm), typeof(DashboardForm), typeof(TripRegistrationForm),
             typeof(WeighOperationForm), typeof(QualityForm),
-            typeof(TripDetailForm), typeof(ExceptionQueueForm), typeof(IntegrationMonitorForm),
+            typeof(TripDetailForm), typeof(ExceptionQueueForm),
             typeof(ConfigurationForm), typeof(ReportForm)
         };
 

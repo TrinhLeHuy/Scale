@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Xml;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Helpers;
 
@@ -527,7 +528,7 @@ public static class XlsxWriter
 
                 case DateTimeOffset dto:
                     // Giờ hiển thị theo múi giờ máy trạm (giờ nhà máy), giống lưới trên màn hình.
-                    w.WriteElementString("v", NS_MAIN, ToSerial(dto.ToLocalTime().DateTime)
+                    w.WriteElementString("v", NS_MAIN, ToSerial(dto.ToVnTime().DateTime)
                         .ToString("0.########", CultureInfo.InvariantCulture));
                     break;
 

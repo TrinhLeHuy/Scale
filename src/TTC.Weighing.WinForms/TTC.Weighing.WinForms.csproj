@@ -13,12 +13,14 @@
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="QRCoder" Version="1.8.1" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('appsettings.Development.json')" />
     <None Include="Assets\logo.png" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\logo.png')" />
+    <None Include="Assets\logo.ico" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Localization\Resources\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
@@ -28,6 +30,11 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Logo cho tệp .exe, shortcut Desktop / Start menu và thanh taskbar. Tạo lại: installer\scripts\make-icon.ps1 -->
+    <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
+    <!-- Bố cục dựng tay theo pixel ở 100%. Để Windows tự phóng cả cửa sổ khi máy đặt Scale 125%/150%
+         (chữ vẫn nét nhờ GDI scaling), thay vì chữ to lên còn ô giữ nguyên làm vỡ giao diện. -->
+    <ApplicationHighDpiMode>DpiUnawareGdiScaled</ApplicationHighDpiMode>
   </PropertyGroup>
 
 </Project>

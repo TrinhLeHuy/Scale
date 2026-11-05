@@ -363,7 +363,7 @@ public sealed class TripDetailForm : Form
     {
         if (_cboTrip.SelectedItem is not TripBoardRow trip)
         {
-            MessageBox.Show(Loc.T("detail.select_trip"), Loc.T("common.info"),
+            Helpers.AppMessageBox.Show(Loc.T("detail.select_trip"), Loc.T("common.info"),
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -386,13 +386,13 @@ public sealed class TripDetailForm : Form
 
             if (!result.IsSuccess)
             {
-                MessageBox.Show(
+                Helpers.AppMessageBox.Show(
                     Loc.T("detail.allocate_failed", result.FailureReason),
                     Loc.T("detail.allocate_failed_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            MessageBox.Show(
+            Helpers.AppMessageBox.Show(
                 Loc.T("detail.allocate_ok", $"{result.MeasuredTotalKg:N3}", $"{result.TotalAllocatedKg:N3}", result.Lines.Count),
                 Loc.T("detail.tab_allocation"), MessageBoxButtons.OK, MessageBoxIcon.Information);
 
@@ -410,7 +410,7 @@ public sealed class TripDetailForm : Form
     }
 
     private static void ShowError(string title, Exception ex)
-        => MessageBox.Show($"{title}.{Environment.NewLine}{ex.Message}",
+        => Helpers.AppMessageBox.Show($"{title}.{Environment.NewLine}{ex.Message}",
             Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
 
     protected override void OnFormClosing(FormClosingEventArgs e)

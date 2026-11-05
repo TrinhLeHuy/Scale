@@ -1,5 +1,6 @@
 using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.Application.UseCases.Quality;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Presenters;
 
@@ -172,36 +173,37 @@ public sealed class QualityPresenter(
     public async Task<PaymentFiguresResult> FetchPaymentFiguresAsync(Guid tripId, CancellationToken ct = default)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
-        var ctx = await DigiScaleWeighContextReader.ReadAsync(frmCache.ConnectionString, tripId, ct);
+        var ctx = await DigiScaleWeighContextReader.ReadAsync(frmCache.ConnectionString, tripId, ct, ensureTicket: true);
         if (ctx is null || !ctx.HasLenhDon)
             return PaymentFiguresResult.Fail(PaymentFiguresFailure.NoLenhDon, null);
         if (ctx is not { FirstKg: { } firstKg, SecondKg: { } secondKg, SecondAt: { } secondAt })
             return PaymentFiguresResult.Fail(PaymentFiguresFailure.NotWeighedOut, null);
 
-        var weightTon = (secondKg / 1000m).ToString("F2", inv);
+        var weightTon = Num.S2(secondKg / 1000m);
         var policy = await digiScaleTickets.PushPhieuCanAsync(
             "100000001", "2", Program.LoggedInUserName, Program.LoggedInUserAccount,
-            ctx.LenhDonId!, ctx.MaLenhDon!, weightTon, secondAt.ToLocalTime().DateTime,
-            ctx.TripNo, ctx.SecondBridgeCode, "0", "0", "0", ctx.LenhDonBu, ct, isQuetCS: true);
+            ctx.LenhDonId!, ctx.MaLenhDon!, weightTon, secondAt.ToVnTime().DateTime,
+            ctx.SoPhieuCan, ctx.SecondBridgeCode, "0", "0", "0", ctx.LenhDonBu, ct, isQuetCS: true);
 
         if (!policy.HasPolicy)
             return PaymentFiguresResult.Fail(PaymentFiguresFailure.NoPolicy, policy.ErrorMessage);
 
-        var tcPolicy = policy.TapChatCS ?? 0m;
-        var ccsText = policy.CcsChinhSach?.ToString(inv) ?? "0";
+        // Mọi số gửi đi / dùng tính: làm tròn 2 chữ số thập phân (Num).
+        var tcPolicy = Num.R2(policy.TapChatCS ?? 0m);
+        var ccsText = Num.S2(policy.CcsChinhSach, "0");
         var netKg = firstKg - secondKg;
         var pushed = false;
         string? pushError = null;
         if (netKg > 0)
         {
-            var tlThanhToanTon = netKg / 1000m * (1m - tcPolicy / 100m);
+            var tlThanhToanTon = Num.R2(Num.R2(netKg / 1000m) * (1m - tcPolicy / 100m));
             var sent = await digiScaleTickets.PushPhieuCanAsync(
                 "100000001", "2", Program.LoggedInUserName, Program.LoggedInUserAccount,
-                ctx.LenhDonId!, ctx.MaLenhDon!, weightTon, secondAt.ToLocalTime().DateTime,
-                ctx.TripNo, ctx.SecondBridgeCode,
-                tlThanhToanTon.ToString("F3", inv), tcPolicy.ToString(inv), ccsText,
+                ctx.LenhDonId!, ctx.MaLenhDon!, weightTon, secondAt.ToVnTime().DateTime,
+                ctx.SoPhieuCan, ctx.SecondBridgeCode,
+                Num.S2(tlThanhToanTon), Num.S2(tcPolicy), ccsText,
                 ctx.LenhDonBu, ct, isQuetCS: false,
-                tapChatCs: tcPolicy.ToString(inv), ccsChinhSach: ccsText);
+                tapChatCs: Num.S2(tcPolicy), ccsChinhSach: ccsText);
             pushed = sent.IsSuccess;
             pushError = sent.IsSuccess ? null : sent.ErrorMessage;
         }

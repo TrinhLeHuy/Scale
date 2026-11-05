@@ -8,6 +8,26 @@ public static class LogoHelper
 {
     private static Image? _cached;
     private static bool _loaded;
+    private static Icon? _appIcon;
+    private static bool _iconLoaded;
+
+    /// <summary>Icon ứng dụng (Assets/logo.ico) cho thanh tiêu đề và taskbar. Null nếu thiếu tệp.</summary>
+    public static Icon? GetAppIcon()
+    {
+        if (_iconLoaded) return _appIcon;
+        _iconLoaded = true;
+
+        var path = Path.Combine(AppContext.BaseDirectory, "Assets", "logo.ico");
+        try
+        {
+            _appIcon = File.Exists(path)
+                ? new Icon(path)
+                : Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? System.Windows.Forms.Application.ExecutablePath);
+        }
+        catch { /* Không có icon → dùng icon mặc định của WinForms */ }
+
+        return _appIcon;
+    }
 
     /// <summary>Logo đầy đủ (cho LoginForm). Trả null nếu chưa có file.</summary>
     public static Image? GetLogo()

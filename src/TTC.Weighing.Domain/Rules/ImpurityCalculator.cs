@@ -35,7 +35,10 @@ public static class ImpurityCalculator
             return new(false, null, false,
                 DomainText.T("rule.impurity_after_gt_before", "Lần 2 phải nhỏ hơn lần 1 — số đo không hợp lệ, cần cân lại."));
 
-        var percent = (sampleBeforeKg - sampleAfterKg) / sampleBeforeKg * 100m;
+        // Số cân mẫu và tạp chất làm tròn 2 chữ số thập phân (quy tắc chung cho dữ liệu tính toán / gửi đi).
+        sampleBeforeKg = Num.R2(sampleBeforeKg);
+        sampleAfterKg = Num.R2(sampleAfterKg);
+        var percent = Num.R2((sampleBeforeKg - sampleAfterKg) / sampleBeforeKg * 100m);
         var belowMinimum = sampleBeforeKg < minimumSampleKg;
 
         return new(true, percent, belowMinimum, null);

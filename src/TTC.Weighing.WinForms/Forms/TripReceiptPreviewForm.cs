@@ -44,6 +44,8 @@ public sealed class TripReceiptPreviewForm : Form
 
     // ── Printer list cache ──
     private IReadOnlyList<PrinterInfo>? _printers;
+    /// <summary>Dòng "Máy in nhiệt USB" trong danh sách máy in (null nếu không bật in nhiệt).</summary>
+    private string? _thermalItem;
 
     /// <summary>Khổ xem trước phiếu đăng tài (rộng × cao = 1 : 0.8).</summary>
     private const int ReceiptWidth = 860;
@@ -159,7 +161,9 @@ public sealed class TripReceiptPreviewForm : Form
         _cboPrinter.Margin = new Padding(0, 2, 0, 0);
         _nudCopies.Margin = new Padding(0, 2, 0, 0);
 
-        bar.Controls.AddRange([lblPrinter, _cboPrinter, lblCopies, _nudCopies]);
+        var paperPicker = Printing.PrintPaper.CreatePicker();
+        paperPicker.Margin = new Padding(12, -2, 0, 0);
+        bar.Controls.AddRange([lblPrinter, _cboPrinter, lblCopies, _nudCopies, paperPicker]);
 
         return bar;
     }
@@ -181,18 +185,34 @@ public sealed class TripReceiptPreviewForm : Form
                 _cboPrinter.Items.Add(display);
             }
 
-            // Chọn máy in sẵn sàng đầu tiên
-            var firstReady = -1;
-            for (var i = 0; i < _printers.Count; i++)
+            // Máy in nhiệt USB (ESC/POS, không cần driver) đứng đầu danh sách khi bật Printing:Mode = EscPosUsb.
+            var thermalReady = false;
+            _thermalItem = null;
+            if (ThermalPrint.Enabled)
             {
-                if (_printers[i].IsReady) { firstReady = i; break; }
+                thermalReady = ThermalPrint.FindDevice() is not null;
+                var name = Loc.T("print.thermal_printer");
+                _cboPrinter.Items.Insert(0, thermalReady ? name : $"{name}  {Loc.T("receipt.printer_not_ready")}");
+                _thermalItem = _cboPrinter.Items[0] as string;
             }
-            if (_cboPrinter.Items.Count > 0)
-                _cboPrinter.SelectedIndex = firstReady >= 0 ? firstReady : 0;
+            var offset = _thermalItem is null ? 0 : 1;
+
+            // Chọn máy in phiếu: máy in nhiệt đang cắm → lần in trước / cấu hình / mặc định Windows (bỏ qua máy in PDF ảo).
+            var preferred = PrintPrinter.Current;
+            var index = -1;
+            for (var i = 0; i < _printers.Count; i++)
+                if (string.Equals(_printers[i].Name, preferred, StringComparison.OrdinalIgnoreCase)) { index = i; break; }
+            if (index < 0)
+                for (var i = 0; i < _printers.Count; i++)
+                    if (_printers[i].IsReady && !PrintPrinter.IsVirtual(_printers[i].Name)) { index = i; break; }
+            if (thermalReady || (_thermalItem is not null && index < 0))
+                _cboPrinter.SelectedIndex = 0;
+            else if (_cboPrinter.Items.Count > 0)
+                _cboPrinter.SelectedIndex = index >= 0 ? index + offset : 0;
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
+            Helpers.AppMessageBox.Show(
                 $"{Loc.T("receipt.printer_error")}{Environment.NewLine}{ex.Message}",
                 Loc.T("receipt.printer_error_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
@@ -206,13 +226,22 @@ public sealed class TripReceiptPreviewForm : Form
     {
         if (_cboPrinter.SelectedItem is not string printerDisplay || _data.TripId is null)
         {
-            MessageBox.Show(Loc.T("receipt.select_printer"), Loc.T("common.missing_info"),
+            Helpers.AppMessageBox.Show(Loc.T("receipt.select_printer"), Loc.T("common.missing_info"),
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
+        // Máy in nhiệt USB: kiểm tra máy đang cắm TRƯỚC khi ghi nhận lượt in.
+        string? thermalDevice = null;
+        var useThermal = _thermalItem is not null && printerDisplay == _thermalItem;
+        if (useThermal && (thermalDevice = ThermalPrint.FindDevice()) is null)
+        {
+            ThermalPrint.PrintOrShowError(this, null, (_, _) => { }, ThermalPrint.TICKET_DESIGN_WIDTH);
+            return;
+        }
+
         // Lấy tên máy in gốc (bỏ hậu tố trạng thái nếu có)
-        var printerName = printerDisplay.Contains("  (")
+        var printerName = useThermal ? Loc.T("print.thermal_printer") : printerDisplay.Contains("  (")
             ? printerDisplay[..printerDisplay.IndexOf("  (", StringComparison.Ordinal)]
             : printerDisplay;
 
@@ -227,7 +256,18 @@ public sealed class TripReceiptPreviewForm : Form
             PrintResult = await _printService.PrintAsync(
                 _data.TripId.Value, config, _isReprint);
 
-            if (PrintResult.IsSuccess)
+            if (PrintResult.IsSuccess && useThermal)
+            {
+                // Giấy cuộn: cùng hàm vẽ, bố cục một cột, dài theo nội dung.
+                if (!ThermalPrint.PrintOrShowError(this, thermalDevice, RenderReceipt,
+                        ThermalPrint.TICKET_DESIGN_WIDTH, (int)_nudCopies.Value))
+                    return;
+                var note = _isReprint ? Loc.T("receipt.print_reprint_note") : string.Empty;
+                Helpers.AppMessageBox.Show(
+                    Loc.T("receipt.print_ok", note, PrintResult.TicketNumber),
+                    Loc.T("receipt.title"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else if (PrintResult.IsSuccess)
             {
                 // Service chỉ ghi nhận phiếu + audit; in ra máy đúng mẫu đang xem trước.
                 using (var doc = new System.Drawing.Printing.PrintDocument())
@@ -235,31 +275,32 @@ public sealed class TripReceiptPreviewForm : Form
                     doc.PrinterSettings.PrinterName = printerName;
                     doc.PrinterSettings.Copies = (short)_nudCopies.Value;
                     doc.DocumentName = Text;
-                    doc.PrintPage += (_, pe) =>
+                    Printing.PrintPaper.Apply(doc);
+                    doc.PrintPage += (_, pe) => Printing.PrintPaper.RenderFitted(pe.Graphics!, pe.MarginBounds, (g, area) =>
                     {
-                        // Cùng tỉ lệ khung như xem trước; khổ giấy hẹp thì chữ tự xuống dòng thay vì bị cắt.
-                        var area = pe.MarginBounds;
+                        // Cùng tỉ lệ khung như xem trước; khổ nhỏ thì co tỉ lệ vừa trang.
                         var height = Math.Min(area.Height, (int)(area.Width * ReceiptAspect));
-                        RenderReceipt(pe.Graphics!, new Rectangle(area.Left, area.Top, area.Width, height));
-                    };
+                        RenderReceipt(g, new Rectangle(area.Left, area.Top, area.Width, height));
+                    });
                     doc.Print();
                 }
+                PrintPrinter.Remember(printerName);
 
                 var reprintNote = _isReprint ? Loc.T("receipt.print_reprint_note") : string.Empty;
-                MessageBox.Show(
+                Helpers.AppMessageBox.Show(
                     Loc.T("receipt.print_ok", reprintNote, PrintResult.TicketNumber),
                     Loc.T("receipt.title"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             else
             {
-                MessageBox.Show(
+                Helpers.AppMessageBox.Show(
                     Loc.T("receipt.print_failed", PrintResult.ErrorMessage),
                     Loc.T("receipt.print_error_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
+            Helpers.AppMessageBox.Show(
                 Loc.T("receipt.print_error", ex.Message),
                 Loc.T("receipt.print_error_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
@@ -302,6 +343,9 @@ public sealed class TripReceiptPreviewForm : Form
         c.Y += 6;
         c.Centered(PrintText.L("print.dangtai_title"), c.Title, 2, titleBrush);
         if (_isReprint) c.Centered(PrintText.L("receipt.reprint_label"), c.Subtitle, 2, reprintBrush);
+        // Lệnh đốn ưu tiên → dòng nổi bật ngay dưới tiêu đề để cổng / trạm cân nhận ra ngay.
+        if (!_data.IsMaterial && _data.IsPriority)
+            c.Centered(PrintText.L("print.dangtai_priority_badge"), c.Subtitle, 2, reprintBrush);
         c.Y += 10;
 
         var date = new TicketCell(PrintText.L("print.field_date"), _data.DateTime);
@@ -325,20 +369,24 @@ public sealed class TripReceiptPreviewForm : Form
                 new(new(PrintText.L("print.dangtai_so_dangtai"), _data.TripNo, c.Big),
                     new(PrintText.L("print.field_so_xe"), _data.Plate, c.Big)),
                 new(new(PrintText.L("print.field_chu_mia"), _data.SugarcaneOwner), Wide: true),
-                new(new(PrintText.L("print.field_hop_dong"), _data.HopDong),
+                new(new(PrintText.L("print.field_hop_dong"), PrintText.ContractNo(_data.HopDong)),
                     new(PrintText.L("print.field_loai_xe"), _data.VehicleType)),
                 new(new(PrintText.L("print.field_cong_thu_hoach"), _data.HarvestPartner ?? _data.Transporter),
                     new(PrintText.L("print.field_cong_boc_xep"), _data.LoadingPartner)),
                 new(new(PrintText.L("print.field_giong_mia"), _data.SugarcaneVariety),
                     new(PrintText.L("print.field_loai_mia"), _data.SugarcaneType)),
                 new(new(PrintText.L("print.field_hinh_thuc_thu_hoach"), _data.HarvestMethod), Wide: true),
+                .. (_data.IsPriority
+                    ? new TicketRow[] { new(new(PrintText.L("print.dangtai_priority"), PrintText.L("print.dangtai_priority_yes"), c.Big), Wide: true) }
+                    : []),
                 new(new(PrintText.L("print.field_ghi_chu"), _data.Notes), Wide: true)
             ];
         c.Rows(rows);
 
         // ── Mã vạch (Code 128) + ngày in ──
         c.Separator(6, 12);
-        c.BarcodeAndPrintedAt(_data.ShipmentNo ?? _data.QrToken);
+        // QR = số đăng tài: quét ở màn Cân / Đo tạp chất / Đo CCS để mở chuyến.
+        c.BarcodeAndPrintedAt(_data.TripNo ?? _data.QrToken);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -397,4 +445,5 @@ public sealed record TripReceiptData(
     string? HarvestPartner = null,   // Công thu hoạch
     string? LoadingPartner = null,   // Công bốc xếp
     string? HopDong = null,          // Hợp đồng (đầu tư mía)
-    string? Notes = null);
+    string? Notes = null,
+    bool IsPriority = false);        // Lệnh đốn ưu tiên (FRM Uutien = Có) — in dòng "Lệnh ưu tiên" trên phiếu mía

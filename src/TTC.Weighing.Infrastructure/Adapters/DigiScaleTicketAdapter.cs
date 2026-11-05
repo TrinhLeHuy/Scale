@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.Infrastructure.Adapters;
 
@@ -38,30 +39,77 @@ public sealed class DigiScaleTicketAdapter
     public Task<TicketResult> PushDangTaiAsync(string lenhDonId, string maLenhDon, DateTime ngay, string loaiXe, string soDangTai, string? uuTien = null, string? lenhDonBu = null, CancellationToken ct = default)
         => PushAsync("new_phieudangtai", new { PhieuDangTai = new[] { new { LenhDon = lenhDonId, MaLenhDon = maLenhDon, Ngay = ngay.ToString("M/d/yyyy  h:mm:ss tt", System.Globalization.CultureInfo.InvariantCulture), UuTien = uuTien, LoaiXe = loaiXe, SoDangTai = soDangTai } } }, ct, lenhDonBu);
 
+    /// <summary>
+    /// Hủy / xóa phiếu đăng tài trên DigiScale — đúng mẫu:
+    /// <code>{ "logicalName": "new_phieudangtai", "busineesUnit": "KSK BU", "status": "Delete",
+    ///   "entityRequest": [ { "PhieuDangTai": { "phieudangtaiid": "…" } } ] }</code>
+    /// <paramref name="phieuDangTaiId"/> = ID bản ghi lệnh đốn trên DigiScale của chuyến (item.id khi kéo LenhDon). Hủy và Xóa dưới app cân đều gửi lệnh này.
+    /// </summary>
+    public Task<TicketResult> DeleteDangTaiAsync(string phieuDangTaiId, string? lenhDonBu = null, CancellationToken ct = default)
+        => PushAsync("new_phieudangtai", new { PhieuDangTai = new { phieudangtaiid = phieuDangTaiId } }, ct, lenhDonBu, action: "Delete");
+
+    /// <summary>ID phiếu DigiScale vừa lưu (items[0].id trong phản hồi tạo phiếu). Null nếu không đọc được.</summary>
+    public static string? SavedItemId(TicketResult result)
+    {
+        if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.ErrorMessage)) return null;
+        var body = result.ErrorMessage;
+        var start = body.IndexOf('{');
+        if (start < 0) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body[start..]);
+            return doc.RootElement.TryGetProperty("items", out var items) && items.GetArrayLength() > 0
+                   && items[0].TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String
+                ? id.GetString().NullIfBlank()
+                : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// Tên trường ghi chú gửi DigiScale. CHƯA có trong tài liệu API (new_phieucan / oracle-tickets) —
+    /// đặt theo cách đặt tên của từng payload; cần DigiScale xác nhận. Đổi tên chỉ sửa ở đây.
+    /// </summary>
+    private const string PHIEU_CAN_NOTE_FIELD = "GhiChu";
+    private const string ORACLE_TICKET_NOTE_FIELD = "Note";
+
+    /// <summary>Thêm trường ghi chú vào một bản ghi payload khi có nội dung; rỗng → giữ nguyên (không gửi trường).</summary>
+    private static object WithNote(object entry, string field, string? note)
+    {
+        if (string.IsNullOrWhiteSpace(note)) return entry;
+        var node = JsonSerializer.SerializeToNode(entry)!.AsObject();
+        node[field] = note.Trim();
+        return node;
+    }
+
+    /// <summary>Định dạng ThoiGianCanVao của phiếu cân (new_phieucan): "10/28/2026 09:30:26" — 24h, không AM/PM.</summary>
+    private const string PHIEU_CAN_TIME_FORMAT = "MM/dd/yyyy HH:mm:ss";
+
     /// <summary>Đẩy phiếu cân lên DigiScale. LoaiCan: 100000000=cân vào, 100000001=cân ra. isQuetCS: truyền "Yes" khi cân lần 2 để lấy chính sách.</summary>
     /// <param name="tapChatCs">Tạp chất theo chính sách (%) — gửi khi đã có chính sách; null = "0".</param>
     /// <param name="ccsChinhSach">CCS theo chính sách — gửi khi đã có chính sách; null = "0".</param>
-    public async Task<TicketResult> PushPhieuCanAsync(string loaiCan, string lanCan, string nvCan, string? userNameNvCan, string lenhDonId, string maLenhDon, string trongLuong, DateTime thoiGian, string soPhieuCan, string? maBanCan, string tlThanhToan, string tcThanhToan, string ccsThanhToan, string? lenhDonBu = null, CancellationToken ct = default, bool isQuetCS = false, string? tapChatCs = null, string? ccsChinhSach = null)
+    /// <param name="ghiChu">Ghi chú người cân gõ trên màn Cân — gửi kèm phiếu khi có (không gửi rỗng để không xóa ghi chú cũ).</param>
+    public async Task<TicketResult> PushPhieuCanAsync(string loaiCan, string lanCan, string nvCan, string? userNameNvCan, string lenhDonId, string maLenhDon, string trongLuong, DateTime thoiGian, string soPhieuCan, string? maBanCan, string tlThanhToan, string tcThanhToan, string ccsThanhToan, string? lenhDonBu = null, CancellationToken ct = default, bool isQuetCS = false, string? tapChatCs = null, string? ccsChinhSach = null, string? ghiChu = null)
     {
         // Có API chính sách FRM (FrmPolicyApi) → bắt chính sách trực tiếp ở FRM (IsQuetCS = Yes),
         // rồi gửi phiếu lần 2 lên DigiScale kèm tạp chất / CCS chính sách (IsQuetCS = No, không bắt lại).
         if (isQuetCS && _frmPolicy.IsEnabled)
             return await PushPhieuCanWithFrmPolicyAsync(loaiCan, lanCan, nvCan, userNameNvCan, lenhDonId, maLenhDon,
-                trongLuong, thoiGian, soPhieuCan, maBanCan, tlThanhToan, tcThanhToan, ccsThanhToan, lenhDonBu, ct);
+                trongLuong, thoiGian, soPhieuCan, maBanCan, tlThanhToan, tcThanhToan, ccsThanhToan, lenhDonBu, ct, ghiChu);
 
         var result = await PushAsync("new_phieucan", new
         {
-            PhieuCan = new[] { new {
+            PhieuCan = new[] { WithNote(new {
                 LoaiCan = loaiCan, LanCan = lanCan,
                 NhanVienCanVao = nvCan, UserNameNhanVienCanVao = userNameNvCan,
                 LenhDon = lenhDonId, MaLenhDon = maLenhDon, MaBanCan = maBanCan,
                 TrongLuong = trongLuong,
-                ThoiGianCanVao = thoiGian.ToString("M/d/yyyy  h:mm:ss tt", System.Globalization.CultureInfo.InvariantCulture),
+                ThoiGianCanVao = thoiGian.ToString(PHIEU_CAN_TIME_FORMAT, System.Globalization.CultureInfo.InvariantCulture),
                 SoPhieuCan = soPhieuCan, Name = "Null",
                 TrongLuongThanhToan = tlThanhToan, TapChatThanhToan = tcThanhToan, CCSThanhToan = ccsThanhToan,
                 IsQuetCS = isQuetCS ? "Yes" : "No",
                 TapChatCS = tapChatCs ?? "0", CCSChinhSach = ccsChinhSach ?? "0"
-            } }
+            }, PHIEU_CAN_NOTE_FIELD, ghiChu) }
         }, ct, lenhDonBu);
 
         // Nếu thành công + quét CS → parse response để lấy chính sách
@@ -98,11 +146,11 @@ public sealed class DigiScaleTicketAdapter
     public Task<FrmPolicyResult> PreviewPolicyAsync(string businessUnit, string soPhieuCan, string lenhDonId, string maLenhDon,
         string? maBanCan, decimal trongLuongTon, string? userNameNvCan, string? nvCan, CancellationToken ct = default)
         => _frmPolicy.CatchPolicyAsync(businessUnit, soPhieuCan, lenhDonId, maLenhDon, maBanCan,
-            trongLuongTon, DateTime.Now, userNameNvCan, nvCan, ct, isPreview: true);
+            trongLuongTon, VnTime.Now, userNameNvCan, nvCan, ct, isPreview: true);
 
     private async Task<TicketResult> PushPhieuCanWithFrmPolicyAsync(string loaiCan, string lanCan, string nvCan, string? userNameNvCan,
         string lenhDonId, string maLenhDon, string trongLuong, DateTime thoiGian, string soPhieuCan, string? maBanCan,
-        string tlThanhToan, string tcThanhToan, string ccsThanhToan, string? lenhDonBu, CancellationToken ct)
+        string tlThanhToan, string tcThanhToan, string ccsThanhToan, string? lenhDonBu, CancellationToken ct, string? ghiChu = null)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var bu = lenhDonBu ?? ActiveBusinessUnit ?? string.Empty;
@@ -113,21 +161,21 @@ public sealed class DigiScaleTicketAdapter
         if (!policy.HasPolicy)
             return new TicketResult(false, $"POLICY_ERROR: {policy.Error ?? "FRM_POLICY_NOT_FOUND"}");
 
-        var tcText = policy.TapChatCS!.Value.ToString(inv);
-        var ccsText = policy.CcsChinhSach?.ToString(inv) ?? "0";
+        var tcText = Num.S2(policy.TapChatCS!.Value);
+        var ccsText = Num.S2(policy.CcsChinhSach, "0");
         var pushed = await PushAsync("new_phieucan", new
         {
-            PhieuCan = new[] { new {
+            PhieuCan = new[] { WithNote(new {
                 LoaiCan = loaiCan, LanCan = lanCan,
                 NhanVienCanVao = nvCan, UserNameNhanVienCanVao = userNameNvCan,
                 LenhDon = lenhDonId, MaLenhDon = maLenhDon, MaBanCan = maBanCan,
                 TrongLuong = trongLuong,
-                ThoiGianCanVao = thoiGian.ToString("M/d/yyyy  h:mm:ss tt", inv),
+                ThoiGianCanVao = thoiGian.ToString(PHIEU_CAN_TIME_FORMAT, inv),
                 SoPhieuCan = soPhieuCan, Name = "Null",
                 TrongLuongThanhToan = tlThanhToan, TapChatThanhToan = tcThanhToan, CCSThanhToan = ccsThanhToan,
                 IsQuetCS = "No",
                 TapChatCS = tcText, CCSChinhSach = ccsText
-            } }
+            }, PHIEU_CAN_NOTE_FIELD, ghiChu) }
         }, ct, lenhDonBu);
 
         // DigiScale lỗi → trả lỗi DigiScale (phiếu chưa được nhận), giữ chính sách để hiển thị lý do.
@@ -272,8 +320,15 @@ public sealed class DigiScaleTicketAdapter
         string? transporter = null, string? plateNumber = null, string? driverName = null, string? truckOwner = null,
         string? vendorName = null, string? vendorNumber = null, string? vendorSiteCode = null,
         CancellationToken ct = default,
-        string? organizationName = null)
+        string? organizationName = null,
+        string? note = null)
     {
+        // Số cân / số lượng gửi ERP: làm tròn 2 chữ số thập phân.
+        weightIn = Num.R2(weightIn);
+        weightOut = Num.R2(weightOut);
+        netWeight = Num.R2(netWeight);
+        quantity = Num.R2(quantity);
+
         // Lines array — bắt buộc ít nhất 1 dòng
         var line = new Dictionary<string, object?>
         {
@@ -315,6 +370,8 @@ public sealed class DigiScaleTicketAdapter
             ["InterfaceReference"] = interfaceReference,
             ["Lines"] = new[] { line }
         };
+        // Ghi chú người cân — chỉ gửi khi có (không gửi rỗng để không xóa ghi chú cũ).
+        if (!string.IsNullOrWhiteSpace(note)) payload[ORACLE_TICKET_NOTE_FIELD] = note.Trim();
 
         try
         {
@@ -334,7 +391,7 @@ public sealed class DigiScaleTicketAdapter
 
             // HTTP 200 = đã đẩy lên DigiScale thành công — không cần check Oracle sync status
             if (response.IsSuccessStatusCode)
-                return new TicketResult(true, $"✅ Đã đẩy lên DigiScale. {Truncate(responseBody)}");
+                return new TicketResult(true, $"✅ Đã đẩy lên ERP. {Truncate(responseBody)}");
 
             return new TicketResult(false, $"❌ HTTP {(int)response.StatusCode}: {Truncate(responseBody)}");
         }
@@ -345,19 +402,15 @@ public sealed class DigiScaleTicketAdapter
         }
     }
 
-    private async Task<TicketResult> PushAsync(string logicalName, object entityData, CancellationToken ct, string? buOverride = null)
+    private async Task<TicketResult> PushAsync(string logicalName, object entityData, CancellationToken ct, string? buOverride = null,
+        string action = "Create")
     {
         var bu = buOverride
             ?? ActiveBusinessUnit
             ?? _configuration.GetValue<string>("FrmPlanLookup:DefaultBusinessUnit")
             ?? "TTCS";
-        var envelope = new
-        {
-            logicalName,
-            busineesUnit = bu,
-            status = "Create",
-            entityRequest = new[] { entityData }
-        };
+        // "status": "Create" (tạo phiếu) hoặc "Delete" (hủy / xóa phiếu đăng tài) — theo mẫu DigiScale.
+        var envelope = new { logicalName, busineesUnit = bu, status = action, entityRequest = new[] { entityData } };
 
         try
         {

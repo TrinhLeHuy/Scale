@@ -36,6 +36,7 @@ public class TripConfiguration : IEntityTypeConfiguration<Trip>
 
         // --- Phiếu cân ---
         b.Property(x => x.TicketNumber).HasMaxLength(50);
+        b.Property(x => x.DigiRegistrationId).HasMaxLength(100);
 
         // Biển số KHÔNG unique — một biển số có nhiều chuyến theo thời gian (R-003).
         b.HasIndex(x => new { x.SiteId, x.Lifecycle });
@@ -210,6 +211,10 @@ public class WeighbridgeConfiguration : IEntityTypeConfiguration<Weighbridge>
 
         b.Property(x => x.MinCapacityKg).HasPrecision(15, 3);
         b.Property(x => x.MaxCapacityKg).HasPrecision(15, 3);
+        b.Property(x => x.FirstWeightMinKg).HasPrecision(15, 3);
+        b.Property(x => x.FirstWeightMaxKg).HasPrecision(15, 3);
+        b.Property(x => x.SecondWeightMinKg).HasPrecision(15, 3);
+        b.Property(x => x.SecondWeightMaxKg).HasPrecision(15, 3);
         b.Property(x => x.ResolutionKg).HasPrecision(15, 3);
     }
 }

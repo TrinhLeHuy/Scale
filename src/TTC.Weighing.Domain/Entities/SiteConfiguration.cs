@@ -43,6 +43,25 @@ public class Weighbridge : AuditableEntity
     public bool IsOutOfService { get; set; }
 
     public bool IsWithinCapacity(decimal kg) => kg >= MinCapacityKg && kg <= MaxCapacityKg;
+
+    // Giới hạn số cân theo lượt (giống "Vào min/Max", "Ra min/Max" của phần mềm cân cũ).
+    // Đơn vị kg. Null = không đặt giới hạn đó.
+
+    /// <summary>Cân lần 1 (xe vào) tối thiểu, kg.</summary>
+    public decimal? FirstWeightMinKg { get; set; }
+
+    /// <summary>Cân lần 1 (xe vào) tối đa, kg.</summary>
+    public decimal? FirstWeightMaxKg { get; set; }
+
+    /// <summary>Cân lần 2 (xe ra) tối thiểu, kg.</summary>
+    public decimal? SecondWeightMinKg { get; set; }
+
+    /// <summary>Cân lần 2 (xe ra) tối đa, kg.</summary>
+    public decimal? SecondWeightMaxKg { get; set; }
+
+    /// <summary>Giới hạn áp dụng cho lượt cân: lượt 0 = lần 1 (vào), các lượt sau = lần 2 (ra).</summary>
+    public (decimal? MinKg, decimal? MaxKg) WeighLimits(int segmentIndex)
+        => segmentIndex == 0 ? (FirstWeightMinKg, FirstWeightMaxKg) : (SecondWeightMinKg, SecondWeightMaxKg);
 }
 
 /// <summary>

@@ -150,6 +150,10 @@ public sealed class EvaluateAndCommitWeightHandler(
             ]);
         }
 
+        // Giới hạn số cân theo lượt của bàn (Vào/Ra min–Max, cài ở Kết nối cân). Chưa đặt thì không thêm điều kiện.
+        if (WeighLimitRules.Check(bridge, session.SegmentIndex, signal.NormalizedKg) is { } limitCheck)
+            decision = new WeighCommitDecision(decision.CanCommit && limitCheck.Passed, [.. decision.Checks, limitCheck]);
+
         // Đánh giá thử chỉ trả kết quả để hiển thị, không ghi dữ liệu và không sinh audit.
         // NormalizedKg = số cân sẽ được chốt nếu commit ngay — UI dùng để đẩy DigiScale
         // (lấy chính sách) TRƯỚC khi lưu; IsCommitted vẫn false, không có WeighEventId.

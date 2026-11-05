@@ -71,7 +71,17 @@ public static class DependencyInjection
         services.AddScoped<ITripRegistrationQueries, EfTripRegistrationQueries>();
 
         // Trip registration redesign — camera, queue sequence, handlers
-        services.AddScoped<ICameraService, CameraServiceAdapter>();
+        // Camera IP cổng Vào/Ra qua TCP/IP — cấu hình theo máy trạm (màn Kết nối camera),
+        // giá trị mặc định lần đầu lấy từ mục "Cameras" trong appsettings.
+        services.AddSingleton<ICameraConnectionService>(sp => new Devices.IpCamera.IpCameraHub(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TTC.Weighing", "camera-connections.json"),
+            ReadCameraDefaults(configuration),
+            sp.GetRequiredService<ILogger<Devices.IpCamera.IpCameraHub>>()));
+        var evidenceRoot = configuration?.GetValue<string>("Evidence:RootPath")
+            ?? Path.Combine(AppContext.BaseDirectory, "evidence");
+        services.AddScoped<ICameraService>(sp => new CameraServiceAdapter(
+            sp.GetRequiredService<ICameraConnectionService>(), Path.Combine(evidenceRoot, "camera")));
         services.AddScoped<IQueueSequenceGenerator, SequentialQueueSequenceGenerator>();
         services.AddScoped<CheckPlanHandler>();
         services.AddScoped<QueueTripHandler>();
@@ -120,6 +130,13 @@ public static class DependencyInjection
         services.AddScoped<IWeighTicketPrintService, WeighTicketPrintAdapter>();
         services.AddScoped<ISampleScaleGateway, SampleScaleGatewayAdapter>();
         services.AddScoped<ICcsInstrumentReader, UnconfiguredCcsInstrumentReader>();
+
+        // Đầu cân qua cổng COM — cấu hình theo máy trạm (màn Kết nối cân).
+        services.AddSingleton<IScaleConnectionService>(sp => new Devices.SerialScale.SerialScaleHub(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TTC.Weighing", "scale-connections.json"),
+            sp.GetRequiredService<IClock>(),
+            sp.GetRequiredService<ILogger<Devices.SerialScale.SerialScaleHub>>()));
         services.AddScoped<IDeviceStatusMonitor, DeviceStatusMonitorAdapter>();
         services.AddScoped<IWeighTicketRepository, EfWeighTicketRepository>();
 
@@ -189,5 +206,46 @@ public static class DependencyInjection
         }).AddHttpMessageHandler(sp => new ApiCallLoggingHandler(sp.GetRequiredService<ApiCallLogStore>(), "ErpOrderLineAdapter"));
 
         return services;
+    }
+
+    /// <summary>
+    /// Cameras:{Weigh|Registration}:{In|Out} trong appsettings (mật khẩu đặt ở appsettings.Local.json, không commit).
+    /// Khóa cũ Cameras:In / Cameras:Out (bản trước chưa chia màn hình) được hiểu là camera bàn cân.
+    /// </summary>
+    private static List<CameraConnectionSettings> ReadCameraDefaults(IConfiguration? configuration)
+    {
+        var result = new List<CameraConnectionSettings>();
+        if (configuration is null) return result;
+
+        foreach (var station in CameraConnectionSettings.Stations)
+        foreach (var position in CameraConnectionSettings.Positions)
+        {
+            var section = configuration.GetSection($"Cameras:{station}:{position}");
+            var legacy = station == CameraConnectionSettings.StationWeigh
+                ? configuration.GetSection($"Cameras:{position}")
+                : null;
+            string? Get(string key) => section.GetValue<string>(key) is { Length: > 0 } v ? v : legacy?.GetValue<string>(key);
+            int? Int(string key) => int.TryParse(Get(key), out var v) ? v : null;
+
+            var host = Get("Host");
+            if (string.IsNullOrWhiteSpace(host)) continue;
+
+            result.Add(new CameraConnectionSettings
+            {
+                Station = station,
+                Position = position,
+                Enabled = !bool.TryParse(Get("Enabled"), out var enabled) || enabled,
+                Host = host.Trim(),
+                HttpPort = Int("HttpPort") ?? 80,
+                RtspPort = Int("RtspPort") ?? 554,
+                Username = Get("Username"),
+                Password = Get("Password"),
+                Brand = Enum.TryParse<CameraBrand>(Get("Brand"), true, out var b) ? b : CameraBrand.Auto,
+                Channel = Int("Channel") ?? 1,
+                SnapshotPath = Get("SnapshotPath"),
+                TimeoutMs = Int("TimeoutMs") ?? 3000
+            });
+        }
+        return result;
     }
 }

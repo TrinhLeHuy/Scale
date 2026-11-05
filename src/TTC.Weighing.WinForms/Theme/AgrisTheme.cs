@@ -91,14 +91,15 @@ public static class AgrisTheme
     public static readonly Color FocusRing = Color.FromArgb(21, 101, 150);
 
     // ── Hình khối và khoảng cách ──
-    public const int RadiusSm = 4;
-    public const int RadiusMd = 6;
-    public const int RadiusLg = 10;
-    public const int SpaceXs = 4;
-    public const int SpaceSm = 8;
-    public const int SpaceMd = 12;
-    public const int SpaceLg = 16;
-    public const int SpaceXl = 24;
+    // Đi qua UiScale.Px: ra cỡ thiết kế khi dựng form, ra cỡ đã co khi vẽ / tạo control lúc chạy.
+    public static int RadiusSm => UiScale.Px(4);
+    public static int RadiusMd => UiScale.Px(6);
+    public static int RadiusLg => UiScale.Px(10);
+    public static int SpaceXs => UiScale.Px(4);
+    public static int SpaceSm => UiScale.Px(8);
+    public static int SpaceMd => UiScale.Px(12);
+    public static int SpaceLg => UiScale.Px(16);
+    public static int SpaceXl => UiScale.Px(24);
 
     /// <summary>
     /// Họ font giao diện theo ngôn ngữ hiện hành. Segoe UI không có glyph Lào/Khmer,
@@ -116,7 +117,10 @@ public static class AgrisTheme
     /// Mọi font đi qua Body/Heading/Caption/Mono/Display đều nhân hệ số này để người vận hành
     /// đọc rõ ở khoảng cách xa. Chrome của shell (sidebar, header) dùng <see cref="Ui"/> không nhân.
     /// </summary>
-    public const float FontScale = 1.50F;
+    public static float FontScale => BaseFontScale * UiScale.Current;
+
+    /// <summary>Hệ số chữ ở màn hình thiết kế 1920x1080. Màn hình nhỏ hơn co theo <see cref="UiScale"/>.</summary>
+    public const float BaseFontScale = 1.50F;
 
     // ── Font cache — tránh tạo GDI object mới mỗi lần gọi ──
     private static readonly Dictionary<(string Family, float Size, FontStyle Style), Font> _fontCache = [];
@@ -151,13 +155,13 @@ public static class AgrisTheme
     public static Font Mono(float size = 10F, FontStyle style = FontStyle.Regular)
         => GetOrCreateFont(MonoFamily, size * FontScale, style);
 
-    /// <summary>Font cho chrome của shell (sidebar, header, status bar) — không nhân FontScale.</summary>
+    /// <summary>Font cho chrome của shell (sidebar, header, status bar) — không nhân FontScale, chỉ co theo màn hình.</summary>
     public static Font Ui(float size = 10F, FontStyle style = FontStyle.Regular)
-        => GetOrCreateFont(FontFamily, size, style);
+        => GetOrCreateFont(FontFamily, size * UiScale.Current, style);
 
     /// <summary>Font biểu tượng, null nếu máy không có font icon của Windows.</summary>
     public static Font? Icon(float size = 12F)
-        => IconFamily is { } family ? GetOrCreateFont(family, size, FontStyle.Regular) : null;
+        => IconFamily is { } family ? GetOrCreateFont(family, size * UiScale.Current, FontStyle.Regular) : null;
 
     /// <summary>Màu chữ cho một trạng thái nghiệp vụ.</summary>
     public static Color StatusForeground(string? status) => status switch

@@ -1,5 +1,6 @@
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Printing;
 
@@ -47,7 +48,7 @@ public sealed class PhieuDangTaiTemplate(PhieuDangTaiData d) : IPrintTemplate
         y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_chu_mia"), d.TenChuMia ?? "", labelW);
 
         // Row 4: Hợp đồng số
-        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_hop_dong"), d.HopDongSo ?? "", labelW);
+        y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_hop_dong"), PrintText.ContractNo(d.HopDongSo) ?? "", labelW);
 
         // Row 5: Số xe vận chuyển ... Loại xe
         y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_so_xe"), d.SoXeVanChuyen ?? "", labelW);
@@ -67,27 +68,26 @@ public sealed class PhieuDangTaiTemplate(PhieuDangTaiData d) : IPrintTemplate
         // Row 9: Ghi chú
         y = PrintHelper.DrawField(g, x, y, Loc.T("print.field_ghi_chu"), d.GhiChu ?? "", labelW);
 
-        // ── Barcode (Code 128) ──
+        // ── Mã QR (số đăng tài) — quét ở các màn Cân / Đo tạp chất / Đo CCS ──
         if (!string.IsNullOrWhiteSpace(d.Barcode))
         {
             y += 10;
-            if (!Code128Renderer.Draw(g, d.Barcode, x, y, 300, 50))
+            const int qrSize = 110;
+            if (!QrCodeRenderer.Draw(g, d.Barcode, x, y, qrSize))
             {
-                // Fallback: vẽ text nếu encode thất bại
                 using var fallbackFont = new Font("Consolas", 12, FontStyle.Bold);
                 g.DrawString(d.Barcode, fallbackFont, Brushes.Black, x, y);
             }
-            y += 54;
 
-            // Barcode text below image
-            using var barcodeTextFont = new Font("Consolas", 10);
-            g.DrawString(d.Barcode, barcodeTextFont, Brushes.Black, x, y);
-            y += 16;
+            // Chữ số đăng tài bên phải QR (đọc bằng mắt khi máy quét hỏng).
+            using var qrTextFont = new Font("Consolas", 11, FontStyle.Bold);
+            g.DrawString(d.Barcode, qrTextFont, Brushes.Black, x + qrSize + 10, y + qrSize / 2f - 9);
+            y += qrSize + 6;
         }
 
         // ── Print timestamp — bottom right ──
         y += 8;
-        var printTime = System.DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+        var printTime = VnTime.Now.ToString("dd/MM/yyyy HH:mm");
         var printLabel = Loc.T("print.dangtai_ngay_in", printTime);
         using var timestampFont = new Font("Times New Roman", 9, FontStyle.Italic);
         var tsSz = g.MeasureString(printLabel, timestampFont);

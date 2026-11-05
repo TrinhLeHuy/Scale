@@ -9,6 +9,7 @@ using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Presenters;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -96,20 +97,19 @@ public sealed class QualityForm : Form
     private readonly Button _btnTripDropdown = new()
     {
         Text = "▼",
-        Width = 30,
-        Dock = DockStyle.Right,
         FlatStyle = FlatStyle.Flat,
         Cursor = Cursors.Hand,
         TabStop = false
     };
-    private readonly ListBox _lstTripPopup = new()
-    {
-        Visible = false,
-        BorderStyle = BorderStyle.FixedSingle,
-        IntegralHeight = false,
-        Font = AgrisTheme.Mono(9F)
-    };
-    private TripRegistrationRow[] _popupTrips = [];
+    /// <summary>Danh sách xe trong nhà máy (nút ▼) — thẻ 2 dòng dùng chung với Cân hợp nhất.</summary>
+    private readonly ListBox _lstTripPopup = new() { Visible = false };
+    private TripPickerList? _tripPicker;
+    /// <summary>Gõ vào ô nhập → chờ ngắn rồi lọc danh sách xe (không tra DB theo từng phím).</summary>
+    private readonly System.Windows.Forms.Timer _suggestTimer = new() { Interval = 250 };
+    /// <summary>Tăng mỗi lần tra gợi ý — kết quả về trễ của lần tra cũ bị bỏ.</summary>
+    private int _suggestVersion;
+    /// <summary>Khung chung ô nhập + ▼ (danh sách canh theo khung này).</summary>
+    private Panel? _barcodeHost;
 
     // ── Thông tin chuyến (read-only) ──
     private readonly TextBox _txtPlate = ReadOnlyField(Loc.T("field.plate"));
@@ -193,7 +193,7 @@ public sealed class QualityForm : Form
         GridBuilder.SecondaryButton("In phiếu", new Size(100, 34));
 
     private readonly Button _btnRetryDigi =
-        GridBuilder.SecondaryButton("🔄 Đẩy lại Digi", new Size(140, 34));
+        GridBuilder.SecondaryButton("🔄 Đẩy lại FRM", new Size(140, 34));
 
     // ── Tiếp tục (F7) — chuyển sang bước tiếp theo ──
     private readonly Button _btnContinue = GridBuilder.PrimaryButton(Loc.T("common.btn_continue"), new Size(130, 36));
@@ -242,6 +242,8 @@ public sealed class QualityForm : Form
     // ── Phân trang + thanh cuộn lớn + phóng to lưới (giống Đăng tài / Cân hợp nhất) ──
     private readonly GridPager _pager = new("quality.samples", defaultPageSize: 20);
     private IReadOnlyList<QualitySampleRow> _allSamples = [];
+    /// <summary>Tìm kiếm + lọc cột của lưới lịch sử mẫu (như Dữ liệu FRM / ERP).</summary>
+    private GridListFilter<QualitySampleRow>? _sampleFilter;
     private GridScrollBar? _gridScroll;
     private readonly Button _btnExpandGrid = GridBuilder.SecondaryButton(Loc.T("grid.expand"), new Size(150, 40));
     private bool _gridExpanded;
@@ -305,10 +307,14 @@ public sealed class QualityForm : Form
 
         Load += async (_, _) =>
         {
-            _txtBarcode.Focus();
+            // Lúc Load tab chưa hiện → Focus() không ăn; đợi hiện xong mới đưa con trỏ vào ô quét.
+            FocusScanBoxWhenIdle();
             // Thẻ quy tắc hiện đúng số Portal ngay khi mở màn (không đợi quét xe).
             try { await PortalScaleRules.RefreshAsync(_cts.Token); } catch (OperationCanceledException) { }
             RefreshRuleChips();
+            // Ngưỡng tạp chất / mẫu tối thiểu: lấy lại từ Portal mỗi 3s.
+            _rulesTimer.Tick += async (_, _) => await RulesTickAsync();
+            _rulesTimer.Start();
             await LoadAllSamplesAsync();
         };
 
@@ -323,12 +329,30 @@ public sealed class QualityForm : Form
                 {
                     _scaleTimer.Start();
                 }
+                // Chuyển sang tab Đo tạp chất → con trỏ vào ô quét để máy quét QR gõ thẳng vào ô
+                // (trước đây con trỏ còn ở thanh tab / sidebar nên mã quét không vào ô).
+                FocusScanBoxWhenIdle();
             }
             else
             {
                 _scaleTimer.Stop();
             }
         };
+    }
+
+    /// <summary>
+    /// Đưa con trỏ vào ô quét QR khi đang chờ quét xe (chưa có chuyến). Chạy sau khi tab hiện xong.
+    /// Đang đo dở một chuyến thì không giật con trỏ khỏi chỗ người dùng đang thao tác.
+    /// </summary>
+    private void FocusScanBoxWhenIdle()
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        BeginInvoke(() =>
+        {
+            if (IsDisposed || !Visible || !_txtBarcode.Enabled) return;
+            if (_currentTripId is not null && _workflowStep != ImpurityWorkflowStep.WaitingForQr) return;
+            _txtBarcode.Focus();
+        });
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -405,7 +429,12 @@ public sealed class QualityForm : Form
         _txtBarcode.KeyDown += OnBarcodeKeyDown;
         _btnRecordImpurity.Click += async (_, _) => await RecordImpurityFromAutoWeighAsync();
         _btnResetWorkflow.Click += (_, _) => ResetWorkflow();
-        _btnPrintImpurity.Click += (_, _) => PrintImpurityTicket();
+        // Xem / in lại phiếu cần quyền quản lý (phiếu tự hiện sau khi ghi + đẩy DigiScale thì không).
+        _btnPrintImpurity.Click += (_, _) =>
+        {
+            if (_currentTripId is not null && !Helpers.ManagerAccess.RequireReprint(this, _txtTripNo.Text)) return;
+            PrintImpurityTicket();
+        };
         _btnRetryDigi.Click += async (_, _) => await RetryPushDigiImpurityAsync();
         _btnContinue.Click += OnContinueClicked;
         _btnManualEntry.Click += (_, _) => EnterManualWeighing();
@@ -530,7 +559,7 @@ public sealed class QualityForm : Form
             // Dòng đầu nhóm: format ReceivedAt → local
             if (colName == nameof(QualitySampleRow.ReceivedAt) && e.Value is DateTimeOffset dto)
             {
-                e.Value = dto.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+                e.Value = dto.ToVnTime().ToString("dd/MM/yyyy HH:mm");
                 e.FormattingApplied = true;
             }
             return;
@@ -539,7 +568,7 @@ public sealed class QualityForm : Form
         // ── Cột ReceivedAt ngoài merged (nếu có) ──
         if (colName == nameof(QualitySampleRow.ReceivedAt) && e.Value is DateTimeOffset dtoOther)
         {
-            e.Value = dtoOther.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+            e.Value = dtoOther.ToVnTime().ToString("dd/MM/yyyy HH:mm");
             e.FormattingApplied = true;
         }
     }
@@ -549,14 +578,17 @@ public sealed class QualityForm : Form
     {
         var table = FormLayout.FieldTable();
 
-        // TextBox + nút ▼ dropdown
-        var barcodePanel = new Panel { Dock = DockStyle.Fill, Height = 36 };
-        _txtBarcode.Dock = DockStyle.Fill;
-        _btnTripDropdown.FlatAppearance.BorderSize = 1;
-        barcodePanel.Controls.Add(_txtBarcode);
-        barcodePanel.Controls.Add(_btnTripDropdown);
+        // Ô nhập + ▼ chung một khung, cao bằng các ô khác (trước đó nút ▼ cao, lệch khỏi ô nhập).
+        _barcodeHost = FormLayout.InputWithDropdown(_txtBarcode, _btnTripDropdown);
 
-        _btnTripDropdown.Click += async (_, _) => await ShowTripDropdownAsync();
+        _btnTripDropdown.Click += async (_, _) =>
+        {
+            if (_lstTripPopup.Visible) { _lstTripPopup.Visible = false; _txtBarcode.Focus(); return; }
+            await ShowTripDropdownAsync();
+        };
+        _tripPicker = new TripPickerList(_lstTripPopup) { Accent = () => AgrisTheme.BrandGreen };
+        // Máy quét QR (số đăng tài) — quét ở đâu trên màn cũng được.
+        QrScanner.Register(this, () => _txtBarcode, OnQrScanned);
         _lstTripPopup.Click += (_, _) => SelectTripFromPopup();
         _lstTripPopup.KeyDown += (_, e) =>
         {
@@ -564,7 +596,49 @@ public sealed class QualityForm : Form
             else if (e.KeyCode == Keys.Escape) { _lstTripPopup.Visible = false; _txtBarcode.Focus(); }
         };
 
-        FormLayout.AddField(table, Loc.T("field.scan_qr"), barcodePanel);
+        FormLayout.AddField(table, Loc.T("field.scan_qr"), _barcodeHost);
+        _barcodeHost.Margin = new Padding(0, 4, 0, 4); // như ô nhập thường
+        _txtBarcode.GotFocus += (_, _) => _lstTripPopup.Visible = false;
+
+        // Gõ số đăng tài / biển số → hiện ngay danh sách xe khớp (con trỏ vẫn ở ô nhập).
+        // Tắt bộ gõ tiếng Việt: bộ gõ giữ chữ tới khi bấm Space → gợi ý không hiện ngay khi gõ.
+        FieldTile.DisableIme(_txtBarcode);
+        _txtBarcode.TextChanged += (_, _) =>
+        {
+            _suggestTimer.Stop();
+            if (!_txtBarcode.Focused) return; // gán chữ bằng code (quét, chọn, reset) → không gợi ý
+            if (QrScanner.ScanInProgress) return; // máy quét đang gõ → quét xong tự tra, không gợi ý
+            if (string.IsNullOrWhiteSpace(_txtBarcode.Text)) { _suggestVersion++; _lstTripPopup.Visible = false; return; }
+            _suggestTimer.Start();
+        };
+        _suggestTimer.Tick += async (_, _) =>
+        {
+            _suggestTimer.Stop();
+            if (!_txtBarcode.Focused || !_txtBarcode.Enabled || QrScanner.ScanInProgress) return;
+            await ShowTripDropdownAsync(_txtBarcode.Text.Trim(), focus: false);
+        };
+        _txtBarcode.KeyDown += (_, e) =>
+        {
+            if (!_lstTripPopup.Visible) return;
+            if (e.KeyCode == Keys.Down && _lstTripPopup.Items.Count > 0)
+            {
+                e.Handled = true; e.SuppressKeyPress = true;
+                _lstTripPopup.Focus();
+                _lstTripPopup.SelectedIndex = 0;
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true; e.SuppressKeyPress = true;
+                HideTripSuggestions();
+            }
+        };
+        // Rời ô nhập sang chỗ khác (không phải danh sách) → đóng gợi ý.
+        _txtBarcode.Leave += (_, _) =>
+        {
+            if (!IsHandleCreated || IsDisposed) return;
+            BeginInvoke(() => { if (!_lstTripPopup.Focused) HideTripSuggestions(); });
+        };
+        Disposed += (_, _) => _suggestTimer.Dispose();
         FormLayout.AddFullWidth(table, _lblQrStatus, 36);
         FormLayout.AddField(table, Loc.T("field.trip_no"), _txtTripNo);
         FormLayout.AddField(table, Loc.T("field.plate"), _txtPlate);
@@ -682,12 +756,13 @@ public sealed class QualityForm : Form
     {
         var s = SugarcaneFlowSettings.Current;
 
-        void Set(ChipLabel chip, string text, bool warn)
+        // live = đang lấy được ngưỡng mới nhất → tô xanh nổi bật; warn = chưa có / chưa cập nhật → cam.
+        void Set(ChipLabel chip, string text, bool warn, bool live = false)
         {
             chip.Text = text;
-            chip.ForeColor = warn ? AgrisTheme.Warning : AgrisTheme.TextSecondary;
-            chip.ChipBackColor = warn ? AgrisTheme.WarningSoft : AgrisTheme.SurfaceMuted;
-            chip.ChipBorderColor = warn ? Color.FromArgb(240, 214, 160) : AgrisTheme.Border;
+            chip.ForeColor = warn ? AgrisTheme.Warning : live ? AgrisTheme.Success : AgrisTheme.TextSecondary;
+            chip.ChipBackColor = warn ? AgrisTheme.WarningSoft : live ? AgrisTheme.SuccessSoft : AgrisTheme.SurfaceMuted;
+            chip.ChipBorderColor = warn ? Color.FromArgb(240, 214, 160) : live ? Color.FromArgb(150, 205, 170) : AgrisTheme.Border;
             chip.Invalidate();
             _ruleTip.SetToolTip(chip, text);
         }
@@ -697,12 +772,18 @@ public sealed class QualityForm : Form
             ? Loc.T("quality.rule_min", min.ToString("N2"))
             : Loc.T("quality.rule_min_none"), s.MinSampleKg is null);
         Set(_chipRuleMax, Loc.T("quality.rule_max"), false);
+        // Lấy bản mới thất bại (đang dùng số cũ) → thẻ màu cảnh báo + ghi chú "chưa cập nhật".
+        var stale = PortalScaleRules.IsLoaded && PortalScaleRules.LastError is not null;
+        // Như Fibre ở CCS: ghi giờ lấy thành công gần nhất để người đo biết ngưỡng có đang được cập nhật (mỗi 3s).
+        var updatedNote = PortalScaleRules.LoadedAt is { } at ? " · " + Loc.T("quality.rule_updated_at", at.ToString("HH:mm:ss")) : string.Empty;
+        var staleNote = (stale ? " · " + Loc.T("quality.rule_stale") : string.Empty) + updatedNote;
         Set(_chipRuleThreshold, !s.PortalRulesLoaded
                 ? Loc.T("quality.rule_threshold_not_loaded")
                 : s.ImpurityThresholdPercent is { } t
-                    ? Loc.T("quality.rule_threshold", t.ToString("N2"))
+                    ? Loc.T("quality.rule_threshold", t.ToString("N2")) + staleNote
                     : Loc.T("quality.rule_threshold_none"),
-            !s.PortalRulesLoaded || s.ImpurityThresholdPercent is null);
+            !s.PortalRulesLoaded || s.ImpurityThresholdPercent is null || stale,
+            live: s.PortalRulesLoaded && s.ImpurityThresholdPercent is not null && !stale);
     }
 
     /// <summary>Một hàng control chia bề ngang theo phần trăm; nút giãn đầy ô.</summary>
@@ -778,17 +859,21 @@ public sealed class QualityForm : Form
             Font = AgrisTheme.Body(9.5F, FontStyle.Bold), ForeColor = AgrisTheme.TextSecondary,
             Margin = new Padding(0, 9, 8, 0)
         };
-        _dtpHistDate.Value = DateTime.Today;
-        _dtpHistDate.MaxDate = DateTime.Today.AddDays(1);
+        _dtpHistDate.Value = VnTime.Today;
+        _dtpHistDate.MaxDate = VnTime.Today.AddDays(1);
         _dtpHistDate.Margin = new Padding(0, 4, 8, 0);
         _btnHistToday.Margin = new Padding(0, 2, 0, 0);
         _btnHistToday.MaximumSize = new Size(100, 36);
-        _btnHistToday.Click += (_, _) => _dtpHistDate.Value = DateTime.Today;
+        _btnHistToday.Click += (_, _) => _dtpHistDate.Value = VnTime.Today;
 
         _btnExpandGrid.Margin = new Padding(16, 0, 0, 0);
         _btnExpandGrid.Click += (_, _) => ToggleGridExpanded();
 
-        filterBar.Controls.AddRange([lblDate, _dtpHistDate, _btnHistToday, _btnExpandGrid]);
+        // Tìm kiếm + lọc theo cột (bấm tiêu đề) như bảng Dữ liệu FRM / ERP — lọc trên toàn bộ mẫu trong ngày.
+        _sampleFilter = new GridListFilter<QualitySampleRow>(_grid, () => { _pager.Reset(); BindCurrentPage(); });
+        _sampleFilter.SearchBox.Margin = new Padding(12, 6, 0, 0);
+        filterBar.Controls.AddRange([lblDate, _dtpHistDate, _btnHistToday, _btnExpandGrid,
+            _sampleFilter.SearchBox, _sampleFilter.ClearButton, _sampleFilter.CountLabel]);
 
         // Đổi ngày đo → tải lại mẫu của đúng ngày đó
         _dtpHistDate.ValueChanged += async (_, _) => { _pager.Reset(); await LoadAllSamplesAsync(); };
@@ -839,7 +924,7 @@ public sealed class QualityForm : Form
         var firstRow = _grid.FirstDisplayedScrollingRowIndex;
 
         // Chế độ thường: toàn bộ danh sách, cuộn dọc. Phóng to lưới: phân trang.
-        GridBuilder.BindAndColorize(_grid, _pager.Page(_allSamples), r => r.Status.ToString());
+        GridBuilder.BindAndColorize(_grid, _pager.Page(_sampleFilter?.Apply(_allSamples) ?? _allSamples), r => r.Status.ToString());
 
         if (firstRow > 0 && firstRow < _grid.Rows.Count)
         {
@@ -889,10 +974,13 @@ public sealed class QualityForm : Form
     {
         try
         {
-            var fromUtc = _dtpHistDate.Value.Date.ToUniversalTime();
-            var toUtc = _dtpHistDate.Value.Date.AddDays(1).ToUniversalTime();
+            var fromUtc = VnTime.ToUtc(_dtpHistDate.Value.Date);
+            var toUtc = VnTime.ToUtc(_dtpHistDate.Value.Date.AddDays(1));
 
-            _allSamples = await _tripDetail.ListAllSamplesAsync(_siteId, fromUtc, toUtc, _cts.Token);
+            // Màn Đo tạp chất: chỉ mẫu tạp chất (CCS xem ở màn Đo CCS).
+            _allSamples = (await _tripDetail.ListAllSamplesAsync(_siteId, fromUtc, toUtc, _cts.Token))
+                .Where(s => s.Type == QualitySampleType.Impurity)
+                .ToList();
             BindCurrentPage();
         }
         catch (Exception ex)
@@ -922,6 +1010,27 @@ public sealed class QualityForm : Form
     /// Quét QR từ bên ngoài (event bus auto-navigate). Điền QR vào barcode + trigger scan.
     /// Reset trạng thái cũ trước để không dính dữ liệu chuyến trước.
     /// </summary>
+    /// <summary>Máy quét QR (số đăng tài) khi con trỏ không ở ô nhập mã: điền vào ô và tra như bấm Enter.</summary>
+    private async void OnQrScanned(string content)
+    {
+        _lstTripPopup.Visible = false;
+
+        // Đang đo dở (đã có số mẫu, chưa ghi kết quả) → không tự đổi sang xe khác, tránh mất số đã cân.
+        var measuring = _currentTripId is not null && !_reviewMode && !_impuritySaved
+            && _workflowStep != ImpurityWorkflowStep.WaitingForQr
+            && (_sampleBeforeKg is not null || _sampleAfterKg is not null);
+        if (_recordingImpurity || measuring)
+        {
+            _lblQrStatus.Text = "⚠ " + Loc.T("quality.scan_busy_finish_first", _txtPlate.Text, content);
+            _lblQrStatus.ForeColor = AgrisTheme.Warning;
+            return;
+        }
+
+        _lastQrContent = content;
+        _txtBarcode.Text = content;
+        await ScanQrAsync(content);
+    }
+
     internal async Task AutoScanQrAsync(string qrContent)
     {
         ResetWorkflow();
@@ -934,6 +1043,7 @@ public sealed class QualityForm : Form
     /// <param name="fromHistory">true = mở lại từ lưới lịch sử để xem/in → không hỏi đo lại.</param>
     private async Task ScanQrAsync(string qrContent, bool fromHistory = false)
     {
+        HideTripSuggestions();
         _lblQrStatus.Text = Loc.T("quality.scan_searching");
         _lblQrStatus.ForeColor = AgrisTheme.Info;
 
@@ -1006,12 +1116,12 @@ public sealed class QualityForm : Form
         RefreshRuleChips();
         if (!settings.PortalRulesLoaded)
         {
-            MessageBox.Show(this, Loc.T("scale_rules.not_loaded_msg", PortalScaleRules.LastError ?? "—"),
+            Helpers.AppMessageBox.Show(this, Loc.T("scale_rules.not_loaded_msg", PortalScaleRules.LastError ?? "—"),
                 Loc.T("scale_rules.not_loaded_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         else if (settings.ImpurityThresholdPercent is null)
         {
-            MessageBox.Show(this, Loc.T("quality.threshold_not_configured_scan_msg"),
+            Helpers.AppMessageBox.Show(this, Loc.T("quality.threshold_not_configured_scan_msg"),
                 Loc.T("quality.threshold_not_configured_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
@@ -1021,7 +1131,7 @@ public sealed class QualityForm : Form
         if (detail?.QualitySamples.FirstOrDefault(s =>
                 s.Type == Domain.Enums.QualitySampleType.Impurity && s.IsEffective) is { } effective)
         {
-            MessageBox.Show(this,
+            Helpers.AppMessageBox.Show(this,
                 Loc.T("quality.already_measured_block_msg", plate, effective.ImpurityPercent?.ToString("N4") ?? "—"),
                 Loc.T("quality.already_measured_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
@@ -1035,22 +1145,27 @@ public sealed class QualityForm : Form
                 .Select(w => (decimal?)w.NormalizedKg).FirstOrDefault();
             if (grossKg is { } kg && kg / 1000m > maxTon)
             {
-                MessageBox.Show(this, Loc.T("quality.over_mass_msg", plate, (kg / 1000m).ToString("N3"), maxTon.ToString("N3")),
+                Helpers.AppMessageBox.Show(this, Loc.T("quality.over_mass_msg", plate, (kg / 1000m).ToString("N3"), maxTon.ToString("N3")),
                     Loc.T("quality.over_mass_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
-        // 3. Cân mẫu mất kết nối
+        // 3. Cân mẫu mất kết nối — TẠM TẮT: chưa nối cân mẫu tạp chất thật, popup này hiện mỗi lần chọn xe.
+        //    Bật lại khi có cân: appsettings "SugarcaneFlow:Quality:WarnScaleDisconnected": true.
+        //    (Số cân vẫn kiểm tra khi Xác nhận — không có tín hiệu thì không chốt được.)
+        var warnDisconnected = Program.AppConfiguration?
+            .GetValue<bool?>("SugarcaneFlow:Quality:WarnScaleDisconnected") ?? false;
+        if (warnDisconnected)
         try
         {
             var view = await _presenter.ReadSampleScaleAsync(_sampleScaleId, _cts.Token);
             if (view.WeightKg is null || !view.SignalFresh)
-                MessageBox.Show(this, Loc.T("quality.scale_disconnected_msg"), Loc.T("quality.scale_disconnected_title"),
+                Helpers.AppMessageBox.Show(this, Loc.T("quality.scale_disconnected_msg"), Loc.T("quality.scale_disconnected_title"),
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            MessageBox.Show(this, Loc.T("quality.scale_disconnected_msg") + "\n\n" + ex.Message,
+            Helpers.AppMessageBox.Show(this, Loc.T("quality.scale_disconnected_msg") + "\n\n" + ex.Message,
                 Loc.T("quality.scale_disconnected_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
@@ -1074,14 +1189,14 @@ public sealed class QualityForm : Form
             var msgKey = settings.PortalRulesLoaded
                 ? "quality.threshold_not_configured_msg"
                 : "quality.threshold_not_loaded_msg";
-            return MessageBox.Show(this, Loc.T(msgKey, percent.ToString("N4")),
+            return Helpers.AppMessageBox.Show(this, Loc.T(msgKey, percent.ToString("N4")),
                 Loc.T("quality.threshold_not_configured_title"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning)
                 == DialogResult.Yes;
         }
 
         if (percent > threshold.Value)
         {
-            return MessageBox.Show(this,
+            return Helpers.AppMessageBox.Show(this,
                 Loc.T("quality.over_threshold_msg", _txtPlate.Text, percent.ToString("N4"), threshold.Value.ToString("N2")),
                 Loc.T("quality.over_threshold_title"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
                 MessageBoxDefaultButton.Button2) == DialogResult.Yes;
@@ -1122,6 +1237,8 @@ public sealed class QualityForm : Form
     private void ResetSlotTracking()
     {
         _reviewMode = false;
+        _impuritySaved = false;
+        _impurityFirstPrintPending = false;
         Array.Clear(_slotManual);
         _manualForNext = false;
         _lastCapturedKg = null;
@@ -1137,12 +1254,10 @@ public sealed class QualityForm : Form
     private void RefreshSlots()
     {
         var auto = _chkAutoCapture.Checked;
-        var canAdjust = !_reviewMode && _currentTripId is not null && _adjustedWeighing is null
-                        && _sampleBeforeKg is not null && _sampleAfterKg is not null
-                        && _workflowStep is ImpurityWorkflowStep.ReadyToRecord or ImpurityWorkflowStep.Adjusting;
 
         void Render(WeighingSlotCard card, int n, decimal? kg)
         {
+            var canAdjust = CanAdjustSlot(n);
             var activeNow = !_reviewMode && (NextWeighingNumber == n || (NextWeighingNumber == 3 && _adjustTarget == n));
             string? tag = null;
             Color? tagColor = null;
@@ -1161,7 +1276,7 @@ public sealed class QualityForm : Form
             }
             else if (kg is { } v)
             {
-                card.SetContent(canAdjust && _workflowStep == ImpurityWorkflowStep.ReadyToRecord ? WeighingSlotState.Done : WeighingSlotState.Final,
+                card.SetContent(canAdjust ? WeighingSlotState.Done : WeighingSlotState.Final,
                     $"{v:N2} kg",
                     _reviewMode ? Loc.T("quality.slot_status_review")
                         : canAdjust ? Loc.T("quality.slot_status_click_adjust")
@@ -1180,9 +1295,32 @@ public sealed class QualityForm : Form
         Render(_slot2, 2, _sampleAfterKg);
     }
 
+    /// <summary>Tên lần cân: 1 = Cân mẫu, 2 = Cân kết quả.</summary>
+    private static string SlotName(int n)
+        => Loc.T(n == 1 ? "quality.slot_name_sample" : "quality.slot_name_result");
+
     /// <summary>
-    /// Bấm vào ô lần cân. Đủ 2 lần + còn lượt → điều chỉnh ô đó (lần cân thứ 3, hỏi xác nhận).
-    /// Đang điều chỉnh → đổi sang ô kia. Ô đang cân / chưa tới lượt → chỉ nhắc thao tác.
+    /// Quy tắc sửa (cân mẫu + cân kết quả tối đa 3 lần, chỉ sửa MỘT lần):
+    /// - Cân mẫu: xác nhận lần 1, được SỬA một lần — CHỈ khi chưa cân kết quả.
+    /// - Cân kết quả: xác nhận; đã cân kết quả thì chỉ được sửa cân kết quả (một lần, nếu cân mẫu chưa bị sửa).
+    /// </summary>
+    private bool CanAdjustSlot(int n)
+    {
+        if (_reviewMode || _currentTripId is null || _adjustedWeighing is not null || _weighingCount >= 3) return false;
+        return n switch
+        {
+            // Cân mẫu: chỉ sửa khi đang chờ cân kết quả (đã có cân kết quả thì khoá cân mẫu).
+            1 => _sampleBeforeKg is not null && _sampleAfterKg is null
+                 && _workflowStep == ImpurityWorkflowStep.WaitingSampleAfter,
+            // Cân kết quả: chỉ sửa sau khi đã có, và cân mẫu chưa sửa (đã kiểm _adjustedWeighing ở trên).
+            2 => _sampleAfterKg is not null && _workflowStep == ImpurityWorkflowStep.ReadyToRecord,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Bấm vào ô lần cân. Còn được sửa → hỏi xác nhận rồi cân lại ô đó (tính một lần cân).
+    /// Đang sửa → bấm lại ô đang sửa để bỏ. Ô đang cân / chưa tới lượt → chỉ nhắc thao tác.
     /// </summary>
     private void OnSlotClicked(int n)
     {
@@ -1190,30 +1328,35 @@ public sealed class QualityForm : Form
 
         if (_workflowStep == ImpurityWorkflowStep.Adjusting)
         {
-            if (_adjustTarget != n) { _adjustTarget = n; SetWorkflowStep(ImpurityWorkflowStep.Adjusting); }
-            else
+            if (_adjustTarget == n)
             {
-                // Bấm lại ô đang điều chỉnh = bỏ điều chỉnh, giữ nguyên 2 số cũ (chưa tính lượt thứ 3).
+                // Bấm lại ô đang sửa = bỏ sửa, giữ nguyên số cũ (chưa tính thêm lần cân).
                 _adjustTarget = null;
-                FinalizeAutoWeigh();
+                if (_sampleAfterKg is null) SetWorkflowStep(ImpurityWorkflowStep.WaitingSampleAfter);
+                else FinalizeAutoWeigh();
+            }
+            else if (CanAdjustTargetWhileAdjusting(n))
+            {
+                _adjustTarget = n;
+                SetWorkflowStep(ImpurityWorkflowStep.Adjusting);
             }
             return;
         }
 
-        if (_workflowStep == ImpurityWorkflowStep.ReadyToRecord && _adjustedWeighing is null
-            && _sampleBeforeKg is not null && _sampleAfterKg is not null)
+        if (CanAdjustSlot(n))
         {
             var oldKg = n == 1 ? _sampleBeforeKg : _sampleAfterKg;
             var ok = Helpers.DigiScalePopup.ShowConfirm(this,
-                Loc.T("quality.adjust_confirm_title", n).ToUpper(),
-                Loc.T("quality.adjust_confirm_yes", n),
+                Loc.T("quality.adjust_confirm_title", SlotName(n)).ToUpper(),
+                Loc.T("quality.adjust_confirm_yes", SlotName(n)),
                 Loc.T("common.cancel"),
                 [
                     (Loc.T("field.plate"), _txtPlate.Text),
-                    (Loc.T("quality.slot1_title"), $"{_sampleBeforeKg:N2} kg"),
-                    (Loc.T("quality.slot2_title"), $"{_sampleAfterKg:N2} kg"),
+                    (Loc.T("quality.slot1_title"), _sampleBeforeKg is { } b ? $"{b:N2} kg" : "—"),
+                    (Loc.T("quality.slot2_title"), _sampleAfterKg is { } a ? $"{a:N2} kg" : "—"),
                 ],
-                Loc.T("quality.adjust_confirm_msg", n, oldKg?.ToString("N2") ?? "—"));
+                Loc.T(n == 1 ? "quality.adjust_confirm_msg_sample" : "quality.adjust_confirm_msg_result",
+                    oldKg?.ToString("N2") ?? "—"));
             if (!ok) return;
             StartAdjustment(n);
             return;
@@ -1221,7 +1364,7 @@ public sealed class QualityForm : Form
 
         if (NextWeighingNumber != n && NextWeighingNumber is 1 or 2)
         {
-            _lblStableProgress.Text = Loc.T("quality.slot_hint_order", NextWeighingNumber);
+            _lblStableProgress.Text = Loc.T("quality.slot_hint_order", SlotName(NextWeighingNumber));
             _lblStableProgress.ForeColor = AgrisTheme.Warning;
         }
     }
@@ -1248,7 +1391,7 @@ public sealed class QualityForm : Form
             ImpurityWorkflowStep.WaitingSampleAfter =>
                 (Loc.T("quality.step_weigh2", _sampleBeforeKg?.ToString("N2") ?? "—"), AgrisTheme.Info),
             ImpurityWorkflowStep.Adjusting =>
-                (Loc.T("quality.step_adjust", _adjustTarget ?? 0), AgrisTheme.Warning),
+                (Loc.T("quality.step_adjust", SlotName(_adjustTarget ?? 1)), AgrisTheme.Warning),
             ImpurityWorkflowStep.ReadyToRecord =>
                 (Loc.T("quality.workflow_ready"), AgrisTheme.Success),
             _ => ("", AgrisTheme.TextMuted)
@@ -1258,8 +1401,8 @@ public sealed class QualityForm : Form
         var waiting = NextWeighingNumber > 0;
         _btnConfirmWeighing.Enabled = waiting;
         _btnConfirmWeighing.Text = NextWeighingNumber == 3
-            ? Loc.T("quality.btn_confirm_adjust", _adjustTarget ?? 0)
-            : Loc.T("quality.btn_confirm_weighing", waiting ? NextWeighingNumber : Math.Min(_weighingCount + 1, 2));
+            ? Loc.T("quality.btn_confirm_adjust", SlotName(_adjustTarget ?? 1))
+            : Loc.T("quality.btn_confirm_weighing", SlotName(waiting ? NextWeighingNumber : (_sampleBeforeKg is null ? 1 : 2)));
         _btnAdjust.Enabled = false;
         _btnManualEntry.Enabled = waiting && _currentUser.HasPermission(
             RecordImpuritySampleHandler.ManualEntryPermission, _siteId);
@@ -1300,7 +1443,7 @@ public sealed class QualityForm : Form
 
         using var dlg = new Form
         {
-            Text = Loc.T("quality.manual_one_title", n),
+            Text = Loc.T("quality.manual_one_title", SlotName(n == 3 ? _adjustTarget ?? 1 : n)),
             Size = new Size(460, 230),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
@@ -1315,7 +1458,7 @@ public sealed class QualityForm : Form
             Dock = DockStyle.Fill, Font = AgrisTheme.Body(14F, FontStyle.Bold),
             ThousandsSeparator = true
         };
-        FormLayout.AddField(table, Loc.T("quality.manual_one_field", n), num);
+        FormLayout.AddField(table, Loc.T("quality.manual_one_field", SlotName(n == 3 ? _adjustTarget ?? 1 : n)), num);
         var ok = GridBuilder.PrimaryButton(Loc.T("quality.manual_one_ok"), new Size(160, 40));
         ok.DialogResult = DialogResult.OK;
         var cancel = GridBuilder.SecondaryButton(Loc.T("common.cancel"), new Size(100, 40));
@@ -1329,7 +1472,7 @@ public sealed class QualityForm : Form
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
         if (num.Value <= 0)
         {
-            MessageBox.Show(this, Loc.T("quality.weighing_no_value"), Loc.T("common.warning"),
+            Helpers.AppMessageBox.Show(this, Loc.T("quality.weighing_no_value"), Loc.T("common.warning"),
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -1351,7 +1494,7 @@ public sealed class QualityForm : Form
         _lblScaleReading.Text = $"{num.Value:N2} kg";
         _lblScaleReading.ForeColor = AgrisTheme.Warning;
 
-        _lblStableProgress.Text = Loc.T("quality.manual_one_set", num.Value.ToString("N2"), n);
+        _lblStableProgress.Text = Loc.T("quality.manual_one_set", num.Value.ToString("N2"), SlotName(n == 3 ? _adjustTarget ?? 1 : n));
         _lblStableProgress.ForeColor = AgrisTheme.Warning;
         _btnConfirmWeighing.Focus();
     }
@@ -1389,7 +1532,7 @@ public sealed class QualityForm : Form
 
         if (kg is not { } value || value <= 0)
         {
-            MessageBox.Show(this, Loc.T("quality.weighing_no_value"), Loc.T("common.warning"),
+            Helpers.AppMessageBox.Show(this, Loc.T("quality.weighing_no_value"), Loc.T("common.warning"),
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -1408,7 +1551,7 @@ public sealed class QualityForm : Form
         // Lần 1 (hoặc điều chỉnh lần 1): không dưới khối lượng mẫu tối thiểu (Portal; chưa có thì không kiểm).
         if (target == 1 && minSampleKg is { } minKg && value < minKg)
         {
-            MessageBox.Show(this,
+            Helpers.AppMessageBox.Show(this,
                 Loc.T("quality.sample_below_min_msg", value.ToString("N2"), minKg.ToString("N2")),
                 Loc.T("quality.sample_below_min_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -1417,7 +1560,7 @@ public sealed class QualityForm : Form
         // Lần 2 phải nhỏ hơn lần 1 (áp dụng cả khi điều chỉnh lần 1 hoặc lần 2).
         if (before is { } b && after is { } a && a >= b)
         {
-            MessageBox.Show(this,
+            Helpers.AppMessageBox.Show(this,
                 Loc.T("quality.weighing_second_not_less", a.ToString("N2"), b.ToString("N2")),
                 Loc.T("quality.invalid_measurement_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -1458,9 +1601,13 @@ public sealed class QualityForm : Form
     /// Lần cân thứ 3: điều chỉnh lần 1 hoặc lần 2 (chỉ một trong hai, chỉ một lần) — mở từ thao tác bấm vào ô lần cân.
     /// Cân phải đổi số (lấy mẫu ra / đặt lại) mới tự chốt, không chốt lại đúng số cũ.
     /// </summary>
+    /// <summary>Đang sửa ô này mà bấm sang ô kia: cân kết quả chỉ chuyển sang được khi đã có số cân kết quả.</summary>
+    private bool CanAdjustTargetWhileAdjusting(int n)
+        => n == 1 ? _sampleBeforeKg is not null && _sampleAfterKg is null : _sampleAfterKg is not null;
+
     private void StartAdjustment(int target)
     {
-        if (_weighingCount != 2 || _adjustedWeighing is not null || target is not (1 or 2)) return;
+        if (!CanAdjustSlot(target)) return;
 
         _adjustTarget = target;
         _btnRecordImpurity.Enabled = false;
@@ -1522,7 +1669,7 @@ public sealed class QualityForm : Form
         if (secs < StableThresholdSeconds)
         {
             _lblStableProgress.Text = Loc.T("quality.auto_countdown",
-                (StableThresholdSeconds - secs).ToString("F1"), NextWeighingNumber == 3 ? _adjustTarget ?? 0 : NextWeighingNumber);
+                (StableThresholdSeconds - secs).ToString("F1"), SlotName(NextWeighingNumber == 3 ? _adjustTarget ?? 1 : NextWeighingNumber));
             _lblStableProgress.ForeColor = AgrisTheme.Info;
             return;
         }
@@ -1562,6 +1709,135 @@ public sealed class QualityForm : Form
         }
     }
 
+    /// <summary>Dòng kết quả dự kiến + so với ngưỡng tạp chất MỚI NHẤT (gọi lại khi Portal đổi ngưỡng).</summary>
+    private void ShowImpurityPreview(decimal? impurityPercent)
+    {
+        if (impurityPercent is not { } pct) return;
+        var threshold = SugarcaneFlowSettings.Current.ImpurityThresholdPercent;
+        var overThreshold = threshold is { } t && pct > t;
+
+        _lblPreview.Text = Loc.T("quality.preview_result", $"{pct:N4}")
+            + " · " + Loc.T("quality.weighing_count_info", _weighingCount, 3)
+            + (overThreshold ? " · " + Loc.T("quality.preview_over_threshold", threshold!.Value.ToString("N2")) : string.Empty);
+        _lblPreview.ForeColor = overThreshold ? AgrisTheme.Warning : AgrisTheme.Success;
+    }
+
+    /// <summary>Tạp chất dự kiến của 2 lần cân đang có (null nếu chưa đủ / không hợp lệ).</summary>
+    private decimal? CurrentImpurityPercent()
+    {
+        if (_sampleBeforeKg is not { } before || _sampleAfterKg is not { } after) return null;
+        var calc = ImpurityCalculator.Calculate(before, after, SugarcaneFlowSettings.Current.MinSampleKg ?? 0m);
+        return calc.IsValid ? calc.ImpurityPercent : null;
+    }
+
+    // ── Quy tắc cân (ngưỡng tạp chất, mẫu tối thiểu) làm mới mỗi 3s như Fibre ở màn CCS ──
+    private const int RULES_REFRESH_MS = 3_000;
+    private readonly System.Windows.Forms.Timer _rulesTimer = new() { Interval = RULES_REFRESH_MS };
+    private bool _rulesBusy;
+    private bool _recordingImpurity;
+    /// <summary>Kết quả tạp chất của chuyến đang mở đã ghi xong (không còn số đo dở).</summary>
+    private bool _impuritySaved;
+    /// <summary>Vừa ghi kết quả, phiếu chưa hiện lần nào → lần in kế tiếp là bản in đầu.</summary>
+    private bool _impurityFirstPrintPending;
+
+    /// <summary>(Ngưỡng tạp chất, mẫu tối thiểu) đang áp dụng — để biết Portal vừa đổi.</summary>
+    private (decimal? Threshold, decimal? MinKg) RulesSnapshot()
+        => (SugarcaneFlowSettings.Current.ImpurityThresholdPercent, SugarcaneFlowSettings.Current.MinSampleKg);
+
+    /// <summary>
+    /// Kéo Quy tắc cân từ DigiScale Portal. Đổi ngưỡng → cập nhật thẻ quy tắc + dòng kết quả dự kiến, báo cho người đo.
+    /// Trả ngưỡng cũ nếu vừa đổi (null nếu không đổi).
+    /// </summary>
+    private async Task<(bool Changed, (decimal? Threshold, decimal? MinKg) Old)> RefreshRulesAsync()
+    {
+        var before = RulesSnapshot();
+        try { await PortalScaleRules.RefreshAsync(_cts.Token); }
+        catch (OperationCanceledException) { return (false, before); }
+
+        var after = RulesSnapshot();
+        RefreshRuleChips();
+        var changed = PortalScaleRules.IsLoaded && before != after;
+        if (changed)
+        {
+            ShowImpurityPreview(CurrentImpurityPercent());
+            _lblStableProgress.Text = Loc.T("quality.rules_changed",
+                before.Threshold?.ToString("N2") ?? "—", after.Threshold?.ToString("N2") ?? "—");
+            _lblStableProgress.ForeColor = AgrisTheme.Warning;
+        }
+        return (changed, before);
+    }
+
+    private async Task RulesTickAsync()
+    {
+        if (_rulesBusy || _recordingImpurity || IsDisposed) return;
+        _rulesBusy = true;
+        try
+        {
+            await RefreshRulesAsync();
+            NotifyRulesTransition(); // _rulesBusy vẫn bật trong lúc popup mở → không chồng popup mỗi 3s
+        }
+        catch (ObjectDisposedException) { }
+        finally { _rulesBusy = false; }
+    }
+
+    /// <summary>Lần trước lấy quy tắc thành công — để báo lỗi NGAY khi vừa mất (một lần, không lặp mỗi 3s).</summary>
+    private bool? _rulesLive;
+
+    /// <summary>
+    /// Như Fibre ở màn CCS: vừa không lấy được ngưỡng tạp chất mới nhất → popup lỗi một lần + dòng trạng thái;
+    /// lấy lại được → báo đã cập nhật lại trên dòng trạng thái (không popup).
+    /// </summary>
+    private void NotifyRulesTransition()
+    {
+        var live = PortalScaleRules.LastError is null && SugarcaneFlowSettings.Current.PortalRulesLoaded;
+        var was = _rulesLive;
+        _rulesLive = live;
+
+        if (!live && was is not false)
+        {
+            var friendly = Helpers.DigiScaleErrors.Describe(PortalScaleRules.LastError ?? Loc.T("quality.rule_threshold_not_loaded"));
+            _lblStableProgress.Text = "⚠ " + Loc.T("quality.rules_lost_title");
+            _lblStableProgress.ForeColor = AgrisTheme.Danger;
+            Helpers.DigiScalePopup.ShowAlert(this, Helpers.AlertKind.Error, Loc.T("quality.rules_lost_title"),
+                Loc.T("quality.rules_lost_reason", friendly.Reason,
+                    SugarcaneFlowSettings.Current.ImpurityThresholdPercent?.ToString("N2") ?? "—",
+                    PortalScaleRules.LoadedAt?.ToString("dd/MM/yyyy HH:mm:ss") ?? "—"),
+                Loc.T("quality.rules_lost_action"));
+        }
+        else if (live && was is false)
+        {
+            _lblStableProgress.Text = "✓ " + Loc.T("quality.rules_recovered",
+                SugarcaneFlowSettings.Current.ImpurityThresholdPercent?.ToString("N2") ?? "—",
+                PortalScaleRules.LoadedAt?.ToString("HH:mm:ss") ?? "—");
+            _lblStableProgress.ForeColor = AgrisTheme.Success;
+        }
+    }
+
+    /// <summary>
+    /// Ngay trước khi ghi: lấy lại ngưỡng mới nhất. Vừa đổi → dừng để xem lại kết quả theo ngưỡng mới.
+    /// Không lấy được bản mới → hỏi có ghi theo ngưỡng cũ không (mặc định Không).
+    /// </summary>
+    private async Task<bool> EnsureLatestRulesAsync()
+    {
+        var (changed, old) = await RefreshRulesAsync();
+        if (changed)
+        {
+            Helpers.DigiScalePopup.ShowAlert(this, Helpers.AlertKind.Warning, Loc.T("quality.rules_changed_title"),
+                reason: Loc.T("quality.rules_changed_before_record",
+                    old.Threshold?.ToString("N2") ?? "—",
+                    SugarcaneFlowSettings.Current.ImpurityThresholdPercent?.ToString("N2") ?? "—"));
+            return false;
+        }
+
+        if (PortalScaleRules.LastError is null) return true;
+        return Helpers.DigiScalePopup.ShowConfirm(this, Loc.T("quality.rules_stale_title"),
+            Loc.T("common.yes"), Loc.T("common.no"),
+            message: Loc.T("quality.rules_stale_msg",
+                SugarcaneFlowSettings.Current.ImpurityThresholdPercent?.ToString("N2") ?? "—",
+                PortalScaleRules.LoadedAt?.ToString("dd/MM/yyyy HH:mm") ?? "—"),
+            defaultNo: true);
+    }
+
     private void FinalizeAutoWeigh()
     {
         if (_sampleBeforeKg is null || _sampleAfterKg is null) return;
@@ -1577,13 +1853,7 @@ public sealed class QualityForm : Form
             return;
         }
 
-        var threshold = SugarcaneFlowSettings.Current.ImpurityThresholdPercent;
-        var overThreshold = threshold is { } t && calculation.ImpurityPercent > t;
-
-        _lblPreview.Text = Loc.T("quality.preview_result", $"{calculation.ImpurityPercent:N4}")
-            + " · " + Loc.T("quality.weighing_count_info", _weighingCount, 3)
-            + (overThreshold ? " · " + Loc.T("quality.preview_over_threshold", threshold!.Value.ToString("N2")) : string.Empty);
-        _lblPreview.ForeColor = overThreshold ? AgrisTheme.Warning : AgrisTheme.Success;
+        ShowImpurityPreview(calculation.ImpurityPercent);
 
         _scaleTimer.Stop();
         _btnRecordImpurity.Enabled = true;
@@ -1598,9 +1868,12 @@ public sealed class QualityForm : Form
     {
         if (_currentTripId is null || _sampleBeforeKg is null || _sampleAfterKg is null) return;
 
+        // Ngưỡng tạp chất phải là bản mới nhất trên DigiScale (đổi → dừng xem lại; mất kết nối → hỏi).
+        if (!await EnsureLatestRulesAsync()) return;
         if (!ConfirmImpurityThreshold(_sampleBeforeKg.Value, _sampleAfterKg.Value)) return;
 
         _btnRecordImpurity.Enabled = false;
+        _recordingImpurity = true; // không làm mới quy tắc giữa lúc ghi
         try
         {
             // Lý do lưu kèm: ai duyệt nhập tay, lần cân nào được điều chỉnh (số cũ → số mới).
@@ -1610,7 +1883,7 @@ public sealed class QualityForm : Form
             if (_adjustedWeighing is { } adj)
             {
                 var newKg = adj == 1 ? _sampleBeforeKg : _sampleAfterKg;
-                notes.Add(Loc.T("quality.reason_adjusted", adj,
+                notes.Add(Loc.T("quality.reason_adjusted", SlotName(adj),
                     _adjustOldKg?.ToString("N2") ?? "—", newKg?.ToString("N2") ?? "—"));
             }
 
@@ -1633,6 +1906,10 @@ public sealed class QualityForm : Form
         {
             ShowError(Loc.T("quality.record_error"), ex);
             _btnRecordImpurity.Enabled = true;
+        }
+        finally
+        {
+            _recordingImpurity = false;
         }
     }
 
@@ -1664,11 +1941,14 @@ public sealed class QualityForm : Form
     {
         if (!result.IsSuccess)
         {
-            MessageBox.Show(result.FailureReason, Loc.T("quality.record_failed_title"),
+            Helpers.AppMessageBox.Show(result.FailureReason, Loc.T("quality.record_failed_title"),
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             _btnRecordImpurity.Enabled = true;
             return;
         }
+
+        _impuritySaved = true; // đã ghi → quét xe kế tiếp được ngay
+        _impurityFirstPrintPending = true; // lần hiện phiếu kế tiếp là bản in đầu, không phải in lại
 
         var warning = result.BelowMinimumSampleWarning
             ? Loc.T("quality.record_ok_warning")
@@ -1677,10 +1957,11 @@ public sealed class QualityForm : Form
         _ = LoadSamplesAsync();
 
         // Push phiếu tạp chất lên DigiScale + popup
+        var pushedOk = false;
         try
         {
             // Hiện trạng thái đang đẩy
-            _lblWorkflowStatus.Text = "⏳ Đang đẩy tạp chất lên DigiScale...";
+            _lblWorkflowStatus.Text = "⏳ Đang đẩy tạp chất lên FRM...";
             _lblWorkflowStatus.ForeColor = AgrisTheme.Info;
             System.Windows.Forms.Application.DoEvents(); // Refresh UI ngay
 
@@ -1697,13 +1978,14 @@ public sealed class QualityForm : Form
             // Lần đo = số lần đo tạp chất của chuyến (tối đa 3) — trước đây luôn gửi "1".
             var lanDo = (result.MeasurementNumber ?? 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
             var pushResult = await _presenter.PushTapChatAsync(
-                lenhDonId, maLenhDon, "1", lanDo, DateTime.Now,
-                beforeKg.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                afterKg.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                (result.ImpurityPercent ?? 0m).ToString("G", System.Globalization.CultureInfo.InvariantCulture),
+                lenhDonId, maLenhDon, "1", lanDo, VnTime.Now,
+                Num.S2(beforeKg),
+                Num.S2(afterKg),
+                Num.S2(result.ImpurityPercent ?? 0m),
                 lenhDonBu, _cts.Token);
 
             var digiOk = pushResult.IsSuccess;
+            pushedOk = digiOk;
             var debugInfo = $"BU={lenhDonBu}, LenhDon={lenhDonId}, MaLD={maLenhDon}";
             Helpers.DigiScalePopup.Show(this,
                 "GHI TẠP CHẤT THÀNH CÔNG",
@@ -1731,6 +2013,17 @@ public sealed class QualityForm : Form
                 SourceForm = "QualityForm"
             });
         }
+
+        // Hoàn thành + đã đẩy DigiScale → hiện phiếu tạp chất để in (như Đăng tài).
+        if (pushedOk)
+        {
+            try { PrintImpurityTicket(); }
+            catch (Exception printEx)
+            {
+                _lblWorkflowStatus.Text = "⚠ " + Loc.T("weigh.auto_print_failed", printEx.Message);
+                _lblWorkflowStatus.ForeColor = AgrisTheme.Warning;
+            }
+        }
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -1741,7 +2034,7 @@ public sealed class QualityForm : Form
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show(Loc.T("quality.no_trip"), Loc.T("quality.no_trip_title"),
+            Helpers.AppMessageBox.Show(Loc.T("quality.no_trip"), Loc.T("quality.no_trip_title"),
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -1760,12 +2053,12 @@ public sealed class QualityForm : Form
 
             if (!result.IsSuccess)
             {
-                MessageBox.Show(result.FailureReason, Loc.T("quality.ccs_failed_title"),
+                Helpers.AppMessageBox.Show(result.FailureReason, Loc.T("quality.ccs_failed_title"),
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            MessageBox.Show(Loc.T("quality.ccs_ok", result.Status),
+            Helpers.AppMessageBox.Show(Loc.T("quality.ccs_ok", result.Status),
                 Loc.T("quality.record_ok_title"), MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             await LoadSamplesAsync();
@@ -1784,21 +2077,11 @@ public sealed class QualityForm : Form
     //  Data loading
     // ═══════════════════════════════════════════════════════════
 
-    private async Task LoadSamplesAsync()
-    {
-        if (_currentTripId is null) return;
-
-        try
-        {
-            var detail = await _tripDetail.GetAsync(_currentTripId.Value, _cts.Token);
-            // Chuyển sang xem mẫu của một chuyến → tập dữ liệu khác, về trang 1.
-            ShowSamples(detail?.QualitySamples ?? []);
-        }
-        catch (Exception ex)
-        {
-            ShowError(Loc.T("quality.load_error"), ex);
-        }
-    }
+    /// <summary>
+    /// Lịch sử mẫu = MỌI mẫu tạp chất đã đo trong NGÀY ĐO đang chọn (không thu về một chuyến).
+    /// Gọi sau khi chọn xe / ghi kết quả để danh sách trong ngày luôn mới nhất.
+    /// </summary>
+    private Task LoadSamplesAsync() => LoadAllSamplesAsync();
 
     /// <summary>
     /// Click dòng trong lưới lịch sử mẫu → điền thông tin chuyến + số liệu lên form để xem / in lại phiếu.
@@ -1877,7 +2160,7 @@ public sealed class QualityForm : Form
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show(Loc.T("common.no_trip_continue"),
+            Helpers.AppMessageBox.Show(Loc.T("common.no_trip_continue"),
                 Loc.T("common.missing_info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -1955,44 +2238,37 @@ public sealed class QualityForm : Form
     //  Trip dropdown — chọn xe đang trong nhà máy
     // ═══════════════════════════════════════════════════════════
 
-    private async Task ShowTripDropdownAsync()
+    /// <param name="query">Chuỗi đang gõ để lọc (null = nút ▼, hiện tất cả).</param>
+    /// <param name="focus">false = gợi ý khi gõ, con trỏ ở lại ô nhập.</param>
+    private async Task ShowTripDropdownAsync(string? query = null, bool focus = true)
     {
+        var version = ++_suggestVersion;
         try
         {
             var filter = new TripRegistrationFilter { Tab = TripGridTab.InFactory };
             var trips = await _tripRegistrationQueries.ListAsync(_siteId, filter, _cts.Token);
-            _popupTrips = trips.ToArray();
-
-            if (_popupTrips.Length == 0) { _lstTripPopup.Visible = false; return; }
-
-            _lstTripPopup.Items.Clear();
-            foreach (var t in _popupTrips)
-                _lstTripPopup.Items.Add($"{t.Plate ?? "?",-15} | {t.TripNo,-25} | {t.CustomerOrSupplier ?? ""}");
-
-            var screenPos = _txtBarcode.PointToScreen(new Point(0, _txtBarcode.Height));
-            var formPos = FindForm()!.PointToClient(screenPos);
-            _lstTripPopup.Location = formPos;
-            _lstTripPopup.Width = Math.Max(_txtBarcode.Width + _btnTripDropdown.Width, 500);
-            _lstTripPopup.Height = Math.Min(_popupTrips.Length * 20 + 4, 300);
-
-            if (_lstTripPopup.Parent != FindForm())
-            {
-                FindForm()!.Controls.Add(_lstTripPopup);
-                _lstTripPopup.BringToFront();
-            }
-            _lstTripPopup.Visible = true;
-            _lstTripPopup.Focus();
+            if (version != _suggestVersion) return; // đã gõ tiếp / đã chọn xe trong lúc chờ
+            if (!focus && (!_txtBarcode.Focused || !_txtBarcode.Enabled)) return;
+            var rows = string.IsNullOrWhiteSpace(query) ? trips.ToArray() : TripPickerList.Filter(trips, query);
+            // Thẻ 2 dòng, ngay dưới khung nhập (xem TripPickerList).
+            if (_barcodeHost is not null) _tripPicker?.Show(_barcodeHost, rows, focus);
         }
         catch { _lstTripPopup.Visible = false; }
     }
 
+    private void HideTripSuggestions()
+    {
+        _suggestTimer.Stop();
+        _suggestVersion++;
+        _lstTripPopup.Visible = false;
+    }
+
     private void SelectTripFromPopup()
     {
-        var idx = _lstTripPopup.SelectedIndex;
+        var trip = _tripPicker?.Selected;
         _lstTripPopup.Visible = false;
-        if (idx < 0 || idx >= _popupTrips.Length) return;
+        if (trip is null) return;
 
-        var trip = _popupTrips[idx];
         _txtBarcode.Text = trip.TripNo;
         _lastQrContent = trip.TripNo;
         _ = ScanQrAsync(trip.TripNo);
@@ -2007,13 +2283,13 @@ public sealed class QualityForm : Form
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show("Chọn chuyến trước khi đẩy lại.", "Thiếu thông tin",
+            Helpers.AppMessageBox.Show("Chọn chuyến trước khi đẩy lại.", "Thiếu thông tin",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         // Lấy impurity data từ grid
-        decimal? beforeKg = null, afterKg = null;
+        decimal? beforeKg = null, afterKg = null, impurityPct = null;
         for (var i = 0; i < _grid.Rows.Count; i++)
         {
             if (_grid.Rows[i].DataBoundItem is not QualitySampleRow s) continue;
@@ -2022,6 +2298,7 @@ public sealed class QualityForm : Form
             {
                 beforeKg = s.SampleBeforeKg;
                 afterKg = s.SampleAfterKg;
+                impurityPct = s.ImpurityPercent;
                 break;
             }
         }
@@ -2037,7 +2314,7 @@ public sealed class QualityForm : Form
         var shipment = tripNo;
 
         _btnRetryDigi.Enabled = false;
-        _lblWorkflowStatus.Text = "⏳ Đang đẩy lại tạp chất lên DigiScale...";
+        _lblWorkflowStatus.Text = "⏳ Đang đẩy lại tạp chất lên FRM...";
         _lblWorkflowStatus.ForeColor = AgrisTheme.Info;
 
         try
@@ -2046,16 +2323,18 @@ public sealed class QualityForm : Form
             var pushResult = await _presenter.PushTapChatAsync(
                 _currentFrmLenhDonId ?? ld?.SourceKey ?? shipment,
                 _currentFrmMaLenhDon ?? ld?.MaLD ?? shipment,
-                "1", "1", DateTime.Now,
-                (beforeKg ?? 0m).ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                (afterKg ?? 0m).ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                Program.LoggedInUserName,
+                "1", "1", VnTime.Now,
+                Num.S2(beforeKg ?? 0m),
+                Num.S2(afterKg ?? 0m),
+                // Trước đây vị trí này gửi nhầm TÊN NGƯỜI DÙNG làm % tạp chất thực tế — gửi đúng % đã đo.
+                Num.S2(impurityPct ?? (beforeKg is > 0m && afterKg is { } a
+                    ? (beforeKg.Value - a) / beforeKg.Value * 100m : 0m)),
                 _currentFrmLenhDonBu ?? ld?.BusinessUnit,
                 _cts.Token);
 
             if (pushResult.IsSuccess)
             {
-                _lblWorkflowStatus.Text = $"✅ Đẩy DigiScale thành công cho {tripNo}";
+                _lblWorkflowStatus.Text = $"✅ Đã đẩy lên FRM cho {tripNo}";
                 _lblWorkflowStatus.ForeColor = AgrisTheme.Success;
                 Helpers.DigiScalePopup.Show(this,
                     "ĐẨY LẠI TẠP CHẤT THÀNH CÔNG",
@@ -2076,7 +2355,7 @@ public sealed class QualityForm : Form
         {
             _lblWorkflowStatus.Text = $"❌ Lỗi: {ex.Message}";
             _lblWorkflowStatus.ForeColor = AgrisTheme.Danger;
-            MessageBox.Show($"Lỗi đẩy lại DigiScale:\n{ex.Message}", "Lỗi",
+            Helpers.AppMessageBox.Show($"Lỗi đẩy lại FRM:\n{ex.Message}", "Lỗi",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
@@ -2089,7 +2368,7 @@ public sealed class QualityForm : Form
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show(Loc.T("quality.print_no_trip"),
+            Helpers.AppMessageBox.Show(Loc.T("quality.print_no_trip"),
                 Loc.T("quality.no_trip_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -2106,6 +2385,7 @@ public sealed class QualityForm : Form
         decimal? beforeKg = null, afterKg = null, impurityPct = null;
         decimal? ccsValue = null;
         DateTimeOffset? sampleTime = null;
+        var hasRecordedResult = false;
 
         for (var i = 0; i < _grid.Rows.Count; i++)
         {
@@ -2114,6 +2394,7 @@ public sealed class QualityForm : Form
 
             if (sample.Type == Domain.Enums.QualitySampleType.Impurity && sample.IsEffective)
             {
+                hasRecordedResult = true;
                 beforeKg = sample.SampleBeforeKg;
                 afterKg = sample.SampleAfterKg;
                 impurityPct = sample.ImpurityPercent;
@@ -2143,11 +2424,14 @@ public sealed class QualityForm : Form
             CaneForm: Printing.PrintText.CaneForm(ldPrint) ?? Clean(commodity) ?? Clean(sugarcaneType),
             Variety: Clean(variety) ?? ldPrint?.GiongMiaName,
             BeforeKg: beforeKg, AfterKg: afterKg, ImpurityPct: impurityPct, Ccs: ccsValue,
-            SampleTime: sampleTime, PrintedAt: DateTime.Now);
+            SampleTime: sampleTime, PrintedAt: VnTime.Now,
+            // Kết quả đã ghi trước đó và đây không phải lần hiện phiếu đầu ngay sau khi ghi → BẢN IN LẠI (như Đăng tài).
+            IsReprint: hasRecordedResult && !_impurityFirstPrintPending);
+        _impurityFirstPrintPending = false;
 
         using var previewForm = new Form
         {
-            Text = Loc.T("quality.print_form_title", tripNo),
+            Text = WeighTicketPreviewForm.ReprintTitle(Loc.T("quality.print_form_title", tripNo), ticket.IsReprint),
             ClientSize = new Size(720, 780),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
@@ -2182,16 +2466,17 @@ public sealed class QualityForm : Form
             {
                 // In đúng mẫu đang xem trước (cùng hàm vẽ).
                 using var printDoc = new System.Drawing.Printing.PrintDocument();
+                if (Printing.ThermalPrint.TryPrint(previewForm, (g, area) => DrawImpurityTicket(g, area, ticket),
+                        Printing.ThermalPrint.LIST_DESIGN_WIDTH)) return;
                 printDoc.DocumentName = previewForm.Text;
-                printDoc.PrintPage += (_, pe) => DrawImpurityTicket(pe.Graphics!,
-                    new Rectangle(pe.MarginBounds.Left, pe.MarginBounds.Top, pe.MarginBounds.Width, Math.Min(pe.MarginBounds.Height, 640)), ticket);
-                using var dialog = new PrintDialog { Document = printDoc, UseEXDialog = true };
-                if (dialog.ShowDialog(previewForm) == DialogResult.OK)
-                    printDoc.Print();
+                printDoc.PrintPage += (_, pe) => Printing.PrintPaper.RenderFitted(pe.Graphics!, pe.MarginBounds,
+                    (g, area) => DrawImpurityTicket(g,
+                        new Rectangle(area.Left, area.Top, area.Width, Math.Min(area.Height, 640)), ticket));
+                Printing.PrintPrinter.ShowDialogAndPrint(printDoc, previewForm);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(Loc.T("quality.print_error", ex.Message),
+                Helpers.AppMessageBox.Show(Loc.T("quality.print_error", ex.Message),
                     Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         };
@@ -2207,6 +2492,7 @@ public sealed class QualityForm : Form
         };
         toolbar.Controls.Add(btnClose);
         toolbar.Controls.Add(btnPrint);
+        toolbar.Controls.Add(Printing.PrintPaper.CreatePicker());
 
         previewForm.Controls.Add(pnlPreview);
         previewForm.Controls.Add(toolbar);
@@ -2217,7 +2503,7 @@ public sealed class QualityForm : Form
     private sealed record ImpurityTicketData(
         string? Factory, string? TripNo, string? Plate, string? Owner, string? CaneForm, string? Variety,
         decimal? BeforeKg, decimal? AfterKg, decimal? ImpurityPct, decimal? Ccs,
-        DateTimeOffset? SampleTime, DateTime PrintedAt);
+        DateTimeOffset? SampleTime, DateTime PrintedAt, bool IsReprint = false);
 
     /// <summary>
     /// Vẽ phiếu đo tạp chất (xem trước + in thật). Nhãn song ngữ theo BU, ô trống in "Không có".
@@ -2232,8 +2518,11 @@ public sealed class QualityForm : Form
         var contentWidth = area.Width - margin * 2;
         float y = area.Top + margin;
 
+        // Giấy cuộn máy in nhiệt: không viền khung, giá trị dài tự xuống dòng, ngày in ngay dưới nội dung.
+        var thermal = Printing.ThermalPrint.Active;
+        if (thermal) y = area.Top + 4;
         using var borderPen = new Pen(AgrisTheme.BrandGreenDark, 2f);
-        g.DrawRectangle(borderPen, area.Left + 2, area.Top + 2, area.Width - 4, area.Height - 4);
+        if (!thermal) g.DrawRectangle(borderPen, area.Left + 2, area.Top + 2, area.Width - 4, area.Height - 4);
 
         const string family = "Segoe UI";
         using var companyFont = new Font(family, 12F, FontStyle.Bold);
@@ -2250,7 +2539,15 @@ public sealed class QualityForm : Form
         using var sepPen = new Pen(AgrisTheme.Border, 1f);
 
         y += Printing.PrintText.DrawCentered(g, Printing.PrintText.V(d.Factory), companyFont, Brushes.Black, lx, contentWidth, y) + 6;
-        y += Printing.PrintText.DrawCentered(g, Printing.PrintText.L("quality.print_title"), titleFont, titleBrush, lx, contentWidth, y) + 14;
+        y += Printing.PrintText.DrawCentered(g, Printing.PrintText.L("quality.print_title"), titleFont, titleBrush, lx, contentWidth, y)
+             + (d.IsReprint ? 4 : 14);
+        if (d.IsReprint)
+        {
+            using var reprintFont = new Font(family, 12F, FontStyle.Bold);
+            using var reprintBrush = new SolidBrush(AgrisTheme.Danger);
+            y += Printing.PrintText.DrawCentered(g, Printing.PrintText.L("receipt.reprint_label"), reprintFont, reprintBrush,
+                lx, contentWidth, y) + 12;
+        }
 
         var labels = new[]
         {
@@ -2265,6 +2562,12 @@ public sealed class QualityForm : Form
 
         void Row(string label, string? value, Font font, Brush brush, int height)
         {
+            if (thermal)
+            {
+                var h = Printing.PrintText.FieldWrapped(g, label, value, labelFont, font, brush, lx, vx, area.Right - margin, y);
+                y += Math.Max(height, h + 6);
+                return;
+            }
             Printing.PrintText.Field(g, label, value, labelFont, font, brush, lx, vx, y);
             y += Math.Max(height, lh);
         }
@@ -2279,31 +2582,36 @@ public sealed class QualityForm : Form
         g.DrawLine(sepPen, lx, y, area.Right - margin, y);
         y += 10;
 
-        Row(labels[5], d.BeforeKg.HasValue ? $"{d.BeforeKg:N3} kg" : null, bigFont, textBrush, 32);
-        Row(labels[6], d.AfterKg.HasValue ? $"{d.AfterKg:N3} kg" : null, bigFont, textBrush, 32);
-        Row(labels[7], d.ImpurityPct.HasValue ? $"{d.ImpurityPct:N4} %" : null, impurityFont, impurityBrush, 36);
+        // Phiếu in làm tròn 2 số lẻ (cùng quy tắc với số gửi đi).
+        static string R2(decimal v) => TTC.Weighing.Domain.Common.Num.R2(v).ToString("N2");
+        Row(labels[5], d.BeforeKg.HasValue ? $"{R2(d.BeforeKg.Value)} kg" : null, bigFont, textBrush, 32);
+        Row(labels[6], d.AfterKg.HasValue ? $"{R2(d.AfterKg.Value)} kg" : null, bigFont, textBrush, 32);
+        Row(labels[7], d.ImpurityPct.HasValue ? $"{R2(d.ImpurityPct.Value)} %" : null, impurityFont, impurityBrush, 36);
         if (d.Ccs.HasValue)
-            Row(labels[8], $"{d.Ccs:N2}", bigFont, textBrush, 32);
+            Row(labels[8], R2(d.Ccs.Value), bigFont, textBrush, 32);
 
         y += 6;
         g.DrawLine(sepPen, lx, y, area.Right - margin, y);
         y += 10;
 
-        var timeStr = (d.SampleTime?.ToLocalTime().DateTime ?? d.PrintedAt).ToString("dd/MM/yyyy HH:mm:ss");
+        var timeStr = (d.SampleTime?.ToVnTime().DateTime ?? d.PrintedAt).ToString("dd/MM/yyyy HH:mm:ss");
         Row(labels[9], timeStr, valueFont, textBrush, lh);
 
         if (!string.IsNullOrWhiteSpace(d.TripNo))
         {
+            // Mã QR số đăng tài (thay mã vạch) — quét ở màn Cân / Đo CCS để mở chuyến.
             y += 10;
-            Printing.Code128Renderer.Draw(g, d.TripNo, lx, (int)y, 320, 50);
-            y += 54;
-            using var bcFont = new Font(AgrisTheme.MonoFamily, 10F);
-            g.DrawString(d.TripNo, bcFont, Brushes.Black, lx, y);
+            const int qrSize = 96;
+            Printing.QrCodeRenderer.Draw(g, d.TripNo, lx, (int)y, qrSize);
+            using var bcFont = new Font(AgrisTheme.MonoFamily, 10F, FontStyle.Bold);
+            g.DrawString(d.TripNo, bcFont, Brushes.Black, lx + qrSize + 10, y + qrSize / 2f - 8);
+            y += qrSize;
         }
 
         var printLabel = Printing.PrintText.L("print.field_printed_at") + ": " + (d.PrintedAt.ToString("dd/MM/yyyy HH:mm"));
         var tsSz = Printing.PrintText.Measure(g, printLabel, tsFont);
-        Printing.PrintText.DrawRight(g, printLabel, tsFont, tsBrush, area.Right - margin, area.Bottom - margin - tsSz.Height - 4);
+        Printing.PrintText.DrawRight(g, printLabel, tsFont, tsBrush, area.Right - margin,
+            thermal ? y + 8 : area.Bottom - margin - tsSz.Height - 4);
     }
 
     /// <summary>Double-buffered panel for GDI+ preview.</summary>
@@ -2346,7 +2654,7 @@ public sealed class QualityForm : Form
     }
 
     private static void ShowError(string title, Exception ex)
-        => MessageBox.Show($"{title}.{Environment.NewLine}{ex.Message}",
+        => Helpers.AppMessageBox.Show($"{title}.{Environment.NewLine}{ex.Message}",
             Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -2361,6 +2669,8 @@ public sealed class QualityForm : Form
         if (disposing)
         {
             _scaleTimer.Dispose();
+            _rulesTimer.Stop();
+            _rulesTimer.Dispose();
             _cts.Dispose();
         }
         base.Dispose(disposing);

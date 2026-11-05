@@ -7,6 +7,7 @@ using TTC.Weighing.WinForms.Controls;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -301,7 +302,7 @@ public sealed class ExceptionQueueForm : Form
             return;
         }
 
-        var confirm = MessageBox.Show(
+        var confirm = Helpers.AppMessageBox.Show(
             Loc.T("exception.resume_confirm"),
             Loc.T("exception.resume_title"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
@@ -354,7 +355,7 @@ public sealed class ExceptionQueueForm : Form
     }
 
     private void Log(string line)
-        => _txtLog.AppendText($"{DateTime.Now:HH:mm:ss}  {line}{Environment.NewLine}");
+        => _txtLog.AppendText($"{VnTime.Now:HH:mm:ss}  {line}{Environment.NewLine}");
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {

@@ -6,17 +6,23 @@ namespace TTC.Weighing.WinForms.Presenters;
 /// </summary>
 public static class DigiScaleWeighContextReader
 {
-    public static async Task<DigiScaleWeighContext?> ReadAsync(string? connStr, Guid tripId, CancellationToken ct = default)
+    /// <param name="ensureTicket">true = sắp đẩy DigiScale: chuyến chưa có mã phiếu cân thì sinh (PC + niên vụ + số).</param>
+    public static async Task<DigiScaleWeighContext?> ReadAsync(string? connStr, Guid tripId, CancellationToken ct = default,
+        bool ensureTicket = false)
     {
         if (string.IsNullOrWhiteSpace(connStr)) return null;
+
+        // Sinh mã trước (transaction riêng) rồi mới đọc — context đọc ra luôn có mã mới nhất.
+        if (ensureTicket)
+            await TTC.Weighing.Infrastructure.Repositories.WeighTicketNumberGenerator.EnsureAsync(connStr, tripId, ct);
 
         await using var conn = new Npgsql.NpgsqlConnection(connStr);
         await conn.OpenAsync(ct);
 
         string tripNo, source;
-        string? ldId, maLd, bu;
+        string? ldId, maLd, bu, ticketNo;
         await using (var cmd = new Npgsql.NpgsqlCommand(
-            "SELECT trip_no, source_system, frm_lenh_don_id, frm_ma_lenh_don, frm_lenh_don_bu " +
+            "SELECT trip_no, source_system, frm_lenh_don_id, frm_ma_lenh_don, frm_lenh_don_bu, ticket_number " +
             "FROM trips WHERE id = $1 AND deleted_at IS NULL", conn))
         {
             cmd.Parameters.AddWithValue(tripId);
@@ -27,6 +33,7 @@ public static class DigiScaleWeighContextReader
             ldId = reader.IsDBNull(2) ? null : reader.GetString(2);
             maLd = reader.IsDBNull(3) ? null : reader.GetString(3);
             bu = reader.IsDBNull(4) ? null : reader.GetString(4);
+            ticketNo = reader.IsDBNull(5) ? null : reader.GetString(5);
         }
 
         var events = new List<(decimal Kg, DateTimeOffset At, string? BridgeCode)>();
@@ -52,7 +59,9 @@ public static class DigiScaleWeighContextReader
             tripId, tripNo, source, ldId, maLd, bu,
             first?.Item1, first?.Item2, second?.Item1, second?.Item2)
         {
-            SecondBridgeCode = second?.Item3
+            SecondBridgeCode = second?.Item3,
+            // Chỉ nhận mã đúng mẫu mới (bỏ mã kiểu cũ "PC-site-ngày" của luồng in cũ).
+            TicketNo = TTC.Weighing.Infrastructure.Repositories.WeighTicketNumberGenerator.IsValid(ticketNo) ? ticketNo : null
         };
     }
 }

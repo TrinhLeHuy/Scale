@@ -124,7 +124,7 @@ public static class WeighCommitRules
 
         if (c.QrStatus == QrTokenStatus.Expired && c.QrType != QrTokenType.Temp)
             return new(code, name, false, c.QrExpiredAt is { } exp
-                ? DomainText.T("rule.qr_expired_at", "QR chuyến đã hết hạn lúc {0:dd/MM/yyyy HH:mm}.", exp.ToLocalTime())
+                ? DomainText.T("rule.qr_expired_at", "QR chuyến đã hết hạn lúc {0:dd/MM/yyyy HH:mm}.", exp.ToVnTime())
                 : DomainText.T("rule.qr_expired", "QR chuyến đã hết hạn."));
 
         if (c.QrStatus != QrTokenStatus.Issued && c.QrType != QrTokenType.Temp)

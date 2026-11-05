@@ -887,7 +887,11 @@ CREATE TABLE public.weighbridges (
     updated_at timestamp with time zone,
     updated_by text,
     deleted_at timestamp with time zone,
-    version integer NOT NULL
+    version integer NOT NULL,
+    first_weight_min_kg numeric(15,3),
+    first_weight_max_kg numeric(15,3),
+    second_weight_min_kg numeric(15,3),
+    second_weight_max_kg numeric(15,3)
 );
 
 

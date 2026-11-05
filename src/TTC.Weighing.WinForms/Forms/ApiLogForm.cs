@@ -4,6 +4,7 @@ using TTC.Weighing.Application.Queries;
 using TTC.Weighing.WinForms.Controls;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -58,6 +59,7 @@ public sealed class ApiLogForm : Form
         PlaceholderText = Loc.T("apilog.search_placeholder"), Margin = new Padding(8, 4, 8, 0)
     };
     private readonly Button _btnReload = GridBuilder.PrimaryButton("↻  " + Loc.T("apilog.btn_reload"), new Size(120, 32));
+    private readonly System.Windows.Forms.Timer _searchDebounce = new() { Interval = 400 };
 
     // ── Tóm tắt ──
     private readonly MetricTile _tileTotal = new(Loc.T("apilog.tile_total"), AgrisTheme.BrandTeal);
@@ -138,8 +140,8 @@ public sealed class ApiLogForm : Form
         _cboSystem.SelectedIndex = 0;
         _cboDirection.SelectedIndex = 0;
         _cboResult.SelectedIndex = 0;
-        _dtpDay.Value = DateTime.Today;
-        _dtpDay.MaxDate = DateTime.Today.AddDays(1);
+        _dtpDay.Value = VnTime.Today;
+        _dtpDay.MaxDate = VnTime.Today.AddDays(1);
         _dtpDay.Margin = new Padding(0, 4, 8, 0);
         _btnToday.MaximumSize = new Size(100, 36);
 
@@ -169,7 +171,7 @@ public sealed class ApiLogForm : Form
         bar.Controls.Add(row1);
 
         _dtpDay.ValueChanged += async (_, _) => await LoadAsync();
-        _btnToday.Click += (_, _) => _dtpDay.Value = DateTime.Today;
+        _btnToday.Click += (_, _) => _dtpDay.Value = VnTime.Today;
         _cboSystem.SelectedIndexChanged += async (_, _) => await LoadAsync();
         _cboDirection.SelectedIndexChanged += async (_, _) => await LoadAsync();
         _cboResult.SelectedIndexChanged += async (_, _) => await LoadAsync();
@@ -179,8 +181,14 @@ public sealed class ApiLogForm : Form
         {
             if (e.KeyCode != Keys.Enter) return;
             e.SuppressKeyPress = true;
+            _searchDebounce.Stop();
             await LoadAsync();
         };
+        // Gõ là tìm luôn (chờ ngắn để không tra DB theo từng phím); tắt bộ gõ để chữ vào ô ngay, không đợi Space.
+        Helpers.SearchText.Prepare(_txtSearch);
+        _txtSearch.TextChanged += (_, _) => { _searchDebounce.Stop(); _searchDebounce.Start(); };
+        _searchDebounce.Tick += async (_, _) => { _searchDebounce.Stop(); await LoadAsync(); };
+        Disposed += (_, _) => _searchDebounce.Dispose();
 
         card.Controls.Add(bar);
         card.Controls.Add(header);
@@ -277,8 +285,8 @@ public sealed class ApiLogForm : Form
                 system, direction, success, _chkPolicy.Checked,
                 string.IsNullOrWhiteSpace(_txtSearch.Text) ? null : _txtSearch.Text.Trim(), AnyOf: _tripTerms);
         return new ApiCallLogFilter(
-            new DateTimeOffset(day, TimeZoneInfo.Local.GetUtcOffset(day)).ToUniversalTime(),
-            new DateTimeOffset(next, TimeZoneInfo.Local.GetUtcOffset(next)).ToUniversalTime(),
+            new DateTimeOffset(day, VnTime.OffsetAt(day)).ToUniversalTime(),
+            new DateTimeOffset(next, VnTime.OffsetAt(next)).ToUniversalTime(),
             system, direction, success, _chkPolicy.Checked,
             string.IsNullOrWhiteSpace(_txtSearch.Text) ? null : _txtSearch.Text.Trim());
     }
@@ -302,7 +310,7 @@ public sealed class ApiLogForm : Form
             foreach (var r in rows)
             {
                 var idx = _grid.Rows.Add(
-                    r.OccurredAt.ToLocalTime().ToString(_tripTerms is null ? "HH:mm:ss" : "dd/MM HH:mm:ss"),
+                    r.OccurredAt.ToVnTime().ToString(_tripTerms is null ? "HH:mm:ss" : "dd/MM HH:mm:ss"),
                     r.Direction == "PUSH" ? "⬆ " + Loc.T("apilog.push") : "⬇ " + Loc.T("apilog.pull"),
                     SystemLabel(r.System),
                     (r.IsPolicy ? "★ " : "") + OperationLabel(r.Operation),
@@ -349,7 +357,7 @@ public sealed class ApiLogForm : Form
             _lblDetail.ForeColor = r.Success ? AgrisTheme.TextSecondary : AgrisTheme.Danger;
             _lblDetail.Text =
                 $"{d.Method}  {d.Url}\n" +
-                Loc.T("apilog.detail_line", r.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss"),
+                Loc.T("apilog.detail_line", r.OccurredAt.ToVnTime().ToString("dd/MM/yyyy HH:mm:ss"),
                     r.HttpStatus?.ToString() ?? "—", r.DurationMs.ToString("N0"), d.Actor ?? "—", d.ClientName ?? "—") +
                 (r.Success || string.IsNullOrWhiteSpace(r.Error) ? "" : "\n✗ " + OneLine(r.Error));
             _txtRequest.Text = Pretty(d.RequestBody);

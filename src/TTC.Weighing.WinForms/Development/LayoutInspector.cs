@@ -46,8 +46,15 @@ public static class LayoutInspector
         tabs.TabPages.Add(page);
         host.Controls.Add(tabs);
 
-        host.Show();
-        screen.Show();
+        using (Theme.UiScale.DesignScope())
+        {
+            host.Show();
+            screen.Show();
+            host.PerformLayout();
+        }
+
+        // Giống MainForm.CreateAndHost: dựng + hiện ở kích thước thiết kế rồi thu phóng theo UiScale.
+        Theme.UiScale.Apply(screen);
         host.PerformLayout();
         WinFormsApp.DoEvents();
 
@@ -91,7 +98,12 @@ public static class LayoutInspector
         {
             var childPath = $"{path} > {Describe(child)}";
 
-            if (!scrolls)
+            // Cố ý, không phải lỗi: FieldTile đặt ô số rộng hơn khung để giấu nút tăng/giảm;
+            // nhãn AutoSize chưa có chữ thì rộng 0.
+            var intentional = (child is NumericUpDown && parent.Parent?.Parent is Controls.FieldTile)
+                || (child is Label { AutoSize: true } lbl && string.IsNullOrEmpty(lbl.Text));
+
+            if (!scrolls && !intentional)
             {
                 if (child.Bottom > clientHeight + Tolerance)
                 {
@@ -106,7 +118,7 @@ public static class LayoutInspector
                 }
             }
 
-            if (child.Height <= 0 || child.Width <= 0)
+            if (!intentional && (child.Height <= 0 || child.Width <= 0))
                 findings.Add($"KHÔNG CHỖ {childPath}: kích thước {child.Width}x{child.Height}");
 
             if (child.HasChildren)

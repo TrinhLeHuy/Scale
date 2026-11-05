@@ -100,6 +100,12 @@ public class Trip : AuditableEntity
     /// <summary>Số phiếu cân sau khi cân lần 2 hoàn thành.</summary>
     public string? TicketNumber { get; set; }
 
+    /// <summary>
+    /// ID phiếu đăng tài DigiScale trả về khi đăng tài (items[0].id) — gửi lại làm <c>phieudangtaiid</c>
+    /// khi hủy / xóa phiếu đăng tài. Null = chuyến không có phiếu trên DigiScale (vật tư, mía tạm) hoặc đăng tài cũ.
+    /// </summary>
+    public string? DigiRegistrationId { get; set; }
+
     // --- Collections ---
 
     public List<CheckpointEvent> Checkpoints { get; set; } = [];

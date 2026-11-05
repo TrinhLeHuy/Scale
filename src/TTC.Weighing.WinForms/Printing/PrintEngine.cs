@@ -13,7 +13,9 @@ public static class PrintEngine
     public static void ShowPreview(IPrintTemplate template, string title)
     {
         var doc = new PrintDocument { DocumentName = title };
-        doc.PrintPage += (_, e) => template.Render(e.Graphics!, e.MarginBounds);
+        PrintPrinter.Apply(doc);
+        PrintPaper.Apply(doc);
+        doc.PrintPage += (_, e) => PrintPaper.RenderFitted(e.Graphics!, e.MarginBounds, template.Render);
 
         using var preview = new PrintPreviewDialog
         {
@@ -28,7 +30,9 @@ public static class PrintEngine
     public static void PrintDirect(IPrintTemplate template, string title)
     {
         var doc = new PrintDocument { DocumentName = title };
-        doc.PrintPage += (_, e) => template.Render(e.Graphics!, e.MarginBounds);
+        PrintPrinter.Apply(doc);
+        PrintPaper.Apply(doc);
+        doc.PrintPage += (_, e) => PrintPaper.RenderFitted(e.Graphics!, e.MarginBounds, template.Render);
         doc.Print();
     }
 }

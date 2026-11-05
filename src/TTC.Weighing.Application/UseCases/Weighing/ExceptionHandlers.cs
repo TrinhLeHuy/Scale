@@ -75,6 +75,10 @@ public sealed class ApproveManualWeightHandler(
 
         var measurement = Domain.ValueObjects.WeightMeasurement.Create(cmd.RawWeight, cmd.RawUom);
 
+        // Số nhập tay cũng phải nằm trong giới hạn Vào/Ra của bàn cân.
+        if (Domain.Rules.WeighLimitRules.Check(bridge, cmd.SegmentIndex, measurement.NormalizedKg) is { Passed: false } limit)
+            return new(false, null, limit.Detail);
+
         var session = new WeighSession
         {
             TripId = trip.Id,

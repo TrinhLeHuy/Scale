@@ -4,6 +4,7 @@ using TTC.Weighing.Application.UseCases.Trips;
 using TTC.Weighing.Domain.Entities;
 using TTC.Weighing.Infrastructure.Adapters;
 using TTC.Weighing.WinForms.Forms;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Presenters;
 
@@ -158,6 +159,13 @@ public sealed class TripRegistrationPresenter(
     /// <summary>FRM cache đang tải?</summary>
     public bool FrmCacheLoading => frmCache.IsLoading;
 
+    /// <summary>Dữ liệu FRM vừa kéo về có thay đổi (gọi từ luồng nền).</summary>
+    public event Action? FrmDataRefreshed
+    {
+        add => frmCache.Refreshed += value;
+        remove => frmCache.Refreshed -= value;
+    }
+
     /// <summary>Refresh FRM cache thủ công.</summary>
     public Task RefreshFrmCacheAsync(CancellationToken ct = default)
         => frmCache.RefreshAsync(ct);
@@ -179,6 +187,8 @@ public sealed class TripRegistrationPresenter(
         var activeBu = frmCache.ActiveBusinessUnit;
         int outOfRange = 0, notApproved = 0, noPlate = 0, registered = 0;
         var available = new List<FrmLenhDonInfo>();
+        var now = VnTime.NowOffset;
+        var busyPlates = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var ld in frmCache.AllLenhDon)
         {
@@ -186,9 +196,21 @@ public sealed class TripRegistrationPresenter(
                 continue;
 
             if (!OverlapsDateRange(ld, from, to)) { outOfRange++; continue; }
-            if (!IsApproved(ld)) { notApproved++; continue; }
+            if (!IsApproved(ld) || IsCancelledLenhDon(ld)) { notApproved++; continue; }
             if (string.IsNullOrWhiteSpace(ld.VehiclePlate)) { noPlate++; continue; }
+            // Chưa tới ngày cấp / đã hết hạn so với BÂY GIỜ → chưa / không đăng tài được, không đưa vào danh sách.
+            if (!IsWithinRegistrationWindow(ld, now)) { outOfRange++; continue; }
+            // Thẻ xe Hủy / hết hạn / Nháp → bị chặn khi đăng tài (thẻ xe tạm không kiểm tra thẻ).
+            if (!ld.IsTemporaryCard && !IsCardUsable(ld)) { notApproved++; continue; }
             if (await tripRepository.FindActiveByLenhDonIdAsync(ld.SourceKey ?? "", ct) is not null) { registered++; continue; }
+            if (await tripRepository.FindActiveByReferenceAsync(FRM_SOURCE_SYSTEM, ld.MaLD, ct) is not null) { registered++; continue; }
+            // Phiếu cũ đã hủy → lệnh đốn này phải lập lệnh mới, không đưa vào danh sách đăng tài.
+            if (await tripRepository.FindCancelledByLenhDonAsync(ld.SourceKey, ld.MaLD, ct) is not null) { registered++; continue; }
+            // Xe đang có chuyến chưa cân ra → chưa đăng tài tiếp được.
+            if (!busyPlates.TryGetValue(ld.VehiclePlate!, out var busy))
+                busyPlates[ld.VehiclePlate!] = busy =
+                    await tripRepository.FindNotWeighedOutByPlateAsync(ld.VehiclePlate!, siteContext.CurrentSiteId, ct) is not null;
+            if (busy) { registered++; continue; }
 
             available.Add(ld);
         }
@@ -211,8 +233,8 @@ public sealed class TripRegistrationPresenter(
         if (start is null) return false;
 
         var end = ParseDate(ld.NgayHetHan);
-        return start.Value.LocalDateTime.Date <= to.Date
-            && (end is null || end.Value.LocalDateTime.Date >= from.Date);
+        return start.Value.DateTime.Date <= to.Date
+            && (end is null || end.Value.DateTime.Date >= from.Date);
     }
 
     /// <summary>
@@ -222,8 +244,8 @@ public sealed class TripRegistrationPresenter(
     /// </summary>
     public static (DateTimeOffset? From, DateTimeOffset? To)? CheckLenhDonPeriod(FrmLenhDonInfo ld, DateTimeOffset at)
     {
-        DateTimeOffset? from = ld.NgayCap is not null && DateTimeOffset.TryParse(ld.NgayCap, out var f) ? f : null;
-        DateTimeOffset? to = ld.NgayHetHan is not null && DateTimeOffset.TryParse(ld.NgayHetHan, out var t) ? t : null;
+        var from = ParseDate(ld.NgayCap);
+        var to = ParseDate(ld.NgayHetHan);
 
         var tooEarly = from.HasValue && at < from.Value;
         var tooLate = to.HasValue && at > to.Value;
@@ -253,7 +275,7 @@ public sealed class TripRegistrationPresenter(
     {
         var normalized = plate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
         var activeBu = frmCache.ActiveBusinessUnit;
-        var now = DateTimeOffset.Now;
+        var now = VnTime.NowOffset;
 
         // Lấy cả lệnh chưa duyệt (Nháp...) để form báo đúng lý do thay vì "không tìm thấy".
         var matches = frmCache.AllLenhDon
@@ -271,8 +293,63 @@ public sealed class TripRegistrationPresenter(
             ?? matches.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Lệnh đốn CHƯA ĐĂNG TÀI của xe (đã duyệt, chưa hủy, chưa có phiếu đăng tài đang dùng, chưa có phiếu đã hủy),
+    /// đúng BU — không giới hạn khung ngày. Nghiệp vụ: mỗi xe tại một thời điểm chỉ có 1 lệnh đốn chưa đăng tài;
+    /// nếu dữ liệu có nhiều hơn thì lệnh ưu tiên đứng trước, rồi lệnh cấp mới nhất.
+    /// </summary>
+    public async Task<IReadOnlyList<FrmLenhDonInfo>> FindUnregisteredLenhDonByPlateAsync(string plate, CancellationToken ct = default)
+    {
+        static string N(string? p) => (p ?? "").Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
+        var normalized = N(plate);
+        if (normalized.Length == 0) return [];
+        var activeBu = frmCache.ActiveBusinessUnit;
+
+        var result = new List<FrmLenhDonInfo>();
+        foreach (var ld in frmCache.AllLenhDon)
+        {
+            if (activeBu is not null && !string.Equals(ld.BusinessUnit, activeBu, StringComparison.OrdinalIgnoreCase)) continue;
+            if (N(ld.VehiclePlate) != normalized) continue;
+            if (!IsApproved(ld) || IsCancelledLenhDon(ld)) continue;
+            if (await tripRepository.FindActiveByLenhDonIdAsync(ld.SourceKey ?? "", ct) is not null) continue;
+            if (await tripRepository.FindActiveByReferenceAsync(FRM_SOURCE_SYSTEM, ld.MaLD, ct) is not null) continue;
+            if (await tripRepository.FindCancelledByLenhDonAsync(ld.SourceKey, ld.MaLD, ct) is not null) continue;
+            result.Add(ld);
+        }
+
+        return result
+            .OrderByDescending(IsPriority)
+            .ThenByDescending(ld => ParseDate(ld.NgayCap) ?? DateTimeOffset.MinValue)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Thẻ xe của lệnh đốn dùng được (giống kiểm tra lúc đăng tài): trạng thái thẻ trên lệnh đốn, rồi thẻ khớp
+    /// trong danh mục. Hủy / hết hạn / Inactive / Nháp → không dùng được. Không có thông tin thẻ → coi là dùng được
+    /// (FRM / DigiScale kiểm tra lần cuối khi đăng tài).
+    /// </summary>
+    private bool IsCardUsable(FrmLenhDonInfo ld)
+    {
+        static bool Blocked(string? status)
+        {
+            var s = status?.Trim().ToUpperInvariant() ?? "";
+            return s.Contains("HỦY") || s.Contains("HUỶ") || s.Contains("HẾT HẠN") || s.Contains("INACTIVE")
+                   || s.Contains("CANCEL") || s.Contains("EXPIRED") || s.Contains("NHÁP") || s.Contains("DRAFT");
+        }
+
+        if (!string.IsNullOrWhiteSpace(ld.TheXeStatusName)) return !Blocked(ld.TheXeStatusName);
+        return frmCache.FindCardForLenhDon(ld) is not { } card || !Blocked(card.StatusName);
+    }
+
     /// <summary>Lệnh đốn ưu tiên trên FRM (Uutien = true → "1").</summary>
     public static bool IsPriority(FrmLenhDonInfo ld) => ld.UuTien == "1";
+
+    /// <summary>Lệnh đốn đã Hủy trên FRM — đăng tài coi như không tìm thấy lệnh đốn / xe.</summary>
+    public static bool IsCancelledLenhDon(FrmLenhDonInfo ld)
+    {
+        var s = ld.StatusCodeName?.Trim().ToUpperInvariant() ?? "";
+        return s.Contains("HỦY") || s.Contains("HUỶ") || s.Contains("CANCEL");
+    }
 
     /// <summary>Lệnh đốn ở trạng thái "Đã duyệt" — chỉ trạng thái này được đăng tài.</summary>
     public static bool IsApproved(FrmLenhDonInfo ld)
@@ -289,8 +366,9 @@ public sealed class TripRegistrationPresenter(
         return (from is null || at >= from) && (to is null || at <= to);
     }
 
+    /// <summary>Ngày FRM giữ nguyên giờ API trả (không cộng múi giờ).</summary>
     private static DateTimeOffset? ParseDate(string? value)
-        => value is not null && DateTimeOffset.TryParse(value, out var d) ? d : null;
+        => TTC.Weighing.Infrastructure.Adapters.DigiScaleDate.ParseOffset(value);
 
     /// <summary>Danh mục xe vận chuyển (the-xe + xe-van-chuyen) đã tải — chưa tải thì không kết luận được "xe không tồn tại".</summary>
     public bool HasVehicleCatalog => frmCache.VehicleCount > 0;
@@ -314,6 +392,14 @@ public sealed class TripRegistrationPresenter(
         var trip = await tripRepository.GetByIdAsync(tripId, ct);
         if (trip is null)
             return (false, "Không tìm thấy chuyến.");
+
+        // Màn Đăng tài mở lâu: bản chuyến trong bộ nhớ có thể cũ (màn Cân đã đóng chuyến).
+        // Không nạp lại thì lưu sẽ ghi đè trạng thái cũ "Registered" lên chuyến đã cân xong.
+        await tripRepository.ReloadAsync(trip, ct);
+
+        // Xe đã cân (dù 1 lần) → không sửa thông tin đăng tài (lệnh đốn, biển số...) nữa.
+        if (await tripRepository.HasWeighEventsAsync(tripId, ct))
+            return (false, TTC.Weighing.WinForms.Localization.Loc.T("reg.update_blocked_weighed", trip.TripNo));
 
         // Chỉ cho sửa khi chưa bắt đầu cân (TempRegistered hoặc Registered)
         if (trip.Lifecycle is not (Domain.Enums.TripLifecycle.TempRegistered
@@ -352,27 +438,30 @@ public sealed class TripRegistrationPresenter(
         return Task.Run(async () =>
         {
             // Khung ngày giao dịch ERP (như khung ngày lệnh đốn FRM). Không truyền → 90 ngày gần nhất.
-            var from = (fromDate ?? DateTime.Today.AddDays(-90)).Date;
-            var to = (toDate ?? DateTime.Today).Date.AddDays(1);
+            var from = (fromDate ?? VnTime.Today.AddDays(-90)).Date;
+            var to = (toDate ?? VnTime.Today).Date.AddDays(1);
 
             // ── Có Số TRIP/Shipment: tìm đúng chứng từ đó ──
             if (!string.IsNullOrWhiteSpace(tripOrShipment))
             {
                 var key = tripOrShipment.Trim();
 
-                // 1. DB local (đã kéo về từ form ERP) — chỉ nhận đơn trong khung ngày.
-                var dbItem = await erpOrderLines.FindInDbAsync(key);
-                if (dbItem is not null && InErpRange(dbItem, from, to)) return dbItem;
-
-                // 2. API theo shipmentNumber, rồi theo tripNumber.
+                // 1. API trước (dữ liệu mới nhất trên DigiScale) theo shipmentNumber, rồi tripNumber → lưu đè DB local.
                 var response = await erpOrderLines.GetOrderLinesAsync(
                     businessUnit, from, to, shipmentNumber: key, pageSize: 1, ct: ct);
                 var item = response?.Items?.FirstOrDefault();
-                if (item is not null) return item;
+                if (item is null && response is not null)
+                {
+                    response = await erpOrderLines.GetOrderLinesAsync(
+                        businessUnit, from, to, tripNumber: key, pageSize: 1, ct: ct);
+                    item = response?.Items?.FirstOrDefault();
+                }
+                if (item is not null) return await CacheErpLineAsync(item, businessUnit);
 
-                response = await erpOrderLines.GetOrderLinesAsync(
-                    businessUnit, from, to, tripNumber: key, pageSize: 1, ct: ct);
-                return response?.Items?.FirstOrDefault();
+                // 2. Mất kết nối DigiScale → DB local (đã kéo về trước đó), chỉ nhận đơn trong khung ngày.
+                if (response is not null) return null; // DigiScale trả lời: không có chứng từ này
+                var dbItem = await erpOrderLines.FindInDbAsync(key);
+                return dbItem is not null && InErpRange(dbItem, from, to) ? dbItem : null;
             }
 
             // ── Chỉ có biển số: chọn đơn của đúng xe đó trong khung ngày, mới nhất trước ──
@@ -380,32 +469,43 @@ public sealed class TripRegistrationPresenter(
             if (string.IsNullOrWhiteSpace(plateNumber)) return null;
             var plateKey = NormalizePlate(plateNumber);
 
-            // 1. DB local: so biển số đã chuẩn hóa (bỏ khoảng trắng, '-', '.'), đúng BU + khung ngày.
+            // 1. API trước theo plateNumber — vẫn kiểm lại biển số + khung ngày, không nhận dòng không khớp.
+            var byPlate = await erpOrderLines.GetOrderLinesAsync(
+                businessUnit, from, to, plateNumber: plateNumber.Trim(), pageSize: 50, ct: ct);
+            if (byPlate is not null)
+            {
+                var found = byPlate.Items?
+                    .Where(l => NormalizePlate(l.PlateNumber) == plateKey && InErpRange(l, from, to))
+                    .OrderByDescending(l => ErpDate(l) ?? DateTime.MinValue)
+                    .FirstOrDefault();
+                return found is null ? null : await CacheErpLineAsync(found, businessUnit);
+            }
+
+            // 2. Mất kết nối DigiScale → DB local: so biển số đã chuẩn hóa, đúng BU + khung ngày.
             var local = (await ListErpOrdersInRangeAsync(from, to.AddDays(-1), ct))
                 .Where(l => NormalizePlate(l.PlateNumber) == plateKey)
                 .ToList();
-            if (local.Count > 0) return local[0];
-
-            // 2. API theo plateNumber — vẫn kiểm lại biển số + khung ngày, không nhận dòng không khớp.
-            var byPlate = await erpOrderLines.GetOrderLinesAsync(
-                businessUnit, from, to, plateNumber: plateNumber.Trim(), pageSize: 50, ct: ct);
-            return byPlate?.Items?
-                .Where(l => NormalizePlate(l.PlateNumber) == plateKey && InErpRange(l, from, to))
-                .OrderByDescending(l => ErpDate(l) ?? DateTime.MinValue)
-                .FirstOrDefault();
+            return local.Count > 0 ? local[0] : null;
         }, ct);
+    }
+
+    /// <summary>Dòng ERP vừa lấy từ DigiScale → lưu đè DB local (các màn khác và lúc mất mạng thấy bản mới).</summary>
+    private async Task<TTC.Weighing.Infrastructure.Adapters.ErpOrderLine> CacheErpLineAsync(
+        TTC.Weighing.Infrastructure.Adapters.ErpOrderLine line, string businessUnit)
+    {
+        if (string.IsNullOrWhiteSpace(line.BusinessUnit))
+            line.BusinessUnit = line.BusinessUnitName ?? businessUnit;
+        await erpOrderLines.SaveToDbAsync([line]);
+        return line;
     }
 
     private static string NormalizePlate(string? plate)
         => plate is null ? string.Empty
             : plate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
 
-    /// <summary>Ngày giao dịch ERP (giờ máy). Null nếu ERP không trả / không đọc được.</summary>
+    /// <summary>Ngày giao dịch ERP — giữ nguyên giờ API trả (không cộng múi giờ). Null nếu ERP không trả / không đọc được.</summary>
     public static DateTime? ErpDate(TTC.Weighing.Infrastructure.Adapters.ErpOrderLine line)
-        => DateTimeOffset.TryParse(line.TransactionDate, System.Globalization.CultureInfo.InvariantCulture,
-               System.Globalization.DateTimeStyles.AssumeUniversal, out var d)
-            ? d.ToLocalTime().DateTime
-            : null;
+        => TTC.Weighing.Infrastructure.Adapters.DigiScaleDate.Parse(line.TransactionDate);
 
     /// <summary>Đơn nằm trong khung ngày [from, to). Đơn không có ngày giao dịch vẫn nhận (không loại oan).</summary>
     private static bool InErpRange(TTC.Weighing.Infrastructure.Adapters.ErpOrderLine line, DateTime from, DateTime to)
@@ -431,12 +531,107 @@ public sealed class TripRegistrationPresenter(
             .ToList();
     }
 
-    /// <summary>Tìm chuyến active (chưa Closed/Cancelled) theo lệnh đốn GUID.</summary>
-    public async Task<string?> FindActiveTripByLenhDonAsync(string? lenhDonId, CancellationToken ct = default)
+    /// <summary>
+    /// Chuyến đã dùng lệnh đốn này (mọi trạng thái trừ hủy / xóa, kể cả đã cân xong): theo ID lệnh đốn
+    /// HOẶC mã lệnh đốn lưu trên chuyến — ID trên chuyến có thể lệch mã (chuyến cũ bị sửa lệnh đốn).
+    /// </summary>
+    public async Task<string?> FindActiveTripByLenhDonAsync(string? lenhDonId, string? maLenhDon = null, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(lenhDonId)) return null;
-        var trips = await tripRepository.FindActiveByLenhDonIdAsync(lenhDonId, ct);
-        return trips;
+        if (!string.IsNullOrWhiteSpace(lenhDonId)
+            && await tripRepository.FindActiveByLenhDonIdAsync(lenhDonId, ct) is { } byId)
+            return byId;
+
+        return string.IsNullOrWhiteSpace(maLenhDon)
+            ? null
+            : await tripRepository.FindActiveByReferenceAsync(FRM_SOURCE_SYSTEM, maLenhDon, ct);
+    }
+
+    private const string FRM_SOURCE_SYSTEM = "FRM";
+
+    /// <summary>Phiếu đăng tài đã HỦY (chưa xóa) của lệnh đốn → phải lập lệnh đốn mới. Null nếu không có.</summary>
+    public Task<string?> FindCancelledTripByLenhDonAsync(string? lenhDonId, string? maLenhDon, CancellationToken ct = default)
+        => tripRepository.FindCancelledByLenhDonAsync(lenhDonId, maLenhDon, ct);
+
+    /// <summary>Kết quả gửi DigiScale lệnh Delete phiếu đăng tài.</summary>
+    /// <param name="Ok">Được phép hủy / xóa tiếp dưới app.</param>
+    /// <param name="Sent">Đã gửi và DigiScale nhận (false = phiếu không có trên DigiScale nên không cần gửi).</param>
+    /// <param name="BlockReason">Lý do chặn TRƯỚC khi gửi (phiếu đã đổi, đã cân) — không phải lỗi DigiScale.</param>
+    /// <param name="DigiError">Lỗi DigiScale trả về (chưa dịch).</param>
+    /// <param name="BlockAction">Cách xử lý cho <paramref name="BlockReason"/>.</param>
+    public sealed record DigiDeleteOutcome(bool Ok, bool Sent, string? BlockReason = null, string? DigiError = null,
+        string? BlockAction = null);
+
+    /// <summary>
+    /// Báo DigiScale hủy / xóa phiếu đăng tài (new_phieudangtai, action Delete) theo lệnh đốn LƯU TRÊN CHUYẾN.
+    /// Kiểm tra trước những gì app sẽ chặn (phiếu bị người khác sửa, đã cân) để không xóa trên DigiScale
+    /// mà app lại không hủy / xóa được. Chuyến không có trên DigiScale (vật tư, mía tạm, đã hủy trước đó) → không gửi.
+    /// </summary>
+    public async Task<DigiDeleteOutcome> DeleteRegistrationOnDigiScaleAsync(Guid tripId, int expectedVersion, CancellationToken ct = default)
+    {
+        var trip = await tripRepository.GetByIdAsync(tripId, ct);
+        if (trip is not null) await tripRepository.ReloadAsync(trip, ct);
+        if (trip is null || trip.DeletedAt is not null || trip.Version != expectedVersion)
+            return new(false, false, BlockReason: TTC.Weighing.WinForms.Localization.Loc.T("rule.trip_changed_reload"),
+                BlockAction: TTC.Weighing.WinForms.Localization.Loc.T("reg.act_reload_retry"));
+
+        if (await tripRepository.HasWeighEventsAsync(tripId, ct))
+            return new(false, false, BlockReason: TTC.Weighing.WinForms.Localization.Loc.T("reg.digi_delete_weighed", trip.TripNo),
+                BlockAction: TTC.Weighing.WinForms.Localization.Loc.T("reg.act_weighed_no_cancel"));
+
+        // Chỉ phiếu mía chính thức (có lệnh đốn) mới có trên DigiScale. Đã hủy trước đó → đã gửi Delete lúc hủy.
+        if (!string.Equals(trip.SourceSystem, FRM_SOURCE_SYSTEM, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(trip.ReferenceTripNo)
+            || trip.Lifecycle == TTC.Weighing.Domain.Enums.TripLifecycle.TempRegistered
+            || trip.Lifecycle == TTC.Weighing.Domain.Enums.TripLifecycle.Cancelled)
+            return new(true, false);
+
+        // Lệnh đốn của chuyến (theo ID FRM lưu lúc đăng tài, thiếu thì theo mã lệnh đốn) — lấy BU.
+        var ld = frmCache.FindLenhDonBySourceKey(trip.FrmLenhDonId) ?? FindLenhDonByCode(trip.ReferenceTripNo);
+        var bu = ld?.BusinessUnit ?? frmCache.ActiveBusinessUnit ?? "";
+
+        // phieudangtaiid = ID LỆNH ĐỐN TRÊN DIGISCALE — tra trực tiếp từ DigiScale ngay lúc hủy / xóa
+        // (không dùng dữ liệu đã lưu trên máy). Không lấy được → KHÔNG hủy / xóa dưới app.
+        var (registrationId, fetchError) = await frmCache.FetchLenhDonDigiIdAsync(
+            trip.FrmLenhDonId, trip.ReferenceTripNo, bu, ct);
+        if (fetchError is not null)
+            return new(false, false, DigiError: fetchError);
+        if (!IsGuid(registrationId))
+            return new(false, false, BlockReason: TTC.Weighing.WinForms.Localization.Loc.T("reg.digi_delete_no_id", trip.TripNo),
+                BlockAction: TTC.Weighing.WinForms.Localization.Loc.T("reg.act_digi_no_id"));
+
+        var result = await digiScaleTickets.DeleteDangTaiAsync(registrationId!, bu.Length > 0 ? bu : null, ct);
+        return result.IsSuccess ? new(true, true) : new(false, false, DigiError: result.ErrorMessage ?? "—");
+    }
+
+    /// <summary>Đơn ERP đã kéo về DB local theo Shipment / Số TRIP (+ biển số) — chỉ đọc local, không gọi API.</summary>
+    public Task<TTC.Weighing.Infrastructure.Adapters.ErpOrderLine?> FindErpLineLocalAsync(string? shipmentOrTrip, string? plate)
+        => erpOrderLines.FindInDbAsync(shipmentOrTrip, plate);
+
+    private static bool IsGuid(string? s)
+        => Guid.TryParse(s, out var g) && g != Guid.Empty;
+
+    /// <summary>Lưu ID phiếu đăng tài DigiScale vừa nhận (để hủy / xóa sau này).</summary>
+    public async Task SaveDigiRegistrationIdAsync(Guid tripId, string digiId, CancellationToken ct = default)
+    {
+        var trip = await tripRepository.GetByIdAsync(tripId, ct);
+        if (trip is null) return;
+        await tripRepository.ReloadAsync(trip, ct);
+        trip.DigiRegistrationId = digiId;
+        await tripRepository.UpdateAsync(trip, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Thông tin để đẩy lại phiếu đăng tài: chuyến đã cân chưa + lệnh đốn LƯU TRÊN CHUYẾN (không lấy theo ô đang gõ).
+    /// </summary>
+    public async Task<(bool Weighed, string? LenhDonId, string? MaLenhDon)> GetRegistrationPushContextAsync(
+        Guid tripId, CancellationToken ct = default)
+    {
+        var trip = await tripRepository.GetByIdAsync(tripId, ct);
+        if (trip is null) return (false, null, null);
+        await tripRepository.ReloadAsync(trip, ct);
+        var weighed = await tripRepository.HasWeighEventsAsync(tripId, ct);
+        return (weighed, trip.FrmLenhDonId, trip.ReferenceTripNo);
     }
 
     /// <summary>Tìm chuyến vật tư đã dùng Shipment/TRIP ERP (mọi trạng thái trừ đã hủy, kể cả đã cân xong).</summary>
@@ -447,12 +642,14 @@ public sealed class TripRegistrationPresenter(
             TTC.Weighing.Application.Queries.TripCategoryExtensions.MATERIAL_SOURCE_SYSTEM, shipmentOrTrip, ct);
     }
 
-    /// <summary>Tìm chuyến active theo biển số (xe chưa cân ra).</summary>
+    /// <summary>
+    /// Chuyến của xe CHƯA CÂN RA (chặn đăng tài tiếp). Xe đã cân ra xong (có lượt cân ra) → null:
+    /// được đăng tài lệnh đốn khác, kể cả khi trạng thái chuyến cũ chưa kịp chuyển sang Đóng.
+    /// </summary>
     public async Task<string?> FindActiveTripByPlateAsync(string plate, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(plate)) return null;
-        var trip = await tripRepository.GetActiveByPlateAsync(plate, siteContext.CurrentSiteId, ct);
-        return trip?.TripNo;
+        return await tripRepository.FindNotWeighedOutByPlateAsync(plate, siteContext.CurrentSiteId, ct);
     }
 
     /// <summary>
@@ -460,15 +657,8 @@ public sealed class TripRegistrationPresenter(
     /// (ví dụ "2026VC0006-70R-020.10-T260000047") → khớp theo mã thẻ ở cuối. Null nếu không có thẻ nào khớp
     /// (thẻ chưa phát hành / chưa duyệt — ví dụ "2026VC0006-TAI00237" không có mã thẻ T…).
     /// </summary>
-    public TTC.Weighing.Infrastructure.Adapters.FrmVehicleInfo? FindCardForLenhDon(string? theXeName)
-    {
-        if (string.IsNullOrWhiteSpace(theXeName)) return null;
-        var name = theXeName.Trim();
-        return frmCache.AllVehicles.FirstOrDefault(v =>
-            !string.IsNullOrWhiteSpace(v.MaThe)
-            && (string.Equals(v.MaThe.Trim(), name, StringComparison.OrdinalIgnoreCase)
-                || name.EndsWith("-" + v.MaThe.Trim(), StringComparison.OrdinalIgnoreCase)));
-    }
+    public TTC.Weighing.Infrastructure.Adapters.FrmVehicleInfo? FindCardForLenhDon(FrmLenhDonInfo ld)
+        => frmCache.FindCardForLenhDon(ld);
 
     /// <summary>Mã hợp đồng vận chuyển trong tên thẻ xe lệnh đốn ("2026VC0006-TAI00237" → "2026VC0006").</summary>
     public static string? TransportContractOf(string? theXeName)

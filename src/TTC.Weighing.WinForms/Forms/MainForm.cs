@@ -5,6 +5,7 @@ using TTC.Weighing.WinForms.Development;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -30,6 +31,8 @@ public sealed class MainForm : Form
     private const string IconSync = "\uE895";
     private const string IconApiLog = "\uE9D5";
     private const string IconSettings = "\uE713";
+    private const string IconPlug = "\uE839"; // Ethernet / kết nối thiết bị
+    private const string IconCamera = "\uE714"; // Video / camera IP
     private const string IconCloud = "\uE753";
     private const string IconLibrary = "\uE8F1";
     private const string IconHelp = "\uE897";
@@ -116,7 +119,11 @@ public sealed class MainForm : Form
         _site = site;
 
         Text = Loc.T("app.title");
-        MinimumSize = new Size(1380, 920);
+        if (LogoHelper.GetAppIcon() is { } appIcon) Icon = appIcon;
+        // Sàn nhỏ để cửa sổ phóng to luôn nằm gọn trong màn hình (1366x768, hay 1920x1080 đặt Scale 150%
+        // = 1280x720). Trước đây 1380x920 làm cửa sổ to hơn màn hình nhỏ → mất thanh trạng thái và chân lưới.
+        // Màn hình nghiệp vụ nào cần nhiều chỗ hơn thì tab tự cuộn (xem HostInTab).
+        MinimumSize = new Size(1024, 600);
         BackColor = AgrisTheme.Canvas;
         KeyPreview = true;
         DoubleBuffered = true;
@@ -129,6 +136,12 @@ public sealed class MainForm : Form
         Location = screenArea.Location;
         ClientSize = screenArea.Size;
         WindowState = FormWindowState.Maximized;
+
+        // Màn hình hẹp (dưới 1600 px, kể cả 1920 đặt Scale 125%+): thu gọn menu trái sẵn để vùng tab
+        // rộng thêm ~200 px. Người dùng vẫn mở rộng lại được bằng nút thu/mở menu.
+        // So theo bề rộng quy về màn hình thiết kế: giao diện đã thu phóng theo UiScale nên màn hình nhỏ
+        // trông như 1920; chỉ thu menu khi kể cả sau thu phóng vẫn hẹp (hệ số chạm mức tối thiểu).
+        _sidebarCollapsed = screenArea.Width / UiScale.Factor < 1600;
 
         // Thứ tự thêm quyết định thứ tự dock (control thêm sau được dock trước):
         // status bar (đáy, full width) → header (đỉnh, full width) → sidebar (trái) → vùng tab (fill).
@@ -238,14 +251,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        var scope = _services.CreateScope();
-        if (scope.ServiceProvider.GetRequiredService(formType) is not Form form)
-        {
-            scope.Dispose();
-            return;
-        }
-
-        HostInTab(formType, form, scope, select: false);
+        CreateAndHost(formType, null, select: false);
     }
 
     /// <summary>
@@ -319,14 +325,14 @@ public sealed class MainForm : Form
         nav.AddItem(Loc.T("menu.report"), IconReport, Open<ReportForm>, typeof(ReportForm));
 
         nav.AddGroup(Loc.T("menu.technical"));
-        nav.AddItem(Loc.T("menu.integration_monitor"), IconSync, Open<IntegrationMonitorForm>, typeof(IntegrationMonitorForm));
         nav.AddItem(Loc.T("menu.api_log"), IconApiLog, Open<ApiLogForm>, typeof(ApiLogForm));
         nav.AddItem(Loc.T("menu.configuration"), IconSettings, Open<ConfigurationForm>, typeof(ConfigurationForm));
+        nav.AddItem(Loc.T("menu.scale_connection"), IconPlug, Open<ScaleConnectionForm>, typeof(ScaleConnectionForm));
+        nav.AddItem(Loc.T("menu.camera_connection"), IconCamera, Open<CameraConnectionForm>, typeof(CameraConnectionForm));
         nav.AddItem(Loc.T("menu.frm_data"), IconCloud, Open<FrmSyncForm>, typeof(FrmSyncForm));
         nav.AddItem(Loc.T("menu.erp_data"), IconLibrary, Open<ErpSyncForm>, typeof(ErpSyncForm));
 
         nav.AddGroup(Loc.T("menu.help"));
-        nav.AddItem(Loc.T("menu.guide"), IconHelp, OpenGuide, typeof(GuideForm));
         nav.AddItem(Loc.T("menu.close_all_tabs"), IconCloseAll, CloseAllTabs);
 
         nav.Collapsed = _sidebarCollapsed;
@@ -429,7 +435,7 @@ public sealed class MainForm : Form
         };
         btnLogout.Click += (_, _) =>
         {
-            if (MessageBox.Show(Loc.T("logout.confirm"), Loc.T("button.logout_title"),
+            if (Helpers.AppMessageBox.Show(Loc.T("logout.confirm"), Loc.T("button.logout_title"),
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
                 IsLogout = true;
@@ -580,7 +586,7 @@ public sealed class MainForm : Form
 
         var right = new Label
         {
-            Text = $"{Loc.T("status.pending_decisions")}     ·     {Loc.T("footer.copyright", DateTime.Now.Year)}",
+            Text = $"{Loc.T("status.pending_decisions")}     ·     {Loc.T("footer.copyright", VnTime.Now.Year)}",
             Dock = DockStyle.Right,
             AutoSize = true,
             Font = AgrisTheme.Ui(8.5F),
@@ -702,15 +708,25 @@ public sealed class MainForm : Form
             : string.Join(Environment.NewLine, store.AuditLog
                 .OrderByDescending(a => a.OccurredAt)
                 .Select(a =>
-                    $"{a.OccurredAt.ToLocalTime():HH:mm:ss}  {a.ActionType,-30} actor={a.Actor}" +
+                    $"{a.OccurredAt.ToVnTime():HH:mm:ss}  {a.ActionType,-30} actor={a.Actor}" +
                     $"  trip={a.TripId}  before={a.BeforeJson ?? "-"}  after={a.AfterJson ?? "-"}"));
 
         using var dialog = new TextPreviewForm(text, "Audit trail (xem trước)");
         dialog.ShowDialog();
     }
 
-    /// <summary>Mở tab hướng dẫn sử dụng. Nội dung đọc từ docs/HUONG_DAN_SU_DUNG.md nếu có.</summary>
-    private void OpenGuide() => OpenTab<GuideForm>(null);
+    /// <summary>Chỉ dùng cho chế độ chụp ảnh tài liệu (--capture-docs): mở màn hình theo kiểu form.</summary>
+    internal void OpenScreenForDocs(Type formType)
+    {
+        if (formType == typeof(DashboardForm)) { OpenDashboard(); return; }
+        if (_openTabs.TryGetValue(formType, out var existing)) { _tabs.SelectedTab = existing; return; }
+
+        CreateAndHost(formType, null, select: true);
+    }
+
+    /// <summary>Chỉ dùng cho chế độ chụp ảnh tài liệu: đóng mọi tab giữa hai lần chụp.</summary>
+    internal void CloseAllTabsForDocs() => CloseAllTabs();
+
 
     /// <summary>Mở màn hình thành tab. Nếu đã mở thì chuyển sang tab đó.</summary>
     private void Open<TForm>() where TForm : Form => OpenTab<TForm>(null);
@@ -735,12 +751,33 @@ public sealed class MainForm : Form
             return existing.Controls.OfType<TForm>().FirstOrDefault();
         }
 
-        // Mỗi tab tạo scope riêng → DbContext riêng, tránh "second operation" khi async song song.
-        var scope = _services.CreateScope();
-        var form = scope.ServiceProvider.GetRequiredService<TForm>();
-        configure?.Invoke(form);
+        return CreateAndHost(typeof(TForm), f => configure?.Invoke((TForm)f), select: true) as TForm;
+    }
 
-        HostInTab(typeof(TForm), form, scope, select: true);
+    /// <summary>
+    /// Tạo màn hình ở kích thước thiết kế, nhúng vào tab, rồi thu phóng cả màn hình theo màn hình máy
+    /// (<see cref="UiScale"/>). Mỗi tab tạo DI scope riêng → DbContext riêng, tránh "second operation".
+    /// </summary>
+    private Form? CreateAndHost(Type formType, Action<Form>? configure, bool select)
+    {
+        var scope = _services.CreateScope();
+        Form? form;
+
+        using (UiScale.DesignScope())
+        {
+            form = scope.ServiceProvider.GetRequiredService(formType) as Form;
+            if (form is null)
+            {
+                scope.Dispose();
+                return null;
+            }
+
+            configure?.Invoke(form);
+            HostInTab(formType, form, scope, select);
+        }
+
+        // Ngoài DesignScope mới co (nếu tab mở ngay trong lúc dựng MainForm thì MainForm co luôn cả tab).
+        UiScale.Apply(form);
         return form;
     }
 

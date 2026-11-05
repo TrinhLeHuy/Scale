@@ -1635,7 +1635,7 @@
   "reg.field_receive_date": "Ngày nhận hàng",
   "reg.btn_more_info": "📋 Xem thêm thông tin chuyến",
   "reg.more_info": "Xem thêm thông tin chuyến",
-  "reg.btn_retry_digi": "🔄 Đẩy lại Digi",
+  "reg.btn_retry_digi": "🔄 Đồng bộ ",
   "reg.btn_cancel_ticket": "Hủy phiếu",
   "reg.camera_in": "Camera Vào",
   "reg.camera_out": "Camera Ra",

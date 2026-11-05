@@ -73,7 +73,7 @@ public sealed class FrmPolicyAdapter
                             LenhDon = lenhDonId,
                             MaLenhDon = maLenhDon,
                             MaBanCan = maBanCan,
-                            TrongLuong = Math.Round(trongLuongTon, 3),
+                            TrongLuong = Domain.Common.Num.R2(trongLuongTon), // làm tròn 2 chữ số như mọi số gửi đi
                             TrongLuongThanhToan = 0,
                             ThoiGianCanVao = thoiGianCan.ToString("MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture),
                             TapChatThanhToan = 0,

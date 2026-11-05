@@ -1,5 +1,6 @@
 using System.Drawing.Drawing2D;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -96,7 +97,7 @@ public sealed class SplashForm : Form
         }
 
         using var fCopy = new Font(AgrisTheme.FontFamily, 8F);
-        TextRenderer.DrawText(g, $"© {DateTime.Now.Year} AgriS", fCopy, new Rectangle(40, 284, 440, 24),
+        TextRenderer.DrawText(g, $"© {VnTime.Now.Year} AgriS", fCopy, new Rectangle(40, 284, 440, 24),
             Color.FromArgb(120, 150, 165), TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
     }
 

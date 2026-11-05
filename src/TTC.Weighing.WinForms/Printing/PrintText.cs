@@ -51,6 +51,18 @@ public static class PrintText
         return other is null || other == vi ? vi : $"{other}/{vi}";
     }
 
+    /// <summary>
+    /// Số hợp đồng in trên phiếu: chỉ phần mã cuối sau dấu "-" cuối cùng
+    /// ("HDDT-CHUON SOPHAL-101541152-2026DT0010" → "2026DT0010"). Không có "-" thì in nguyên.
+    /// </summary>
+    public static string? ContractNo(string? contract)
+    {
+        if (string.IsNullOrWhiteSpace(contract)) return null;
+        var value = contract.Trim();
+        var tail = value[(value.LastIndexOf('-') + 1)..].Trim();
+        return tail.Length == 0 ? value : tail;
+    }
+
     /// <summary>Hình thức thu hoạch song ngữ; null nếu FRM chưa có cờ.</summary>
     public static string? HarvestMethod(bool? thuHoachMay) => thuHoachMay switch
     {
@@ -150,11 +162,14 @@ public static class PrintText
         }
     }
 
-    /// <summary>Vẽ căn giữa trong [left, left+width]; hỗ trợ nhiều dòng ("\n"). Trả chiều cao đã vẽ.</summary>
+    /// <summary>
+    /// Vẽ căn giữa trong [left, left+width]; hỗ trợ nhiều dòng ("\n"). Dòng dài hơn khung tự xuống dòng
+    /// (ưu tiên sau "/" giữa hai ngôn ngữ) — không tràn mép giấy (giấy cuộn máy in nhiệt hẹp). Trả chiều cao đã vẽ.
+    /// </summary>
     public static float DrawCentered(Graphics g, string? text, Font font, Brush brush, float left, float width, float y)
     {
         float total = 0;
-        foreach (var line in (text ?? "").Split('\n'))
+        foreach (var line in Wrap(g, text, font, width))
         {
             var sz = Measure(g, line, font);
             Draw(g, line, font, brush, left + Math.Max(0, (width - sz.Width) / 2), y + total);
@@ -178,12 +193,22 @@ public static class PrintText
     public static List<string> Wrap(Graphics g, string? text, Font font, float maxWidth)
     {
         var lines = new List<string>();
-        foreach (var paragraph in (text ?? "").Split('\n'))
+        // Chuỗi song ngữ "Khmer/Việt" không vừa một dòng → mỗi ngôn ngữ một dòng trước,
+        // tránh kiểu "…ខ្មែរ/PHIẾU" + "ĐO TẠP CHẤT" (tách giữa cụm tiếng Việt).
+        var paragraphs = new List<string>();
+        foreach (var p in (text ?? "").Split('\n'))
+        {
+            if (!p.Contains('/') || Measure(g, p, font).Width <= maxWidth) { paragraphs.Add(p); continue; }
+            var parts = p.Split('/');
+            for (var i = 0; i < parts.Length; i++)
+                paragraphs.Add(i < parts.Length - 1 ? parts[i] + "/" : parts[i].TrimStart());
+        }
+        foreach (var paragraph in paragraphs)
         {
             var current = "";
-            foreach (var word in paragraph.Split(' '))
+            foreach (var (word, spaceBefore) in Tokens(paragraph))
             {
-                var candidate = current.Length == 0 ? word : current + " " + word;
+                var candidate = current.Length == 0 ? word : current + (spaceBefore ? " " : "") + word;
                 if (Measure(g, candidate, font).Width <= maxWidth) { current = candidate; continue; }
 
                 if (current.Length > 0) lines.Add(current);
@@ -201,6 +226,29 @@ public static class PrintText
             lines.Add(current);
         }
         return lines;
+    }
+
+    /// <summary>
+    /// Điểm được phép xuống dòng: khoảng trắng và ngay SAU dấu "/" — nhãn song ngữ "Khmer/Việt"
+    /// xuống dòng đúng chỗ giữa hai ngôn ngữ thay vì cắt giữa chữ.
+    /// </summary>
+    private static IEnumerable<(string Text, bool SpaceBefore)> Tokens(string paragraph)
+    {
+        var words = paragraph.Split(' ');
+        for (var i = 0; i < words.Length; i++)
+        {
+            var word = words[i];
+            var start = 0;
+            var first = true;
+            for (var k = 0; k < word.Length; k++)
+            {
+                if (word[k] != '/' || k == word.Length - 1) continue;
+                yield return (word[start..(k + 1)], first && i > 0);
+                start = k + 1;
+                first = false;
+            }
+            yield return (word[start..], first && i > 0);
+        }
     }
 
     /// <summary>Vẽ chữ tự xuống dòng trong khung rộng <paramref name="maxWidth"/>. Trả chiều cao đã vẽ.</summary>

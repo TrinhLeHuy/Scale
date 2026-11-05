@@ -21,7 +21,12 @@ public sealed record WeighedTripRow(
     decimal? NetWeight,
     string? Customer,
     string? Commodity,
-    IntegrationMessageStatus? SyncStatus);
+    IntegrationMessageStatus? SyncStatus,
+    // Mía: tạp chất / CCS thực tế (mẫu hiệu lực đã đo) và thanh toán (chính sách FRM). Vật tư: null.
+    decimal? ImpurityActual = null,
+    decimal? ImpurityPaid = null,
+    decimal? CcsActual = null,
+    decimal? CcsPaid = null);
 
 /// <summary>Bộ lọc cho lưới xe đã cân (R-028, UI-03).</summary>
 public sealed record WeighedTripFilter

@@ -42,11 +42,40 @@ public static class Loc
     public static void SetAllowedLanguages(IEnumerable<AppLanguage>? languages)
         => _localizer?.SetAllowedLanguages(languages);
 
+    /// <summary>
+    /// Hệ thống đích hiển thị cho người vận hành thay cho tên trung gian DigiScale:
+    /// mía = "FRM", vật tư = "ERP". Chuỗi dùng chung (lỗi mạng, hết giờ chờ...) ghi <c>[SYS]</c>.
+    /// Mặc định FRM; luồng vật tư bọc bằng <see cref="UseSystem"/>("ERP").
+    /// </summary>
+    public static string TargetSystem { get; private set; } = SYSTEM_FRM;
+
+    public const string SYSTEM_FRM = "FRM";
+    public const string SYSTEM_ERP = "ERP";
+
+    /// <summary>Đổi hệ thống đích trong một khối lệnh; Dispose để trả lại như cũ.</summary>
+    public static IDisposable UseSystem(string system)
+    {
+        var previous = TargetSystem;
+        TargetSystem = system;
+        return new SystemScope(previous);
+    }
+
+    private sealed class SystemScope(string previous) : IDisposable
+    {
+        private bool _done;
+        public void Dispose() { if (_done) return; _done = true; TargetSystem = previous; }
+    }
+
+    /// <summary>Token trong chuỗi dịch — không dùng ngoặc nhọn để không vướng string.Format.</summary>
+    public const string SYSTEM_TOKEN = "[SYS]";
+
+    private static string Sys(string text) => text.Contains(SYSTEM_TOKEN) ? text.Replace(SYSTEM_TOKEN, TargetSystem) : text;
+
     /// <summary>Lấy chuỗi đã dịch.</summary>
-    public static string T(string key) => _localizer?.T(key) ?? key;
+    public static string T(string key) => Sys(_localizer?.T(key) ?? key);
 
     /// <summary>Lấy chuỗi đã dịch và format.</summary>
-    public static string T(string key, params object[] args) => _localizer?.T(key, args) ?? key;
+    public static string T(string key, params object[] args) => Sys(_localizer?.T(key, args) ?? key);
 
     /// <summary>
     /// Tên hiển thị của giá trị enum theo ngôn ngữ hiện hành — khóa <c>enum.{TênKiểu}.{GiáTrị}</c>.

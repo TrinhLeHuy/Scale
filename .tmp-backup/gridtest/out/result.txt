@@ -1,0 +1,1 @@
+diff32Rgb=1237 diff32Argb=1237

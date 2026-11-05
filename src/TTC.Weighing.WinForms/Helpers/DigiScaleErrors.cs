@@ -57,6 +57,13 @@ public static partial class DigiScaleErrors
         if (Has(text, "timed out", "Timeout", "TaskCanceled", "The operation was canceled"))
             return new(Loc.T("digi.err_timeout"), Loc.T("digi.act_timeout"));
 
+        // FRM không tìm thấy bản ghi: "... With Id = X Does Not Exist" → câu dễ hiểu + nguyên văn FRM trả về.
+        if (Has(text, "Does Not Exist"))
+        {
+            // Popup chỉ câu dễ hiểu; nguyên văn FRM xem ở khung thông báo / Nhật ký API (LogText).
+            return new(Loc.T("digi.err_record_not_exist"), Loc.T("digi.act_check_retry"));
+        }
+
         var http = HttpCodeRegex().Match(text);
         var code = http.Success ? int.Parse(http.Groups[1].Value) : (int?)null;
         if (code is 401 or 403)
@@ -80,6 +87,16 @@ public static partial class DigiScaleErrors
 
         return new(code is not null ? Loc.T("digi.err_rejected_code", code.Value) : Loc.T("digi.err_unknown"),
             Loc.T("digi.act_retry"));
+    }
+
+    /// <summary>
+    /// Câu lỗi nguyên văn hệ thống trả về (đã bóc JSON / HTTP) — chỉ ghi khung thông báo / log, KHÔNG đưa vào popup.
+    /// </summary>
+    public static string LogText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "—";
+        var msg = ExtractBusinessMessage(raw) ?? StripTechnicalPrefix(raw);
+        return msg.Replace(Environment.NewLine, " · ").Trim();
     }
 
     /// <summary>Dịch exception (mất mạng, timeout...) khi gọi DigiScale.</summary>
@@ -173,15 +190,61 @@ public static partial class DigiScaleErrors
                     found = e.GetString();
                 found ??= Str(root, "message_error") ?? Str(root, "message") ?? Str(root, "error")
                     ?? Str(root, "title") ?? Str(root, "detail");
+                // Lỗi FRM (CRM OData) lồng: {"error":{"code":"500","message":{"value":"[{No title:... Does Not Exist}]"}}}
+                found ??= ODataMessage(root);
             }
-            catch (JsonException) { /* không phải JSON hợp lệ */ }
+            catch (JsonException)
+            {
+                // items[0].error là chuỗi "HTTP 500 ...: {json lồng}" → JSON ngoài hỏng khi cắt; thử khối lồng trong cùng.
+                found = NestedODataMessage(text);
+            }
         }
         else
         {
             found = text;
         }
 
-        return found is null ? null : PreferVietnamese(found);
+        // items[0].error = "HTTP 500 Internal Server Error: {OData}" → lấy câu FRM bên trong.
+        if (found is not null && LooksLikeJson(found))
+            found = NestedODataMessage(found) ?? found;
+
+        return found is null ? null : PreferVietnamese(CleanFrmMessage(found));
+    }
+
+    private static string? ODataMessage(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("error", out var err)
+            || err.ValueKind != JsonValueKind.Object || !err.TryGetProperty("message", out var msg))
+            return null;
+        if (msg.ValueKind == JsonValueKind.String) return msg.GetString();
+        return msg.ValueKind == JsonValueKind.Object ? Str(msg, "value") : null;
+    }
+
+    private static string? NestedODataMessage(string text)
+    {
+        var start = text.IndexOf("{\"error\"", StringComparison.Ordinal);
+        if (start < 0) start = text.IndexOf("{ \"error\"", StringComparison.Ordinal);
+        if (start < 0) return null;
+        var end = text.LastIndexOf('}');
+        for (; end > start; end = text.LastIndexOf('}', end - 1))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(text[start..(end + 1)]);
+                return ODataMessage(doc.RootElement);
+            }
+            catch (JsonException) { }
+        }
+        return null;
+    }
+
+    /// <summary>"[{No title:new_phieudangtai With Id = X Does Not Exist}]" → "new_phieudangtai With Id = X Does Not Exist".</summary>
+    private static string CleanFrmMessage(string message)
+    {
+        var t = message.Trim();
+        if (t.StartsWith("[{") && t.EndsWith("}]")) t = t[2..^2].Trim();
+        if (t.StartsWith("No title:", StringComparison.OrdinalIgnoreCase)) t = t["No title:".Length..].Trim();
+        return t;
     }
 
     private static string? Str(JsonElement el, string name)

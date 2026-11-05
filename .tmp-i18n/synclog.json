@@ -1,0 +1,23 @@
+﻿{
+  "vi": {
+    "reg.delete_cancelled_confirm_prompt": "Xóa phiếu đã hủy {0} — xe {1} khỏi hệ thống cân.\n\nNhập tên người xác nhận:",
+    "reg.delete_cancelled_confirm_effect": "Phiếu đã hủy bị xóa khỏi hệ thống cân, không còn hiện trong lưới. Không gửi lại lệnh lên FRM.",
+    "reg.delete_cancelled_ok": "Đã xóa phiếu đã hủy {0} khỏi hệ thống cân."
+  },
+  "en": {
+    "reg.delete_cancelled_confirm_prompt": "Delete cancelled ticket {0} — vehicle {1} from the weighing system.\n\nEnter the confirming person's name:",
+    "reg.delete_cancelled_confirm_effect": "The cancelled ticket is removed from the weighing system and no longer shown in the grid. Nothing is resent to FRM.",
+    "reg.delete_cancelled_ok": "Cancelled ticket {0} was deleted from the weighing system."
+  },
+  "lo": {
+    "reg.delete_cancelled_confirm_prompt": "ລຶບໃບທີ່ຍົກເລີກແລ້ວ {0} — ລົດ {1} ອອກຈາກລະບົບຊັ່ງ.\n\nປ້ອນຊື່ຜູ້ຢືນຢັນ:",
+    "reg.delete_cancelled_confirm_effect": "ໃບທີ່ຍົກເລີກແລ້ວຖືກລຶບອອກຈາກລະບົບຊັ່ງ, ບໍ່ສະແດງໃນຕາຕະລາງອີກ. ບໍ່ສົ່ງຄຳສັ່ງໄປ FRM ອີກ.",
+    "reg.delete_cancelled_ok": "ລຶບໃບທີ່ຍົກເລີກແລ້ວ {0} ອອກຈາກລະບົບຊັ່ງແລ້ວ."
+  },
+  "km": {
+    "reg.delete_cancelled_confirm_prompt": "លុបប័ណ្ណដែលបានលុបចោល {0} — រថយន្ត {1} ចេញពីប្រព័ន្ធថ្លឹង។\n\nបញ្ចូលឈ្មោះអ្នកបញ្ជាក់៖",
+    "reg.delete_cancelled_confirm_effect": "ប័ណ្ណដែលបានលុបចោលត្រូវលុបចេញពីប្រព័ន្ធថ្លឹង ហើយលែងបង្ហាញក្នុងតារាង។ មិនផ្ញើបញ្ជាទៅ FRM ម្ដងទៀតទេ។",
+    "reg.delete_cancelled_ok": "បានលុបប័ណ្ណដែលបានលុបចោល {0} ចេញពីប្រព័ន្ធថ្លឹង។"
+  }
+}
+

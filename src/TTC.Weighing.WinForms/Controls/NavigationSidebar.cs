@@ -10,8 +10,8 @@ namespace TTC.Weighing.WinForms.Controls;
 /// </summary>
 public sealed class NavigationSidebar : Panel
 {
-    public const int ExpandedWidth = 276;
-    public const int CollapsedWidth = 68;
+    public static int ExpandedWidth => Theme.UiScale.Px(276);
+    public static int CollapsedWidth => Theme.UiScale.Px(68);
 
     private readonly FlowLayoutPanel _list;
     private readonly ToolTip _toolTip = new() { InitialDelay = 300, ShowAlways = true };

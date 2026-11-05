@@ -200,7 +200,7 @@ public sealed class AllocateTripDialog : Form
         var approvalRef = _txtApprovalRef.Text.Trim();
         if (string.IsNullOrWhiteSpace(approvalRef))
         {
-            MessageBox.Show(Loc.T("allocate.approval_required"),
+            Helpers.AppMessageBox.Show(Loc.T("allocate.approval_required"),
                 Loc.T("allocate.approval_required_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             _txtApprovalRef.Focus();
             return;
@@ -208,7 +208,7 @@ public sealed class AllocateTripDialog : Form
 
         if (_linesGrid.Rows.Count == 0)
         {
-            MessageBox.Show(Loc.T("allocate.no_lines"),
+            Helpers.AppMessageBox.Show(Loc.T("allocate.no_lines"),
                 Loc.T("allocate.no_lines_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -223,7 +223,7 @@ public sealed class AllocateTripDialog : Form
 
             if (string.IsNullOrWhiteSpace(owner))
             {
-                MessageBox.Show(Loc.T("allocate.owner_required", i + 1),
+                Helpers.AppMessageBox.Show(Loc.T("allocate.owner_required", i + 1),
                     Loc.T("common.missing_info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -233,7 +233,7 @@ public sealed class AllocateTripDialog : Form
             {
                 if (!decimal.TryParse(row.Cells["Ratio"]?.Value?.ToString(), out var ratio) || ratio <= 0)
                 {
-                    MessageBox.Show(Loc.T("allocate.ratio_invalid", i + 1),
+                    Helpers.AppMessageBox.Show(Loc.T("allocate.ratio_invalid", i + 1),
                         Loc.T("allocate.ratio_invalid_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
@@ -253,7 +253,7 @@ public sealed class AllocateTripDialog : Form
                     if (!decimal.TryParse(row.Cells["FixedKg"]?.Value?.ToString(), out var fixedKg)
                         || fixedKg <= 0)
                     {
-                        MessageBox.Show(
+                        Helpers.AppMessageBox.Show(
                             Loc.T("allocate.fixed_invalid", i + 1),
                             Loc.T("allocate.fixed_invalid_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
@@ -270,7 +270,7 @@ public sealed class AllocateTripDialog : Form
             var remainderCount = lines.Count(l => l.ReceivesRemainder);
             if (remainderCount != 1)
             {
-                MessageBox.Show(
+                Helpers.AppMessageBox.Show(
                     Loc.T("allocate.remainder_required"),
                     Loc.T("allocate.remainder_required_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;

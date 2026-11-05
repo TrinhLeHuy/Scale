@@ -6,6 +6,7 @@ using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Presenters;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -45,6 +46,10 @@ public sealed class WarehouseForm : Form
         IntegralHeight = false, Font = AgrisTheme.Mono(9F)
     };
     private TripRegistrationRow[] _popupTrips = [];
+    /// <summary>Gõ vào ô nhập → chờ ngắn rồi lọc danh sách xe (không tra DB theo từng phím).</summary>
+    private readonly System.Windows.Forms.Timer _suggestTimer = new() { Interval = 250 };
+    /// <summary>Tăng mỗi lần tra gợi ý — kết quả về trễ của lần tra cũ bị bỏ.</summary>
+    private int _suggestVersion;
 
     // ── Chi tiết chuyến (read-only, tự điền khi chọn) ──
     private readonly TextBox _txtTripNo = ReadOnlyField("Số đăng tài");
@@ -114,10 +119,57 @@ public sealed class WarehouseForm : Form
         {
             if (e.KeyCode != Keys.Enter) return;
             e.Handled = true; e.SuppressKeyPress = true;
+            HideTripSuggestions();
             await LookupTripAsync(_txtBarcode.Text.Trim());
         };
+        // Máy quét QR (số đăng tài) — quét ở đâu trên màn cũng được, quét xong tra chuyến luôn.
+        QrScanner.Register(this, () => _txtBarcode, async content =>
+        {
+            _txtBarcode.Text = content;
+            HideTripSuggestions(); // sau khi gán chữ: gán chữ có thể bật lại hẹn giờ gợi ý
+            await LookupTripAsync(content);
+        });
         _btnTripDropdown.Click += async (_, _) => await ShowTripDropdownAsync();
         _btnTripDropdown.FlatAppearance.BorderSize = 1;
+
+        // Gõ số đăng tài / biển số → hiện ngay danh sách xe khớp (con trỏ vẫn ở ô nhập).
+        // Tắt bộ gõ tiếng Việt: bộ gõ giữ chữ tới khi bấm Space → gợi ý không hiện ngay khi gõ.
+        Helpers.SearchText.Prepare(_txtBarcode);
+        _txtBarcode.TextChanged += (_, _) =>
+        {
+            _suggestTimer.Stop();
+            if (!_txtBarcode.Focused) return; // gán chữ bằng code (chọn xe, làm mới) → không gợi ý
+            if (QrScanner.ScanInProgress) return; // máy quét đang gõ → quét xong tự tra, không gợi ý
+            if (string.IsNullOrWhiteSpace(_txtBarcode.Text)) { _suggestVersion++; _lstTripPopup.Visible = false; return; }
+            _suggestTimer.Start();
+        };
+        _suggestTimer.Tick += async (_, _) =>
+        {
+            _suggestTimer.Stop();
+            if (!_txtBarcode.Focused || QrScanner.ScanInProgress) return;
+            await ShowTripDropdownAsync(_txtBarcode.Text.Trim(), focus: false);
+        };
+        _txtBarcode.KeyDown += (_, e) =>
+        {
+            if (!_lstTripPopup.Visible) return;
+            if (e.KeyCode == Keys.Down && _lstTripPopup.Items.Count > 0)
+            {
+                e.Handled = true; e.SuppressKeyPress = true;
+                _lstTripPopup.Focus();
+                _lstTripPopup.SelectedIndex = 0;
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true; e.SuppressKeyPress = true;
+                HideTripSuggestions();
+            }
+        };
+        _txtBarcode.Leave += (_, _) =>
+        {
+            if (!IsHandleCreated || IsDisposed) return;
+            BeginInvoke(() => { if (!_lstTripPopup.Focused) HideTripSuggestions(); });
+        };
+        Disposed += (_, _) => _suggestTimer.Dispose();
         _lstTripPopup.Click += (_, _) => SelectTripFromPopup();
         _lstTripPopup.KeyDown += (_, e) =>
         {
@@ -220,9 +272,9 @@ public sealed class WarehouseForm : Form
         filterPanel.Controls.Add(_rbInWarehouse);
         filterPanel.Controls.Add(_rbExited);
         var lblFrom = new Label { Text = "Từ ngày:", AutoSize = true, Margin = new Padding(12, 6, 4, 0) };
-        _dtpFrom.Value = DateTime.Today.AddDays(-7);
+        _dtpFrom.Value = VnTime.Today.AddDays(-7);
         var lblTo2 = new Label { Text = "→", AutoSize = true, Margin = new Padding(4, 6, 4, 0) };
-        _dtpTo.Value = DateTime.Today;
+        _dtpTo.Value = VnTime.Today;
         filterPanel.Controls.Add(lblFrom);
         filterPanel.Controls.Add(_dtpFrom);
         filterPanel.Controls.Add(lblTo2);
@@ -281,11 +333,11 @@ public sealed class WarehouseForm : Form
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show("Chưa chọn chuyến.", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Helpers.AppMessageBox.Show("Chưa chọn chuyến.", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
-        _txtTimeIn.Text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        _txtTimeIn.Text = VnTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
         AppendNotification($"✅ Xe {_txtPlate.Text} đã vào kho lúc {_txtTimeIn.Text}");
 
         // Ghi CheckpointEvent WarehouseIn vào DB — để precondition check cho cân lần 2
@@ -328,7 +380,7 @@ public sealed class WarehouseForm : Form
             SourceForm = "WarehouseForm"
         });
 
-        MessageBox.Show($"Xe {_txtPlate.Text} đã vào kho thành công.",
+        Helpers.AppMessageBox.Show($"Xe {_txtPlate.Text} đã vào kho thành công.",
             "Xác nhận", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
@@ -336,11 +388,11 @@ public sealed class WarehouseForm : Form
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show("Chưa chọn chuyến.", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Helpers.AppMessageBox.Show("Chưa chọn chuyến.", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
-        _txtTimeOut.Text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        _txtTimeOut.Text = VnTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
         AppendNotification($"✅ Xe {_txtPlate.Text} đã ra kho lúc {_txtTimeOut.Text}");
 
         _eventBus.Publish(new TripChangedEventArgs
@@ -352,7 +404,7 @@ public sealed class WarehouseForm : Form
             SourceForm = "WarehouseForm"
         });
 
-        MessageBox.Show($"Xe {_txtPlate.Text} đã ra kho thành công.",
+        Helpers.AppMessageBox.Show($"Xe {_txtPlate.Text} đã ra kho thành công.",
             "Xác nhận", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
@@ -374,13 +426,25 @@ public sealed class WarehouseForm : Form
         _txtBarcode.Focus();
     }
 
-    private async Task ShowTripDropdownAsync()
+    private void HideTripSuggestions()
     {
+        _suggestTimer.Stop();
+        _suggestVersion++;
+        _lstTripPopup.Visible = false;
+    }
+
+    /// <param name="query">Chuỗi đang gõ để lọc (null = nút ▼, hiện tất cả).</param>
+    /// <param name="focus">false = gợi ý khi gõ, con trỏ ở lại ô nhập.</param>
+    private async Task ShowTripDropdownAsync(string? query = null, bool focus = true)
+    {
+        var version = ++_suggestVersion;
         try
         {
             var filter = new TripRegistrationFilter { Tab = TripGridTab.InFactory };
             var trips = await _tripQueries.ListAsync(_siteContext.CurrentSiteId, filter, _cts.Token);
-            _popupTrips = trips.ToArray();
+            if (version != _suggestVersion) return; // đã gõ tiếp / đã chọn xe trong lúc chờ
+            if (!focus && !_txtBarcode.Focused) return;
+            _popupTrips = string.IsNullOrWhiteSpace(query) ? trips.ToArray() : TripPickerList.Filter(trips, query);
             if (_popupTrips.Length == 0) { _lstTripPopup.Visible = false; return; }
 
             _lstTripPopup.Items.Clear();
@@ -395,7 +459,7 @@ public sealed class WarehouseForm : Form
             if (_lstTripPopup.Parent != FindForm())
             { FindForm()!.Controls.Add(_lstTripPopup); _lstTripPopup.BringToFront(); }
             _lstTripPopup.Visible = true;
-            _lstTripPopup.Focus();
+            if (focus) _lstTripPopup.Focus();
         }
         catch { _lstTripPopup.Visible = false; }
     }
@@ -416,8 +480,8 @@ public sealed class WarehouseForm : Form
             var siteId = _siteContext.CurrentSiteId;
             var showInWarehouse = _rbInWarehouse.Checked;
 
-            var fromUtc = _dtpFrom.Value.Date.ToUniversalTime();
-            var toUtc = _dtpTo.Value.Date.AddDays(1).ToUniversalTime();
+            var fromUtc = VnTime.ToUtc(_dtpFrom.Value.Date);
+            var toUtc = VnTime.ToUtc(_dtpTo.Value.Date.AddDays(1));
 
             var fromDto = new DateTimeOffset(fromUtc, TimeSpan.Zero);
             var toDto = new DateTimeOffset(toUtc, TimeSpan.Zero);
@@ -473,7 +537,7 @@ public sealed class WarehouseForm : Form
             catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
             return;
         }
-        _rtbNotification.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
+        _rtbNotification.AppendText($"{VnTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
         _rtbNotification.ScrollToCaret();
     }
 

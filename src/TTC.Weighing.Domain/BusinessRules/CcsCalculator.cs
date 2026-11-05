@@ -27,6 +27,11 @@ public static class CcsCalculator
         if (fibre < 0)
             return CcsResult.Invalid(DomainText.T("rule.ccs_fibre_negative", "Fibre không được âm."));
 
+        // Số đầu vào làm tròn 2 chữ số thập phân (quy tắc chung cho dữ liệu tính toán / gửi đi).
+        polDoc = Num.R2(polDoc);
+        brixDoc = Num.R2(brixDoc);
+        fibre = Num.R2(fibre);
+
         // Bước 1: Tra tỷ trọng biểu kiến theo Brix (bảng ICUMSA, 20°C/20°C)
         var bxRounded = Math.Round(brixDoc, 1, MidpointRounding.AwayFromZero);
         var g = LookupApparentDensity((double)bxRounded);
@@ -35,26 +40,28 @@ public static class CcsCalculator
 
         // Bước 2: Tính Pol cải chính (PolTinh)
         // PolTinh = (PolDoc × 26 × 110) / (99.718 × g × 100)
-        var polTinh = ((double)polDoc * 26.0 * 110.0) / (99.718 * g * 100.0);
+        // Tính bằng decimal (không dùng double): tránh sai số nhị phân kiểu 4,935 → 4,93499… làm tròn xuống 4,93.
+        var gDec = (decimal)g;
+        // Pol cải chính làm tròn 2 chữ số TRƯỚC khi tính CCS — đúng số hiển thị / in / gửi đi.
+        var polTinh = Num.R2((polDoc * 26m * 110m) / (99.718m * gDec * 100m));
 
         if (polTinh <= 0)
             return CcsResult.Invalid(DomainText.T("rule.ccs_pol_corrected_invalid", "Pol cải chính ≤ 0, kiểm tra lại giá trị Pol và Brix."));
 
         // Bước 3: Tính CCS
         // CCS = 1.5 × PolTinh × (95 - F) / 100 - 0.5 × BxDoc × (97 - F) / 100
-        var f = (double)fibre;
-        var bx = (double)brixDoc;
-        var ccs = 1.5 * polTinh * (95.0 - f) / 100.0
-                - 0.5 * bx * (97.0 - f) / 100.0;
+        var ccs = 1.5m * polTinh * (95m - fibre) / 100m
+                - 0.5m * brixDoc * (97m - fibre) / 100m;
 
-        ccs = Math.Round(ccs, 2, MidpointRounding.AwayFromZero);
+        // CCS thực tế: làm tròn 2 chữ số thập phân, nửa lên (4,935 → 4,94; 4,938 → 4,94; 4,934 → 4,93).
+        ccs = Num.R2(ccs);
 
         return new CcsResult(
             IsValid: true,
             InvalidReason: null,
-            PolCaiChinh: Math.Round((decimal)polTinh, 4),
-            CcsValue: (decimal)ccs,
-            ApparentDensity: (decimal)g);
+            PolCaiChinh: polTinh,
+            CcsValue: ccs,
+            ApparentDensity: gDec);
     }
 
     /// <summary>

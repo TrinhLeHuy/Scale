@@ -2,6 +2,7 @@
 using TTC.Weighing.WinForms.Controls;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -24,6 +25,7 @@ public sealed class ErpSyncForm : Form
 
     private readonly Button _btnRefresh = GridBuilder.PrimaryButton(Loc.T("erp.btn_pull"), new Size(280, 40));
     private readonly Button _btnAutoSync = GridBuilder.SecondaryButton(Loc.T("erp.btn_auto_on"), new Size(160, 40));
+    private readonly Button _btnPauseSync = GridBuilder.SecondaryButton(Loc.T("sync.btn_pause"), new Size(150, 40));
     private readonly NumericUpDown _numInterval = new()
     {
         Minimum = 1, Maximum = 120, Value = 10, Width = 60,
@@ -31,6 +33,13 @@ public sealed class ErpSyncForm : Form
     };
     private readonly System.Windows.Forms.Timer _autoTimer = new();
     private bool _autoEnabled;
+    /// <summary>Trạng thái kéo tự động nền (luôn bật sau đăng nhập) — cập nhật mỗi giây.</summary>
+    private readonly Label _lblAutoSync = new()
+    {
+        AutoSize = true, Margin = new Padding(12, 11, 0, 0),
+        Font = AgrisTheme.Body(9.5F, FontStyle.Bold), ForeColor = AgrisTheme.Success
+    };
+    private readonly System.Windows.Forms.Timer _autoStatusTimer = new() { Interval = 1000 };
 
     private readonly TextBox _txtBU = new()
     {
@@ -99,8 +108,8 @@ public sealed class ErpSyncForm : Form
         BackColor = AgrisTheme.Canvas;
         DoubleBuffered = true;
 
-        _dtpFrom.Value = DateTime.Today.AddDays(-7);
-        _dtpTo.Value = DateTime.Today;
+        _dtpFrom.Value = VnTime.Today.AddDays(-7);
+        _dtpTo.Value = VnTime.Today;
 
         // Loại GD filter: không hardcode — "(Tất cả)" + các loại thực tế có trong dữ liệu đã kéo về.
         RefreshTxnTypeOptions();
@@ -110,8 +119,59 @@ public sealed class ErpSyncForm : Form
         _btnRefresh.Click += async (_, _) => await RefreshAsync();
         _autoTimer.Tick += async (_, _) => await RefreshAsync();
 
+        // Nhật ký kéo nền từ lúc khởi động app (kéo chạy ngay sau đăng nhập, không cần mở màn này).
+        Load += (_, _) =>
+        {
+            _syncLogSubscription = Services.BackgroundDataSync.AttachLog(
+                Services.BackgroundDataSync.SyncSource.Erp, e => AppendLog(e.Text, e.At), out var history);
+            if (history.Count > 0)
+            {
+                _rtbLog.AppendText(string.Concat(history.Select(e => $"{e.At:HH:mm:ss}  {e.Text}{Environment.NewLine}")));
+                _rtbLog.ScrollToCaret();
+            }
+        };
+        Disposed += (_, _) => _syncLogSubscription?.Dispose();
+
         // Auto-load từ DB khi mở form
         Load += async (_, _) => await LoadFromDbAsync();
+
+        // Kéo tự động nền (luôn bật): hiển thị trạng thái mỗi giây; dữ liệu ERP đổi → nạp lại lưới từ DB.
+        _autoStatusTimer.Tick += (_, _) => UpdateAutoSyncStatus();
+        Load += (_, _) =>
+        {
+            UpdateAutoSyncStatus();
+            _autoStatusTimer.Start();
+            if (Services.BackgroundDataSync.Current is { } sync) sync.ErpRefreshed += OnErpRefreshed;
+        };
+        Disposed += (_, _) =>
+        {
+            _autoStatusTimer.Stop();
+            _autoStatusTimer.Dispose();
+            if (Services.BackgroundDataSync.Current is { } sync) sync.ErpRefreshed -= OnErpRefreshed;
+        };
+    }
+
+    private void UpdateAutoSyncStatus()
+    {
+        if (IsDisposed) return;
+        var paused = Services.BackgroundDataSync.IsPaused(Services.BackgroundDataSync.SyncSource.Erp);
+        var (text, ok) = Services.BackgroundDataSync.StatusLine(s => s.LastErpAt, Services.BackgroundDataSync.SyncSource.Erp);
+        _lblAutoSync.Text = (paused ? "⏸ " : "⟳ ") + text;
+        _lblAutoSync.ForeColor = ok ? AgrisTheme.Success : AgrisTheme.Warning;
+        FrmSyncForm.PauseButtonStyle(_btnPauseSync, paused);
+    }
+
+    private IDisposable? _syncLogSubscription;
+
+    private void OnErpRefreshed()
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        try
+        {
+            // Nhật ký "kéo được gì / đổi gì" do BackgroundDataSync ghi (AttachLog) — ở đây chỉ nạp lại lưới.
+            BeginInvoke(new Action(async () => await LoadFromDbAsync(quiet: true)));
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
     }
 
     private void ToggleAutoSync()
@@ -172,10 +232,17 @@ public sealed class ErpSyncForm : Form
         var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
         btnPanel.Controls.Add(_btnRefresh);
         btnPanel.Controls.Add(new Label { Text = "  ", AutoSize = true, Margin = new Padding(4, 12, 0, 0) });
-        btnPanel.Controls.Add(_btnAutoSync);
-        btnPanel.Controls.Add(new Label { Text = Loc.T("erp.every"), AutoSize = true, Margin = new Padding(8, 12, 4, 0), Font = AgrisTheme.Body(9F) });
-        btnPanel.Controls.Add(_numInterval);
-        btnPanel.Controls.Add(new Label { Text = Loc.T("erp.minutes"), AutoSize = true, Margin = new Padding(4, 12, 0, 0), Font = AgrisTheme.Body(9F) });
+        // Tự động kéo luôn bật (BackgroundDataSync, mỗi vài giây) — chỉ hiển thị trạng thái, không bật/tắt tay.
+        btnPanel.Controls.Add(_lblAutoSync);
+        // Nút tắt / bật kéo tự động ERP (FRM vẫn chạy riêng).
+        _btnPauseSync.Margin = new Padding(12, 0, 0, 0);
+        _btnPauseSync.Click += (_, _) =>
+        {
+            var src = Services.BackgroundDataSync.SyncSource.Erp;
+            Services.BackgroundDataSync.SetPaused(src, !Services.BackgroundDataSync.IsPaused(src));
+            UpdateAutoSyncStatus();
+        };
+        btnPanel.Controls.Add(_btnPauseSync);
         _btnAutoSync.Click += (_, _) => ToggleAutoSync();
         root.Controls.Add(btnPanel, 0, 2);
 
@@ -199,7 +266,7 @@ public sealed class ErpSyncForm : Form
     // ═══════════════════════════════════════════════════════════
 
     /// <summary>Load dữ liệu ERP đã lưu trong DB local khi mở form.</summary>
-    private async Task LoadFromDbAsync()
+    private async Task LoadFromDbAsync(bool quiet = false)
     {
         try
         {
@@ -211,7 +278,7 @@ public sealed class ErpSyncForm : Form
             if (_allData.Count > 0)
             {
                 _lblStatus.Text = Loc.T("erp.status_ready_db", _allData.Count, _activeBu);
-                AppendLog(Loc.T("erp.log_loaded_db", _allData.Count, _activeBu));
+                if (!quiet) AppendLog(Loc.T("erp.log_loaded_db", _allData.Count, _activeBu));
             }
             else
             {
@@ -320,7 +387,7 @@ public sealed class ErpSyncForm : Form
             _explorer.SetData(_allData);
 
             _lblStatus.Text = Loc.T("erp.status_ready_pulled", _allData.Count, _activeBu,
-                _dtpFrom.Value.ToString("dd/MM"), _dtpTo.Value.ToString("dd/MM"), DateTime.Now.ToString("HH:mm:ss"));
+                _dtpFrom.Value.ToString("dd/MM"), _dtpTo.Value.ToString("dd/MM"), VnTime.Now.ToString("HH:mm:ss"));
         }
         catch (Exception ex)
         {
@@ -377,17 +444,18 @@ public sealed class ErpSyncForm : Form
         _ => BadgeTone.Neutral
     };
 
-    private void AppendLog(string message)
+    private void AppendLog(string message, DateTime? at = null)
     {
         // Kéo dữ liệu / timer tự động có thể xong sau khi tab đã đóng → log đã dispose, bỏ qua.
         if (IsDisposed || _rtbLog.IsDisposed) return;
+        var time = at ?? VnTime.Now;
         if (_rtbLog.InvokeRequired)
         {
-            try { _rtbLog.BeginInvoke(() => AppendLog(message)); }
+            try { _rtbLog.BeginInvoke(() => AppendLog(message, time)); }
             catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
             return;
         }
-        _rtbLog.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
+        _rtbLog.AppendText($"{time:HH:mm:ss}  {message}{Environment.NewLine}");
         _rtbLog.ScrollToCaret();
     }
 }

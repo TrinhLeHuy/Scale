@@ -15,6 +15,9 @@ public static class ThemeApplier
         or BrandBarButton or WeighDisplayControl or CommitChecklistControl or FieldTile
         or DocumentTabControl;
 
+    /// <summary>Gán vào <c>TextBox.Tag</c> để theme không ép viền FixedSingle (ô đã có khung viền riêng).</summary>
+    public const string KeepBorderTag = "theme:keep-border";
+
     public static void Apply(Control root)
     {
         if (root is Form form && form.BackColor != AgrisTheme.ScaleDisplayBack)
@@ -58,6 +61,7 @@ public static class ThemeApplier
                 if (grid.EnableHeadersVisualStyles)
                     GridBuilder.ApplyStyle(grid);
                 GridBuilder.AttachTooltipCleanup(grid);
+                GridBuilder.EnsureSmoothAndReadable(grid);
                 break;
 
             case Button button:
@@ -78,7 +82,9 @@ public static class ThemeApplier
 
             case TextBox textBox:
                 StyleInput(textBox);
-                textBox.BorderStyle = BorderStyle.FixedSingle;
+                // Ô nằm trong khung viền tự vẽ (đánh dấu KeepBorderTag) giữ nguyên không viền.
+                if (!Equals(textBox.Tag, KeepBorderTag))
+                    textBox.BorderStyle = BorderStyle.FixedSingle;
                 if (textBox.ReadOnly && textBox.BackColor == AgrisTheme.Surface)
                 {
                     textBox.BackColor = AgrisTheme.ReadOnlyBg;
@@ -94,6 +100,7 @@ public static class ThemeApplier
             case NumericUpDown numeric:
                 StyleInput(numeric);
                 numeric.BorderStyle = BorderStyle.FixedSingle;
+                FieldTile.DisableIme(numeric); // ô số không cần bộ gõ tiếng Việt (VNI giữ chữ số trong khung soạn thảo)
                 numeric.TextAlign = HorizontalAlignment.Right;
                 break;
 
@@ -131,6 +138,9 @@ public static class ThemeApplier
                 // Panel không đặt màu riêng thì lấy nền bề mặt.
                 if (panel.BackColor == SystemColors.Control)
                     panel.BackColor = AgrisTheme.Surface;
+                // Khung cuộn được: vẽ qua bộ đệm để kéo / lăn chuột không giật.
+                if (panel.AutoScroll)
+                    ScrollSmoothing.Apply(panel);
                 break;
         }
     }
@@ -165,10 +175,19 @@ public static class ThemeApplier
             button.AccessibleName = button.Text;
     }
 
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Control, object> FontKept = new();
+
+    /// <summary>Ô / nút được form chủ động làm to (ô tìm lệnh đốn, biển số) — theme không ép về cỡ chữ chung.</summary>
+    public static void KeepFont(Control control)
+    {
+        if (!FontKept.TryGetValue(control, out _)) FontKept.Add(control, new object());
+    }
+
     private static void StyleInput(Control control)
     {
         // Giữ hành vi cũ: mọi ô nhập cùng một cỡ chữ để bố cục các form không lệch nhau.
-        control.Font = AgrisTheme.Body(10F);
+        if (!FontKept.TryGetValue(control, out _))
+            control.Font = AgrisTheme.Body(10F);
 
         if (control.BackColor == SystemColors.Window || control.BackColor == AgrisTheme.Surface)
             control.BackColor = AgrisTheme.InputBg;

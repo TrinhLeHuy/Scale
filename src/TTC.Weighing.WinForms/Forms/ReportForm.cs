@@ -7,6 +7,7 @@ using TTC.Weighing.WinForms.Helpers;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -25,6 +26,7 @@ public sealed class ReportForm : Form
     private readonly DateTimePicker _dtpTo = new() { Format = DateTimePickerFormat.Short, Width = 150 };
     private readonly TextBox _txtProfileCode = new();
     private readonly TextBox _txtPlate = new();
+    private readonly System.Windows.Forms.Timer _searchDebounce = new() { Interval = 400 };
 
     private readonly Button _btnSearch = GridBuilder.PrimaryButton(Loc.T("report.btn_search"), new Size(120, 34));
     private readonly Button _btnExport = GridBuilder.SecondaryButton(Loc.T("report.btn_export"), new Size(130, 34));
@@ -67,8 +69,8 @@ public sealed class ReportForm : Form
 
     private void ConfigureGrid()
     {
-        _dtpFrom.Value = DateTime.Today.AddDays(-7);
-        _dtpTo.Value = DateTime.Today.AddDays(1);
+        _dtpFrom.Value = VnTime.Today.AddDays(-7);
+        _dtpTo.Value = VnTime.Today.AddDays(1);
 
         _grid.Columns.AddRange(
             GridBuilder.Column(Loc.T("col.trip_no"), nameof(WeighReportRow.TripNo), 120),
@@ -96,7 +98,29 @@ public sealed class ReportForm : Form
         FormLayout.AddField(table, Loc.T("report.filter_profile"), _txtProfileCode);
         FormLayout.AddField(table, Loc.T("report.filter_plate"), _txtPlate);
 
-        _btnSearch.Click += async (_, _) => await SearchAsync();
+        _btnSearch.Click += async (_, _) => { _searchDebounce.Stop(); await SearchAsync(); };
+
+        // Gõ mã profile / biển số là tìm luôn (chờ ngắn để không tra DB theo từng phím);
+        // tắt bộ gõ để chữ vào ô ngay, không đợi Space.
+        foreach (var box in new[] { _txtProfileCode, _txtPlate })
+        {
+            SearchText.Prepare(box);
+            box.TextChanged += (_, _) => { _searchDebounce.Stop(); _searchDebounce.Start(); };
+            box.KeyDown += async (_, e) =>
+            {
+                if (e.KeyCode != Keys.Enter) return;
+                e.SuppressKeyPress = true;
+                _searchDebounce.Stop();
+                await SearchAsync();
+            };
+        }
+        _searchDebounce.Tick += async (_, _) =>
+        {
+            _searchDebounce.Stop();
+            if (!_btnSearch.Enabled) { _searchDebounce.Start(); return; } // đang tìm → đợi xong rồi tìm lại
+            await SearchAsync();
+        };
+        Disposed += (_, _) => _searchDebounce.Dispose();
         _btnExport.Click += (_, _) => ExportCsv();
         _btnPreviewTicket.Click += (_, _) => PreviewTicket();
 
@@ -217,7 +241,7 @@ public sealed class ReportForm : Form
     {
         if (_grid.DataSource is not List<WeighReportRow> rows || rows.Count == 0)
         {
-            MessageBox.Show(Loc.T("report.export_no_data"), Loc.T("common.export_csv"),
+            Helpers.AppMessageBox.Show(Loc.T("report.export_no_data"), Loc.T("common.export_csv"),
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -225,7 +249,7 @@ public sealed class ReportForm : Form
         using var dialog = new SaveFileDialog
         {
             Filter = "CSV (*.csv)|*.csv",
-            FileName = $"bao-cao-luot-can-{DateTime.Now:yyyyMMdd-HHmm}.csv"
+            FileName = $"bao-cao-luot-can-{VnTime.Now:yyyyMMdd-HHmm}.csv"
         };
 
         if (dialog.ShowDialog() != DialogResult.OK) return;
@@ -249,7 +273,7 @@ public sealed class ReportForm : Form
             // UTF-8 có BOM để Excel đọc đúng tiếng Việt.
             File.WriteAllText(dialog.FileName, csv.ToString(), new UTF8Encoding(true));
 
-            MessageBox.Show(Loc.T("report.export_ok", rows.Count), Loc.T("common.export_csv"),
+            Helpers.AppMessageBox.Show(Loc.T("report.export_ok", rows.Count), Loc.T("common.export_csv"),
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
@@ -262,7 +286,7 @@ public sealed class ReportForm : Form
     {
         if (_grid.CurrentRow?.DataBoundItem is not WeighReportRow row)
         {
-            MessageBox.Show(Loc.T("report.preview_no_selection"), Loc.T("report.preview_title"),
+            Helpers.AppMessageBox.Show(Loc.T("report.preview_no_selection"), Loc.T("report.preview_title"),
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -306,7 +330,7 @@ public sealed class ReportForm : Form
         if (row.OverallVerdict != ReconciliationVerdict.Pass)
             lines.Add(Loc.T("report.ticket_pending"));
 
-        lines.Add($"In lúc: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        lines.Add($"In lúc: {VnTime.Now:yyyy-MM-dd HH:mm:ss}");
 
         return string.Join(Environment.NewLine, lines);
     }
@@ -319,7 +343,7 @@ public sealed class ReportForm : Form
     private static DateTimeOffset ToUtcStartOfDay(DateTime localDate)
     {
         var startOfDay = DateTime.SpecifyKind(localDate.Date, DateTimeKind.Unspecified);
-        var offset = TimeZoneInfo.Local.GetUtcOffset(startOfDay);
+        var offset = VnTime.OffsetAt(startOfDay);
 
         return new DateTimeOffset(startOfDay, offset).ToUniversalTime();
     }
@@ -331,7 +355,7 @@ public sealed class ReportForm : Form
         => value?.ToString("F3", CultureInfo.InvariantCulture) ?? string.Empty;
 
     private static void ShowError(string title, Exception ex)
-        => MessageBox.Show($"{title}.{Environment.NewLine}{ex.Message}",
+        => Helpers.AppMessageBox.Show($"{title}.{Environment.NewLine}{ex.Message}",
             Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
 
     protected override void OnFormClosing(FormClosingEventArgs e)

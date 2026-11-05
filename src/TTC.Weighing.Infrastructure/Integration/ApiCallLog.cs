@@ -15,6 +15,19 @@ public static class ApiCallLogContext
 
     /// <summary>BU (nhà máy) của tài khoản đăng nhập — mỗi nhà máy chỉ xem nhật ký của mình.</summary>
     public static string? OrgUnit { get; set; }
+
+    private static readonly AsyncLocal<bool> _quietSuccess = new();
+
+    /// <summary>
+    /// Luồng kéo dữ liệu nền (FRM / ERP mỗi vài giây): KHÔNG ghi nhật ký các lượt gọi thành công
+    /// (mỗi lượt kéo FRM ~40 request, body ~100 KB → nhật ký phình rất nhanh). Lượt lỗi vẫn ghi.
+    /// AsyncLocal: chỉ áp dụng cho đúng luồng async đặt cờ.
+    /// </summary>
+    public static bool QuietSuccess
+    {
+        get => _quietSuccess.Value;
+        set => _quietSuccess.Value = value;
+    }
 }
 
 /// <summary>Một bản ghi nhật ký trước khi lưu DB.</summary>
@@ -58,9 +71,10 @@ public sealed class ApiCallLoggingHandler(ApiCallLogStore store, string clientNa
             }
             catch { }
 
-            store.Enqueue(ApiCallLogStore.Build(started, request, requestBody, (int)response.StatusCode,
-                response.IsSuccessStatusCode && !ApiCallLogStore.LooksLikeBusinessError(responseBody),
-                (int)sw.ElapsedMilliseconds, responseBody, null, clientName));
+            var ok = response.IsSuccessStatusCode && !ApiCallLogStore.LooksLikeBusinessError(responseBody);
+            if (!(ok && ApiCallLogContext.QuietSuccess))
+                store.Enqueue(ApiCallLogStore.Build(started, request, requestBody, (int)response.StatusCode,
+                    ok, (int)sw.ElapsedMilliseconds, responseBody, null, clientName));
             return response;
         }
         catch (Exception ex)

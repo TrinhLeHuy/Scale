@@ -8,19 +8,19 @@ namespace TTC.Weighing.WinForms.Controls;
 /// </summary>
 public static class FormLayout
 {
-    private const int LabelColumnWidth = 200;
+    private static int LabelColumnWidth => Theme.UiScale.Px(200);
 
     /// <summary>Chiều cao một dòng nhãn + ô nhập. Công khai để các form tính chiều cao panel con.</summary>
-    public const int RowHeight = 58;
+    public static int RowHeight => Theme.UiScale.Px(58);
 
     /// <summary>
     /// Chiều cao chuẩn cho hàng chứa thanh nút hành động. Đủ chỗ cho nút cao + khoảng đệm
     /// của FlowLayoutPanel và Card bao ngoài, tránh nút bị cắt mép dưới.
     /// </summary>
-    public const int ActionRowHeight = 70;
+    public static int ActionRowHeight => Theme.UiScale.Px(70);
 
     /// <summary>Chiều cao tối thiểu để một bảng dữ liệu còn hiển thị được vài dòng.</summary>
-    private const int MinimumFillHeight = 170;
+    private static int MinimumFillHeight => Theme.UiScale.Px(170);
 
     /// <summary>Chiều cao cần thiết cho một panel con chứa <paramref name="fieldCount"/> dòng nhập.</summary>
     public static int FieldPanelHeight(int fieldCount) => fieldCount * RowHeight + 12;
@@ -97,12 +97,68 @@ public static class FormLayout
         table.Controls.Add(field, 1, row);
     }
 
-    /// <summary>Thêm một dòng chỉ có nội dung, chiếm cả hai cột.</summary>
-    public static void AddFullWidth(TableLayoutPanel table, Control content, int height = RowHeight)
+    /// <summary>
+    /// Ô nhập + nút ▼ trong CÙNG một khung viền, cao bằng một ô nhập thường (kiểu combobox):
+    /// ô nhập bỏ viền riêng, căn giữa theo chiều dọc; vạch ngăn mảnh giữa ô và nút.
+    /// Gọi SAU khi đã đặt font cho <paramref name="input"/> (chiều cao khung tính theo font).
+    /// Thêm khung trả về vào bảng bằng <see cref="AddField"/> (giữ nguyên khung, không giãn cao cả hàng).
+    /// </summary>
+    public static Panel InputWithDropdown(TextBox input, Button dropdown, int buttonWidth = 36)
     {
+        // Cao bằng ô nhập có viền thường cùng font → thẳng hàng với các ô khác trên form.
+        input.BorderStyle = BorderStyle.FixedSingle;
+        var height = input.PreferredHeight;
+
+        var host = new Panel
+        {
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            Dock = DockStyle.None,
+            Height = height,
+            Padding = new Padding(1),
+            BackColor = AgrisTheme.BorderStrong // màu viền chung
+        };
+
+        var inputArea = new Panel { Dock = DockStyle.Fill, BackColor = input.BackColor, Cursor = Cursors.IBeam };
+        input.BorderStyle = BorderStyle.None;
+        input.Tag = Theme.ThemeApplier.KeepBorderTag;
+        input.Dock = DockStyle.Top;
+        inputArea.Controls.Add(input);
+        void Center() => inputArea.Padding = new Padding(6, Math.Max(0, (inputArea.Height - input.Height) / 2), 2, 0);
+        inputArea.Resize += (_, _) => Center();
+        input.SizeChanged += (_, _) => Center();
+        input.BackColorChanged += (_, _) => inputArea.BackColor = input.BackColor;
+        inputArea.Click += (_, _) => input.Focus();
+        // Theme / đổi ngôn ngữ đổi font ô nhập → tính lại chiều cao khung cho khớp ô thường.
+        input.FontChanged += (_, _) =>
+        {
+            using var probe = new TextBox { Font = input.Font, BorderStyle = BorderStyle.FixedSingle };
+            host.Height = probe.PreferredHeight;
+        };
+
+        dropdown.Dock = DockStyle.Right;
+        dropdown.Width = buttonWidth;
+        dropdown.Margin = Padding.Empty;
+        dropdown.FlatStyle = FlatStyle.Flat;
+        dropdown.FlatAppearance.BorderSize = 0;
+        dropdown.BackColor = AgrisTheme.Surface;
+        dropdown.Cursor = Cursors.Hand;
+        dropdown.TabStop = false;
+
+        var separator = new Panel { Dock = DockStyle.Right, Width = 1, BackColor = AgrisTheme.BorderStrong };
+
+        host.Controls.Add(inputArea);
+        host.Controls.Add(separator);
+        host.Controls.Add(dropdown);
+        return host;
+    }
+
+    /// <summary>Thêm một dòng chỉ có nội dung, chiếm cả hai cột.</summary>
+    public static void AddFullWidth(TableLayoutPanel table, Control content, int? height = null)
+    {
+        height ??= RowHeight;
         var row = table.RowCount;
         table.RowCount = row + 1;
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, height.Value));
 
         content.Margin = new Padding(0, 4, 0, 4);
 

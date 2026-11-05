@@ -2,6 +2,7 @@ using System.Drawing.Drawing2D;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -55,6 +56,7 @@ public sealed class LoginForm : Form
         _apiBaseUrl = apiBaseUrl;
         _requiredTenantId = requiredTenantId;
         Text = "Đăng nhập / Sign In";
+        if (LogoHelper.GetAppIcon() is { } appIcon) Icon = appIcon;
         FormBorderStyle = FormBorderStyle.None;
         DoubleBuffered = true;
         KeyPreview = true;
@@ -169,7 +171,7 @@ public sealed class LoginForm : Form
 
         var lblFoot = new Label
         {
-            Text = $"© {DateTime.Now.Year} AgriS · Weigh Smarter, Drive Further",
+            Text = $"© {VnTime.Now.Year} AgriS · Weigh Smarter, Drive Further",
             Dock = DockStyle.Bottom, Height = 40,
             Font = new Font(AgrisTheme.FontFamily, 8.5F),
             ForeColor = AgrisTheme.TextMuted,
@@ -218,7 +220,7 @@ public sealed class LoginForm : Form
     private void DoLayout()
     {
         // Màn hình hẹp: thu vùng thương hiệu để biểu mẫu luôn đủ chỗ.
-        _brand.Width = ClientSize.Width < 1100 ? 0 : (int)(ClientSize.Width * 0.46);
+        _brand.Width = ClientSize.Width < UiScale.Px(1100) ? 0 : (int)(ClientSize.Width * 0.46);
         _brand.Visible = _brand.Width > 0;
 
         _formCard.Location = new Point(

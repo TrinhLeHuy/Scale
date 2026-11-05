@@ -1,4 +1,5 @@
 using TTC.Weighing.Infrastructure.Adapters;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Services;
 
@@ -47,7 +48,7 @@ public static class PortalScaleRules
             if (result.IsSuccess && result.Rules is not null)
             {
                 Rules = result.Rules;
-                LoadedAt = DateTime.Now;
+                LoadedAt = VnTime.Now;
                 LastError = null;
             }
             else

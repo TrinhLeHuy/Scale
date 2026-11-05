@@ -8,14 +8,15 @@ using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Presenters;
 using TTC.Weighing.WinForms.Services;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
 /// <summary>
 /// Đo chữ đường (CCS). Bố cục từ trên xuống theo đúng thứ tự thao tác:
 /// ① Tìm chuyến → ② Nhập Bx, Pol → ③ CCS + tạp chất THỰC TẾ (tự tính) → ④ CCS + tạp chất THANH TOÁN (FRM).
-/// Không hiển thị thông tin khách hàng / phiếu cân. Hệ số xơ (Fibre) ẩn — lấy từ Portal,
-/// chỉ tài khoản có quyền mới cài được (nút "Hệ số xơ").
+/// Không hiển thị thông tin khách hàng / phiếu cân. Hệ số xơ (Fibre) lấy từ DigiScale Portal, app cân không sửa;
+/// chỉ quản lý mới xem được số (người khác thấy "•••", bấm nút Fibre phải nhờ quản lý xác thực).
 /// </summary>
 public sealed class CcsForm : Form
 {
@@ -47,35 +48,46 @@ public sealed class CcsForm : Form
     private decimal? _paidImpurity;
     private string? _paidPolicy;
 
-    // ── Tìm chuyến ──
-    private readonly TextBox _txtBarcode = new()
+    // ── Realtime: Fibre (DigiScale) + danh sách xe làm mới định kỳ ──
+    private const int LIVE_REFRESH_MS = 30_000;   // danh sách xe ra trong ngày
+    private const int FIBRE_REFRESH_MS = 3_000;   // Fibre từ DigiScale Portal — cập nhật gần như tức thì
+    private readonly System.Windows.Forms.Timer _liveTimer = new() { Interval = LIVE_REFRESH_MS };
+    private readonly System.Windows.Forms.Timer _fibreTimer = new() { Interval = FIBRE_REFRESH_MS };
+    private bool _fibreBusy;
+    private string? _lastRulesState;
+    /// <summary>Lần lấy Quy tắc cân gần nhất thành công (Fibre đang dùng là mới nhất).</summary>
+    private bool _rulesLive;
+    private bool _liveBusy;
+    /// <summary>Đang ghi CCS — không làm mới lưới / Fibre giữa chừng.</summary>
+    private bool _recording;
+    /// <summary>Cảnh báo cố định khi không lấy được Fibre mới nhất từ DigiScale.</summary>
+    private readonly Label _lblRulesWarning = new NoticeLabel
     {
-        Dock = DockStyle.Fill,
-        Font = AgrisTheme.Mono(12F),
-        BackColor = Color.FromArgb(255, 255, 220),
-        BorderStyle = BorderStyle.FixedSingle,
-        PlaceholderText = Loc.T("ccs.ux_search_placeholder"),
-        AccessibleName = Loc.T("ccs.ux_search_placeholder"),
-        AutoCompleteMode = AutoCompleteMode.None,
-        AutoCompleteSource = AutoCompleteSource.None
+        Font = AgrisTheme.Body(9F, FontStyle.Bold),
+        ForeColor = AgrisTheme.Danger,
+        BackColor = AgrisTheme.DangerSoft,
+        Dock = DockStyle.Top,
+        Height = 48,
+        Padding = new Padding(14, 0, 8, 0),
+        TextAlign = ContentAlignment.MiddleLeft,
+        AutoEllipsis = true,
+        Visible = false
     };
-    private readonly Button _btnTripDropdown = new()
+
+    // ── Chọn xe đo CCS chung (một mẫu cho cả ngày): mặc định chọn mọi xe chưa có CCS ──
+    /// <summary>Xe chưa có CCS mà người dùng đã BỎ chọn trong ngày đang xem (mặc định là chọn).</summary>
+    private readonly HashSet<Guid> _uncheckedTrips = [];
+    /// <summary>Xe chưa có CCS đang hiện trên lưới (thứ tự lưới).</summary>
+    private List<(Guid TripId, string TripNo, string? Plate)> _missingTrips = [];
+    private readonly CheckBox _chkSelectAll = new()
     {
-        Text = "▼",
-        Width = 30,
-        Dock = DockStyle.Right,
-        FlatStyle = FlatStyle.Flat,
+        Text = Loc.T("ccs.ux_select_all"),
+        AutoSize = true,
+        Checked = true,
         Cursor = Cursors.Hand,
-        TabStop = false
+        Margin = new Padding(16, 6, 0, 0)
     };
-    private readonly ListBox _lstTripPopup = new()
-    {
-        Visible = false,
-        BorderStyle = BorderStyle.FixedSingle,
-        IntegralHeight = false,
-        Font = AgrisTheme.Mono(9F)
-    };
-    private TripRegistrationRow[] _popupTrips = [];
+    private bool _settingSelectAll;
 
     /// <summary>Chip nhận diện chuyến đang đo (số đăng tài · biển số) — thay cho khối thông tin chuyến.</summary>
     private readonly ChipLabel _chipTrip = new()
@@ -197,12 +209,35 @@ public sealed class CcsForm : Form
 
         BuildLayout();
 
-        _txtBarcode.KeyDown += OnBarcodeKeyDown;
         _btnRecord.Click += async (_, _) => await RecordCcsAsync();
-        _btnPrint.Click += (_, _) => PrintCcsTicket();
+        // Xem / in lại phiếu cần quyền quản lý (phiếu tự hiện sau khi ghi + đẩy DigiScale thì không).
+        _btnPrint.Click += (_, _) =>
+        {
+            if (_currentTripId is not null && !Helpers.ManagerAccess.RequireReprint(this, _txtTripNo.Text)) return;
+            // CCS đã ghi và phiếu đã hiện trước đó → BẢN IN LẠI (như Đăng tài).
+            // Vừa ghi mà phiếu chưa hiện lần nào (vd đẩy DigiScale lỗi) → bản in đầu.
+            PrintCcsTicket(isReprint: _ccsRecorded
+                && !(_currentTripId is { } id && _unprintedCcsTrips.Contains(id)));
+        };
         _btnRetryDigi.Click += async (_, _) => await RetryPushDigiAsync();
         _btnReset.Click += (_, _) => ResetForm();
-        _btnFibre.Click += (_, _) => EditFibre();
+        _btnFibre.Click += async (_, _) => await ShowFibreInfoAsync(); // chỉ xem, không sửa
+        _liveTimer.Tick += async (_, _) => await LiveRefreshAsync();
+        _fibreTimer.Tick += async (_, _) => await RefreshFibreTickAsync();
+        _eventBus.TripChanged += OnTripChangedFromOtherForm;
+        // Máy quét QR (số đăng tài trên phiếu) — màn CCS không có ô tìm, quét ở đâu cũng mở đúng chuyến.
+        QrScanner.Register(this, () => null, async content =>
+        {
+            if (_recording)
+            {
+                // Đang ghi CCS → không đổi chuyến giữa chừng; báo để quét lại khi ghi xong.
+                _lblStatus.Text = "⚠ " + Loc.T("scan.busy_retry", content);
+                _lblStatus.ForeColor = AgrisTheme.Warning;
+                return;
+            }
+            _lastQrContent = content;
+            await ScanAndLoadTripAsync(content);
+        });
         _btnPayment.Click += async (_, _) => await FetchPaymentFiguresAsync(showDialogOnError: true);
         _chkCcsPending.CheckedChanged += (_, _) => AutoCalcCcs();
 
@@ -211,6 +246,8 @@ public sealed class CcsForm : Form
         {
             await ApplyPortalRulesAsync();
             await LoadAllCcsAsync();
+            _liveTimer.Start();
+            _fibreTimer.Start();
         };
 
         SetTripLoaded(false);
@@ -237,8 +274,8 @@ public sealed class CcsForm : Form
         actionCard.Controls.Add(BuildActionBar());
 
         // Thứ tự Add ngược thứ tự hiển thị (Dock = Top).
-        scroll.Controls.Add(BuildPaymentCard());
-        scroll.Controls.Add(Gap());
+        // Khung "Kết quả thanh toán" không hiển thị trên màn đo CCS (yêu cầu vận hành).
+        // Số thanh toán FRM vẫn tự lấy sau khi ghi CCS (gửi DigiScale + in phiếu) — chỉ ẩn khỏi màn hình.
         scroll.Controls.Add(BuildActualCard());
         scroll.Controls.Add(Gap());
         scroll.Controls.Add(BuildInputCard());
@@ -296,21 +333,15 @@ public sealed class CcsForm : Form
 
         var body = new Panel { Dock = DockStyle.Top, Padding = new Padding(14, 12, 14, 12), BackColor = AgrisTheme.Surface };
 
-        var barcode = BuildBarcodeWithDropdown();
-        barcode.Dock = DockStyle.Top;
-        _btnTripDropdown.Width = 48;
-        _btnTripDropdown.AccessibleName = Loc.T("ccs.ui_trip_dates");
-        barcode.Height = Math.Max(44, _txtBarcode.PreferredHeight);
-
-        // Một ngày nhập CCS (không phải khoảng ngày): danh sách xe, ô chọn xe và lượt nhập đều theo ngày này.
+        // Một ngày xe ra (không phải khoảng ngày): danh sách xe và lượt đo CCS chung đều theo ngày này.
         var tripBar = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 50,
+            Dock = DockStyle.Top, Height = 42,
             FlowDirection = FlowDirection.LeftToRight, WrapContents = false,
-            Padding = new Padding(0, 8, 0, 0), BackColor = AgrisTheme.Surface
+            Padding = new Padding(0, 0, 0, 0), BackColor = AgrisTheme.Surface
         };
-        _dtpCcsDate.Value = DateTime.Today;
-        _dtpCcsDate.MaxDate = DateTime.Today.AddDays(1);
+        _dtpCcsDate.Value = VnTime.Today;
+        _dtpCcsDate.MaxDate = VnTime.Today.AddDays(1);
         _dtpCcsDate.Margin = new Padding(0, 2, 8, 0);
         _btnToday.Margin = new Padding(0, 0, 0, 0);
         _btnToday.MaximumSize = new Size(100, 36);
@@ -321,7 +352,7 @@ public sealed class CcsForm : Form
             _btnToday
         ]);
         _dtpCcsDate.ValueChanged += async (_, _) => await OnCcsDateChangedAsync();
-        _btnToday.Click += (_, _) => _dtpCcsDate.Value = DateTime.Today;
+        _btnToday.Click += (_, _) => _dtpCcsDate.Value = VnTime.Today;
 
         // Chip chuyến đang đo nằm bên phải tiêu đề "Tìm chuyến".
         _chipTrip.Margin = new Padding(0, 0, 0, 0);
@@ -332,9 +363,10 @@ public sealed class CcsForm : Form
 
         body.Controls.Add(_lblStatus);
         body.Controls.Add(statusGap);
+        body.Controls.Add(_lblRulesWarning);
         body.Controls.Add(tripBar);
-        body.Controls.Add(barcode);
-        body.Height = barcode.Height + tripBar.Height + statusGap.Height + _lblStatus.Height + body.Padding.Vertical;
+        // Chừa chỗ cho dải cảnh báo Fibre (ẩn khi Fibre là bản mới nhất).
+        body.Height = tripBar.Height + _lblRulesWarning.Height + statusGap.Height + _lblStatus.Height + body.Padding.Vertical;
 
         card.Controls.Add(body);
         card.Controls.Add(header);
@@ -347,9 +379,9 @@ public sealed class CcsForm : Form
     {
         var card = new Card { Dock = DockStyle.Top, Padding = new Padding(1) };
 
-        // Nút "Hệ số xơ" chỉ hiện với tài khoản được phép (hoặc cần quản lý xác nhận khi chưa cấu hình quyền).
-        _btnFibre.Visible = SugarcaneFlowSettings.Current.FibreAccess(Program.LoggedInRole, Program.LoggedInPermissions)
-                            != FibreEditAccess.Denied;
+        // Hệ số xơ: lấy từ DigiScale Portal, không sửa được. Số chỉ hiện với quản lý (xem FibreDisplay).
+        _btnFibre.Visible = true;
+        _btnFibre.Size = new Size(150, 32);
         _btnFibre.Margin = new Padding(0);
         _hdrInput.Actions.Controls.Add(_btnFibre);
 
@@ -361,22 +393,33 @@ public sealed class CcsForm : Form
         FieldTile.ConfigureNumeric(_numPol, () => _btnRecord);
         _numBrix.ValueChanged += (_, _) => OnReadingEdited(CcsInstrument.Brix);
         _numPol.ValueChanged += (_, _) => OnReadingEdited(CcsInstrument.Pol);
-        _numFibre.ValueChanged += (_, _) => AutoCalcCcs();
+        // Đang xem CCS đã ghi → giữ đúng số đã ghi, Fibre mới không tính lại.
+        _numFibre.ValueChanged += (_, _) => { if (!_fieldsReadOnly) AutoCalcCcs(); };
 
         // Nguồn số đo: máy Brix / máy Pol, hoặc nhập tay (quản lý duyệt bằng tài khoản + mật khẩu).
-        var sourceRow = new FlowLayoutPanel
+        // Ba nút chia theo tỉ lệ bề rộng thẻ (không đặt cứng px): màn hình hẹp thì nút co lại, chữ thừa
+        // hiện "…", thay vì nút "Nhập tay" bị đẩy ra ngoài thẻ.
+        var sourceRow = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
             Height = 58,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            ColumnCount = 3,
+            RowCount = 1,
             Padding = new Padding(14, 6, 14, 6),
             BackColor = AgrisTheme.Surface
         };
-        foreach (var b in new[] { _btnReadBrix, _btnReadPol, _btnManual })
+        sourceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F));
+        sourceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F));
+        sourceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
+        sourceRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        var sourceButtons = new[] { _btnReadBrix, _btnReadPol, _btnManual };
+        for (var i = 0; i < sourceButtons.Length; i++)
         {
-            b.Margin = new Padding(0, 0, 10, 0);
-            sourceRow.Controls.Add(b);
+            var b = sourceButtons[i];
+            b.Dock = DockStyle.Fill;
+            b.MinimumSize = Size.Empty;
+            b.Margin = new Padding(0, 0, i < sourceButtons.Length - 1 ? 10 : 0, 0);
+            sourceRow.Controls.Add(b, i, 0);
         }
         _btnManual.ForeColor = AgrisTheme.Warning;
         _btnManual.FlatAppearance.BorderColor = AgrisTheme.Warning;
@@ -467,7 +510,7 @@ public sealed class CcsForm : Form
         Badge(_tileBrix, _brixSource);
         Badge(_tilePol, _polSource);
 
-        var canMeasure = _currentTripId is not null && !_fieldsReadOnly;
+        var canMeasure = HasMeasureTarget && !_fieldsReadOnly;
         _btnReadBrix.Enabled = canMeasure;
         _btnReadPol.Enabled = canMeasure;
         _btnManual.Enabled = canMeasure && _manualApproval is null;
@@ -477,11 +520,14 @@ public sealed class CcsForm : Form
     }
 
     /// <summary>Đọc một lần số Brix hoặc Pol từ máy đo. Không đọc được → báo rõ, không tự điền số.</summary>
+    /// <summary>Có đối tượng để đo: một chuyến đang mở, hoặc ít nhất một xe được chọn để đo chung.</summary>
+    private bool HasMeasureTarget => _currentTripId is not null || SelectedTrips().Count > 0;
+
     private async Task ReadFromDeviceAsync(CcsInstrument instrument)
     {
-        if (_currentTripId is null)
+        if (!HasMeasureTarget)
         {
-            MessageBox.Show(Loc.T("ccs.ux_need_trip"), Loc.T("common.missing_info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Helpers.AppMessageBox.Show(Loc.T("ccs.ux_need_trip"), Loc.T("common.missing_info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -531,10 +577,12 @@ public sealed class CcsForm : Form
     /// <summary>Nhập tay Brix/Pol: quản lý xác thực tài khoản + mật khẩu, duyệt cho chuyến đang đo.</summary>
     private void RequestManualEntry()
     {
-        if (_currentTripId is null || _fieldsReadOnly) return;
+        if (!HasMeasureTarget || _fieldsReadOnly) return;
 
         var approval = ApprovalDialog.Request(this, ApprovalLevel.Manager,
-            Loc.T("ccs.ux_manual_approval", _txtTripNo.Text));
+            _currentTripId is not null
+                ? Loc.T("ccs.ux_manual_approval", _txtTripNo.Text)
+                : Loc.T("ccs.ux_manual_approval_batch", SelectedTrips().Count));
         if (approval is null) return;
 
         _manualApproval = approval;
@@ -552,7 +600,9 @@ public sealed class CcsForm : Form
     {
         var card = new Card { Dock = DockStyle.Top, Padding = new Padding(1) };
         var header = new IconSectionHeader(GLYPH_CALC, Loc.T("ccs.ux_actual_title"), AgrisTheme.BrandGreen, Loc.T("ccs.ux_actual_sub"));
-        var row = MetricRow(_tileCcsActual, _tileTcActual);
+        // Màn đo chữ đường chỉ hiện CCS thực tế; ô "Tạp chất thực tế" bỏ khỏi màn hình (yêu cầu vận hành).
+        // Tạp chất vẫn nạp ngầm để in phiếu CCS như trước.
+        var row = MetricRow(_tileCcsActual, null);
         card.Controls.Add(row);
         card.Controls.Add(header);
         card.Height = header.Height + row.Height + card.Padding.Vertical;
@@ -573,24 +623,34 @@ public sealed class CcsForm : Form
     }
 
     /// <summary>Hai ô số liệu cạnh nhau, chia đều.</summary>
-    private static TableLayoutPanel MetricRow(MetricTile a, MetricTile b)
+    /// <remarks><paramref name="b"/> = null → một ô chiếm cả hàng.</remarks>
+    private static TableLayoutPanel MetricRow(MetricTile a, MetricTile? b)
     {
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
-            ColumnCount = 2,
+            ColumnCount = b is null ? 1 : 2,
             RowCount = 1,
             BackColor = AgrisTheme.Surface,
             Padding = new Padding(14, 12, 14, 14)
         };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         a.Dock = DockStyle.Fill;
-        b.Dock = DockStyle.Fill;
-        a.Margin = new Padding(0, 0, 6, 0);
-        b.Margin = new Padding(6, 0, 0, 0);
-        row.Controls.Add(a, 0, 0);
-        row.Controls.Add(b, 1, 0);
+        if (b is null)
+        {
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            a.Margin = Padding.Empty;
+            row.Controls.Add(a, 0, 0);
+        }
+        else
+        {
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            b.Dock = DockStyle.Fill;
+            a.Margin = new Padding(0, 0, 6, 0);
+            b.Margin = new Padding(6, 0, 0, 0);
+            row.Controls.Add(a, 0, 0);
+            row.Controls.Add(b, 1, 0);
+        }
         var h = MetricTile.PreferredTileHeight;
         row.RowStyles.Add(new RowStyle(SizeType.Absolute, h));
         row.Height = h + row.Padding.Vertical;
@@ -612,8 +672,14 @@ public sealed class CcsForm : Form
             WrapContents = false, BackColor = AgrisTheme.Surface
         };
         _chkOnlyMissing.ForeColor = AgrisTheme.TextSecondary;
+        _chkSelectAll.ForeColor = AgrisTheme.BrandTealDark;
+        _chkSelectAll.Font = AgrisTheme.Body(9F, FontStyle.Bold);
+        filter.Controls.Add(_chkSelectAll);
         filter.Controls.Add(_chkOnlyMissing);
+        _chkOnlyMissing.Margin = new Padding(16, 6, 0, 0);
+        _chkSelectAll.Margin = new Padding(0, 6, 0, 0);
         _chkOnlyMissing.CheckedChanged += async (_, _) => await LoadAllCcsAsync();
+        _chkSelectAll.CheckedChanged += (_, _) => OnSelectAllChanged();
 
         var hint = new Label
         {
@@ -625,7 +691,9 @@ public sealed class CcsForm : Form
         _grid.Dock = DockStyle.Fill;
         _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         _grid.Columns.AddRange(
-            new DataGridViewTextBoxColumn { HeaderText = Loc.T("ccs.print_label_reg_no"), MinimumWidth = 90, FillWeight = 24, Name = "TripNo" },
+            new DataGridViewCheckBoxColumn { HeaderText = Loc.T("ccs.ux_col_select"), MinimumWidth = 50, FillWeight = 9, Name = "Select" },
+            new DataGridViewTextBoxColumn { HeaderText = Loc.T("ccs.print_label_reg_no"), MinimumWidth = 90, FillWeight = 22, Name = "TripNo" },
+            new DataGridViewTextBoxColumn { HeaderText = Loc.T("col.lenhdon_code"), MinimumWidth = 110, FillWeight = 24, Name = "LenhDon" },
             new DataGridViewTextBoxColumn { HeaderText = Loc.T("ccs.print_label_plate"), MinimumWidth = 70, FillWeight = 16, Name = "Plate" },
             new DataGridViewTextBoxColumn { HeaderText = "CCS", MinimumWidth = 50, FillWeight = 12, Name = "Ccs" },
             new DataGridViewTextBoxColumn { HeaderText = Loc.T("ccs.ux_col_status"), MinimumWidth = 80, FillWeight = 20, Name = "Status" },
@@ -652,6 +720,7 @@ public sealed class CcsForm : Form
     private async Task OnCcsDateChangedAsync()
     {
         if (_suppressDateChange) return;
+        _uncheckedTrips.Clear(); // ngày mới: mặc định chọn tất cả xe chưa có CCS
         ResetForm();
         await LoadAllCcsAsync();
     }
@@ -660,10 +729,10 @@ public sealed class CcsForm : Form
     private (DateTimeOffset From, DateTimeOffset To) SelectedDayRange()
     {
         var day = _dtpCcsDate.Value.Date;
-        var from = new DateTimeOffset(day, TimeZoneInfo.Local.GetUtcOffset(day));
+        var from = new DateTimeOffset(day, VnTime.OffsetAt(day));
         var next = day.AddDays(1);
         // Npgsql chỉ nhận DateTimeOffset offset 0 cho cột timestamptz.
-        return (from.ToUniversalTime(), new DateTimeOffset(next, TimeZoneInfo.Local.GetUtcOffset(next)).ToUniversalTime());
+        return (from.ToUniversalTime(), new DateTimeOffset(next, VnTime.OffsetAt(next)).ToUniversalTime());
     }
 
     /// <summary>Một hàng ô cỡ lớn chia cột theo tỉ lệ phần trăm.</summary>
@@ -694,18 +763,6 @@ public sealed class CcsForm : Form
     {
         if (keyData == Keys.Escape) { ResetForm(); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
-    }
-
-    private async void OnBarcodeKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode != Keys.Enter) return;
-        e.Handled = true;
-        e.SuppressKeyPress = true;
-
-        var qr = _txtBarcode.Text.Trim();
-        if (string.IsNullOrWhiteSpace(qr)) return;
-        _lastQrContent = qr;
-        await ScanAndLoadTripAsync(qr);
     }
 
     /// <summary>Bật/tắt các thao tác cần có chuyến; chip chuyến chỉ hiện khi đã chọn.</summary>
@@ -831,71 +888,217 @@ public sealed class CcsForm : Form
     }
 
     /// <summary>
-    /// Cài hệ số xơ cho máy này. Giá trị chính thức nằm trên Portal (Quy tắc cân) — ở đây chỉ áp dụng
-    /// tới khi đóng màn hình. Chưa cấu hình vai trò được cài → quản lý phải xác nhận.
+    /// Kiểm tra chung trước khi ghi (một xe hay nhiều xe): có CCS / chờ kết quả, nguồn số đo, ngưỡng Portal.
     /// </summary>
-    private void EditFibre()
+    private bool ValidateReadingsBeforeRecord()
     {
-        var access = SugarcaneFlowSettings.Current.FibreAccess(Program.LoggedInRole, Program.LoggedInPermissions);
-        if (access == FibreEditAccess.Denied) return;
-
-        string by = Program.LoggedInUserAccount;
-        if (access == FibreEditAccess.NeedsApproval)
+        if (!_chkCcsPending.Checked && _numCcs.Value <= 0)
         {
-            var approval = ApprovalDialog.Request(this, ApprovalLevel.Manager, Loc.T("ccs.ux_fibre_approval"));
-            if (approval is null) return;
-            by = approval.UserName;
+            Helpers.AppMessageBox.Show(_ccsIssue ?? Loc.T("ccs.ux_need_ccs"), Loc.T("ccs.ux_ccs_fail_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _numPol.Focus();
+            return false;
         }
 
-        using var dlg = new Form
+        // Mỗi số Brix/Pol phải có nguồn: đọc từ máy, hoặc nhập tay đã được quản lý duyệt.
+        if (!_chkCcsPending.Checked && (_brixSource == ReadingSource.None || _polSource == ReadingSource.None))
         {
-            Text = Loc.T("ccs.ux_fibre_title"),
-            Size = new Size(520, 300),
-            StartPosition = FormStartPosition.CenterParent,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            MaximizeBox = false,
-            MinimizeBox = false,
-            BackColor = AgrisTheme.Surface
-        };
-        var table = FormLayout.FieldTable();
-        FormLayout.AddFullWidth(table, GridBuilder.Notice(Loc.T("ccs.ux_fibre_notice"), AgrisTheme.Info), 56);
-        var portal = SugarcaneFlowSettings.Current.CcsFibre;
-        FormLayout.AddFullWidth(table, GridBuilder.Caption(Loc.T("ccs.ux_fibre_portal", portal?.ToString("N2") ?? "—")), 28);
-        var num = new NumericUpDown
+            Helpers.AppMessageBox.Show(Loc.T("ccs.ux_need_reading"), Loc.T("common.missing_info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        return _chkCcsPending.Checked || ConfirmCcsSettings(_numCcs.Value);
+    }
+
+    /// <summary>
+    /// Đo CCS một lần cho mọi xe đã chọn của ngày xe ra: cùng Bx / Pol / CCS ghi cho từng chuyến
+    /// (mỗi chuyến một bản ghi riêng, đẩy DigiScale theo lệnh đốn của chuyến đó, lấy số thanh toán FRM).
+    /// Một xe lỗi không chặn các xe còn lại — cuối cùng báo tổng hợp.
+    /// </summary>
+    private async Task RecordBatchAsync()
+    {
+        var targets = SelectedTrips();
+        if (targets.Count == 0)
         {
-            DecimalPlaces = 2, Minimum = 0m, Maximum = 20m, Increment = 0.1m,
-            Value = Math.Clamp(_numFibre.Value, 0m, 20m),
-            Dock = DockStyle.Fill, Font = AgrisTheme.Body(14F, FontStyle.Bold)
-        };
-        FormLayout.AddField(table, Loc.T("ccs.ux_fibre_field"), num);
-        var ok = GridBuilder.PrimaryButton("✓  " + Loc.T("common.save"), new Size(130, 38));
-        ok.DialogResult = DialogResult.OK;
-        var cancel = GridBuilder.SecondaryButton(Loc.T("common.cancel"), new Size(100, 38));
-        cancel.DialogResult = DialogResult.Cancel;
-        FormLayout.AddFullWidth(table, FormLayout.ActionBar(ok, cancel), FormLayout.ActionRowHeight);
-        dlg.Controls.Add(table);
-        dlg.AcceptButton = ok;
-        dlg.CancelButton = cancel;
-        dlg.Shown += (_, _) => { num.Select(0, num.Text.Length); num.Focus(); };
+            Helpers.AppMessageBox.Show(Loc.T("ccs.ux_need_trip"), Loc.T("common.missing_info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (!await EnsureLatestFibreAsync()) return;
+        if (!ValidateReadingsBeforeRecord()) return;
 
-        if (dlg.ShowDialog(this) != DialogResult.OK || num.Value <= 0) return;
+        var day = _dtpCcsDate.Value.ToString("dd/MM/yyyy");
+        var confirm = _chkCcsPending.Checked
+            ? Loc.T("ccs.ux_batch_confirm_pending_msg", targets.Count, day)
+            : Loc.T("ccs.ux_batch_confirm_msg", $"{_numCcs.Value:N2}", $"{_numBrix.Value:N2}", $"{_numPol.Value:N2}", targets.Count, day);
+        if (Helpers.AppMessageBox.Show(this, confirm, Loc.T("ccs.ux_batch_confirm_title"),
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
 
-        _numFibre.Value = num.Value;
-        _lblStatus.Text = Loc.T("ccs.ux_fibre_saved", by);
-        _lblStatus.ForeColor = AgrisTheme.Success;
+        var pending = _chkCcsPending.Checked;
+        var brix = _numBrix.Value;
+        var pol = _numPol.Value;
+        var polDoc = _numPolDoc.Value;
+        var ccs = _numCcs.Value;
+        var anyManual = _brixSource == ReadingSource.Manual || _polSource == ReadingSource.Manual;
+        var source = pending ? "FRM" : anyManual ? "MANUAL" : "DEVICE";
+        var reason = pending ? null : $"Brix={_brixSource}; Pol={_polSource}; Batch={targets.Count}";
+        var approvalRef = anyManual ? _manualApproval?.ApprovalRef : null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+
+        var recorded = 0;
+        var pushed = 0;
+        var failures = new List<string>();
+        var pushedTrips = new List<(Guid TripId, string TripNo)>();
+        var paidByTrip = new Dictionary<Guid, PaymentFiguresResult>();
+
+        _btnRecord.Enabled = false;
+        _recording = true;
+        try
+        {
+            for (var i = 0; i < targets.Count; i++)
+            {
+                var (tripId, tripNo, plate) = targets[i];
+                _lblStatus.Text = Loc.T("ccs.ux_batch_progress", i + 1, targets.Count, tripNo);
+                _lblStatus.ForeColor = AgrisTheme.Info;
+
+                try
+                {
+                    var result = await _presenter.RecordCcsAsync(
+                        new ReceiveCcsResultCommand(
+                            TripId: tripId,
+                            CcsValue: pending ? null : ccs,
+                            Source: source,
+                            SourceReportsPending: pending,
+                            CorrelationId: Guid.NewGuid().ToString("N"),
+                            ApprovalRef: approvalRef,
+                            Reason: reason,
+                            Brix: pending ? null : brix,
+                            Pol: pending ? null : pol,
+                            PolCorrected: pending ? null : polDoc),
+                        _cts.Token);
+                    if (!result.IsSuccess)
+                    {
+                        failures.Add(Loc.T("ccs.ux_batch_failed_line", tripNo, result.FailureReason));
+                        continue;
+                    }
+                    recorded++;
+                    _unprintedCcsTrips.Add(tripId); // vừa ghi: lần in đầu không phải bản in lại
+
+                    _eventBus.Publish(new TripChangedEventArgs
+                    {
+                        TripId = tripId, TripNo = tripNo, Plate = plate ?? "",
+                        ChangeType = TripChangeType.CcsReceived, SourceForm = "CcsForm"
+                    });
+
+                    // Chờ kết quả → không đẩy phiếu số 0 lên DigiScale.
+                    if (pending || brix <= 0 || pol <= 0 || ccs <= 0) continue;
+
+                    // Lệnh đốn của TỪNG chuyến (mỗi xe một lệnh đốn / BU riêng).
+                    var ctx = await _presenter.ScanQrAsync(tripNo, _siteContext.CurrentSiteId, _cts.Token);
+                    var ld = _presenter.FindLenhDonForTrip(ctx.FrmLenhDonId, ctx.Plate ?? plate ?? "");
+                    var push = await _presenter.PushCcsAsync(
+                        ctx.FrmLenhDonId ?? ld?.SourceKey ?? tripNo,
+                        ctx.FrmMaLenhDon ?? ld?.MaLD ?? tripNo,
+                        "0", "1", VnTime.Now,
+                        Num.S2(brix), Num.S2(ccs),
+                        Num.S2(pol), Num.S2(polDoc), "1",
+                        Program.LoggedInUserName, ctx.FrmLenhDonBu ?? ld?.BusinessUnit, _cts.Token);
+                    if (!push.IsSuccess)
+                    {
+                        failures.Add(Loc.T("ccs.ux_batch_failed_line", tripNo,
+                            Helpers.DigiScaleErrors.Describe(push.ErrorMessage).Reason));
+                        continue;
+                    }
+                    pushed++;
+                    pushedTrips.Add((tripId, tripNo));
+
+                    // CCS đã lên DigiScale → lấy + gửi số thanh toán theo chính sách FRM (như ghi từng xe).
+                    var paid = await _presenter.FetchPaymentFiguresAsync(tripId, _cts.Token);
+                    paidByTrip[tripId] = paid;
+                    if (paid.Error is not null)
+                        failures.Add(Loc.T("ccs.ux_batch_failed_line", tripNo,
+                            Helpers.DigiScaleErrors.Describe(paid.Error).Reason));
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    failures.Add(Loc.T("ccs.ux_batch_failed_line", tripNo, ex.Message));
+                }
+            }
+        }
+        catch (OperationCanceledException) { return; }
+        finally
+        {
+            _recording = false;
+            _btnRecord.Enabled = true;
+        }
+
+        var summary = Loc.T("ccs.ux_batch_done_msg", recorded, targets.Count, pushed);
+        if (failures.Count > 0)
+            summary += Environment.NewLine + Environment.NewLine + string.Join(Environment.NewLine, failures);
+        Helpers.DigiScalePopup.Show(this, Loc.T("ccs.ux_batch_done_title"), summary,
+            failures.Count == 0, failures.Count == 0 ? "OK" : Loc.T("common.error"));
+
+        ResetForm();
+        await LoadAllCcsAsync();
+
+        // Hoàn thành + đã đẩy DigiScale → hiện phiếu CCS từng xe để in.
+        await ShowBatchTicketsAsync(pushedTrips, paidByTrip);
+    }
+
+    /// <summary>Hiện phiếu CCS của chuyến đang mở; lỗi xem trước / máy in không ảnh hưởng CCS đã ghi.</summary>
+    private void ShowTicketAfterCompletion()
+    {
+        try { PrintCcsTicket(isReprint: false); } // phiếu tự hiện ngay sau khi ghi = bản in đầu
+        catch (Exception ex)
+        {
+            _lblStatus.Text = "⚠ " + Loc.T("weigh.auto_print_failed", ex.Message);
+            _lblStatus.ForeColor = AgrisTheme.Warning;
+        }
+    }
+
+    /// <summary>
+    /// Đo chung xong: hiện lần lượt phiếu CCS của các xe đã đẩy DigiScale thành công (hỏi một lần trước khi mở).
+    /// Số thanh toán lấy từ kết quả vừa nhận khi ghi, không gọi lại DigiScale.
+    /// </summary>
+    private async Task ShowBatchTicketsAsync(
+        List<(Guid TripId, string TripNo)> trips, Dictionary<Guid, PaymentFiguresResult> paid)
+    {
+        if (trips.Count == 0) return;
+        if (trips.Count > 1 && Helpers.AppMessageBox.Show(this, Loc.T("ccs.ux_batch_print_confirm", trips.Count),
+                Loc.T("ccs.ux_batch_done_title"), MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
+
+        foreach (var (tripId, tripNo) in trips)
+        {
+            _lastQrContent = tripNo;
+            await ScanAndLoadTripAsync(tripNo); // nạp chuyến ở chế độ xem (đúng số đã ghi)
+            if (_currentTripId != tripId) continue;
+
+            if (paid.TryGetValue(tripId, out var r) && r.HasPolicy)
+            {
+                _paidCcs = r.CcsThanhToan;
+                _paidImpurity = r.TapChatThanhToan;
+                _paidPolicy = r.ChinhSach;
+                _tileCcsPaid.SetValue(r.CcsThanhToan is { } c ? $"{c:N2}" : "—");
+                _tileTcPaid.SetValue(r.TapChatThanhToan is { } t ? $"{t:N2} %" : "—");
+            }
+            ShowTicketAfterCompletion();
+        }
+        ResetForm();
     }
 
     private async Task RecordCcsAsync()
     {
+        // Không mở chuyến cụ thể → đo chung cho các xe đã chọn trong ngày.
         if (_currentTripId is null)
         {
-            MessageBox.Show(Loc.T("ccs.ux_need_trip"), Loc.T("common.missing_info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            await RecordBatchAsync();
             return;
         }
 
         if (!_chkCcsPending.Checked && _numCcs.Value <= 0)
         {
-            MessageBox.Show(_ccsIssue ?? Loc.T("ccs.ux_need_ccs"), Loc.T("ccs.ux_ccs_fail_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Helpers.AppMessageBox.Show(_ccsIssue ?? Loc.T("ccs.ux_need_ccs"), Loc.T("ccs.ux_ccs_fail_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             _numPol.Focus();
             return;
         }
@@ -903,16 +1106,19 @@ public sealed class CcsForm : Form
         // Mỗi số Brix/Pol phải có nguồn: đọc từ máy, hoặc nhập tay đã được quản lý duyệt.
         if (!_chkCcsPending.Checked && (_brixSource == ReadingSource.None || _polSource == ReadingSource.None))
         {
-            MessageBox.Show(Loc.T("ccs.ux_need_reading"), Loc.T("common.missing_info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Helpers.AppMessageBox.Show(Loc.T("ccs.ux_need_reading"), Loc.T("common.missing_info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
+        // Fibre phải là bản mới nhất trên DigiScale (đổi → CCS tính lại, dừng để xem; mất kết nối → cảnh báo).
+        if (!await EnsureLatestFibreAsync()) return;
         if (!_chkCcsPending.Checked && !ConfirmCcsSettings(_numCcs.Value)) return;
 
         var anyManual = _brixSource == ReadingSource.Manual || _polSource == ReadingSource.Manual;
         var source = _chkCcsPending.Checked ? "FRM" : anyManual ? "MANUAL" : "DEVICE";
 
         _btnRecord.Enabled = false;
+        _recording = true;
         try
         {
             var result = await _presenter.RecordCcsAsync(
@@ -931,9 +1137,10 @@ public sealed class CcsForm : Form
 
             if (!result.IsSuccess)
             {
-                MessageBox.Show(result.FailureReason, Loc.T("quality.ccs_failed_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Helpers.AppMessageBox.Show(result.FailureReason, Loc.T("quality.ccs_failed_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
+            _unprintedCcsTrips.Add(_currentTripId.Value); // vừa ghi: lần in đầu không phải bản in lại
 
             // Push CCS lên DigiScale + popup
             var digiOk = false;
@@ -946,9 +1153,9 @@ public sealed class CcsForm : Form
                 var pushResult = await _presenter.PushCcsAsync(
                     _currentFrmLenhDonId ?? ld?.SourceKey ?? _txtTripNo.Text,
                     _currentFrmMaLenhDon ?? ld?.MaLD ?? _txtTripNo.Text,
-                    "0", "1", DateTime.Now,
-                    _numBrix.Value.ToString("F2", inv), _numCcs.Value.ToString("F2", inv),
-                    _numPol.Value.ToString("F2", inv), _numPolDoc.Value.ToString("F2", inv), "1",
+                    "0", "1", VnTime.Now,
+                    Num.S2(_numBrix.Value), Num.S2(_numCcs.Value),
+                    Num.S2(_numPol.Value), Num.S2(_numPolDoc.Value), "1",
                     Program.LoggedInUserName, _currentFrmLenhDonBu ?? ld?.BusinessUnit, _cts.Token);
 
                 digiOk = pushResult.IsSuccess;
@@ -985,40 +1192,214 @@ public sealed class CcsForm : Form
 
             // Đã ghi xong → khoá về chế độ xem, không cho đo lại.
             await ShowRecordedCcsAsync(_currentTripId.Value, _txtTripNo.Text);
+
+            // Hoàn thành + đã đẩy DigiScale → hiện phiếu CCS để in (như Đăng tài).
+            if (digiOk) ShowTicketAfterCompletion();
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Helpers.AppMessageBox.Show(ex.Message, Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
+            _recording = false;
             _btnRecord.Enabled = _numBrix.Enabled;
         }
     }
 
     /// <summary>
-    /// Kéo Quy tắc cân mới nhất từ Portal (Fibre, CCS Min/Max). Có Fibre trên Portal thì dùng làm hệ số xơ.
-    /// Chưa lấy được / chưa cài → hiện cảnh báo trên dải trạng thái.
+    /// Kéo Quy tắc cân mới nhất từ DigiScale Portal (Fibre, CCS Min/Max) — gọi khi mở màn, mỗi
+    /// <see cref="LIVE_REFRESH_MS"/> và ngay trước khi ghi CCS. Hệ số xơ CHỈ lấy từ Portal (app cân không sửa).
+    /// Trả số Fibre cũ nếu Portal vừa đổi (để báo người dùng), null nếu không đổi.
+    /// Không lấy được bản mới → hiện cảnh báo cố định (đang dùng số lấy lúc nào, có thể đã đổi).
     /// </summary>
-    private async Task ApplyPortalRulesAsync()
+    private async Task<decimal?> ApplyPortalRulesAsync()
     {
-        try { await PortalScaleRules.RefreshAsync(); }
-        catch (OperationCanceledException) { }
+        try { await PortalScaleRules.RefreshAsync(_cts.Token); }
+        catch (OperationCanceledException) { return null; }
 
         var settings = SugarcaneFlowSettings.Current;
-        if (settings.CcsFibre is { } fibre)
-            _numFibre.Value = Math.Clamp(fibre, _numFibre.Minimum, _numFibre.Maximum);
+        var oldFibre = _numFibre.Value;
+        var newFibre = settings.CcsFibre is { } f ? Math.Clamp(f, _numFibre.Minimum, _numFibre.Maximum) : 0m;
+        if (newFibre != oldFibre) _numFibre.Value = newFibre; // Portal bỏ Fibre → 0 → chặn ghi CCS
+
+        _rulesLive = PortalScaleRules.LastError is null && settings.PortalRulesLoaded;
+        RefreshFibreUi();
+        NotifyFibreTransition();
+
+        // Làm mới mỗi 3s: chỉ ghi lên dải trạng thái khi tình trạng ĐỔI — không đè thông báo đang hiện mỗi lần.
+        var rulesState = !settings.PortalRulesLoaded ? "not_loaded" : settings.CcsFibre is null ? "no_fibre" : "ok";
+        var stateChanged = rulesState != _lastRulesState;
+        _lastRulesState = rulesState;
 
         if (!settings.PortalRulesLoaded)
         {
-            _lblStatus.Text = Loc.T("scale_rules.not_loaded_status");
-            _lblStatus.ForeColor = AgrisTheme.Warning;
+            if (stateChanged)
+            {
+                _lblStatus.Text = Loc.T("scale_rules.not_loaded_status");
+                _lblStatus.ForeColor = AgrisTheme.Warning;
+            }
         }
         else if (settings.CcsFibre is null)
         {
-            _lblStatus.Text = Loc.T("ccs.fibre_not_configured_status");
+            if (stateChanged)
+            {
+                _lblStatus.Text = Loc.T("ccs.fibre_not_configured_status");
+                _lblStatus.ForeColor = AgrisTheme.Warning;
+            }
+        }
+        else if (oldFibre > 0 && newFibre != oldFibre)
+        {
+            _lblStatus.Text = Loc.T("ccs.ux_fibre_changed", FibreDisplay(oldFibre), FibreDisplay(newFibre));
             _lblStatus.ForeColor = AgrisTheme.Warning;
         }
+
+        return oldFibre > 0 && newFibre != oldFibre ? oldFibre : null;
+    }
+
+    /// <summary>
+    /// Tài khoản đang đăng nhập có quyền quản lý (vai trò / quyền duyệt cấp Quản lý trong cấu hình SugarcaneFlow).
+    /// Chưa cấu hình vai trò quản lý → coi là không (phải nhờ quản lý xác thực).
+    /// </summary>
+    private static bool IsLoggedInManager() => Helpers.ManagerAccess.IsLoggedInManager();
+
+    private const string FIBRE_MASK = "***";
+
+    /// <summary>
+    /// Hệ số xơ trên màn hình: CÓ dữ liệu → "***" (không lộ số); KHÔNG có → "Trống".
+    /// Số thật chỉ hiện trong hộp "Hệ số xơ" sau khi quản lý xác thực (<paramref name="reveal"/>).
+    /// </summary>
+    private string FibreDisplay(decimal value, bool reveal = false)
+        => value <= 0 ? Loc.T("ccs.ux_fibre_empty") : reveal ? value.ToString("N2") : FIBRE_MASK;
+
+    /// <summary>Lần trước lấy Fibre thành công — để báo lỗi NGAY khi vừa mất (một lần, không lặp mỗi 3s).</summary>
+    private bool? _fibreWasLive;
+
+    /// <summary>
+    /// Nút Fibre (chỉ xem): "Fibre: *** · 09:41:05" — giờ lần lấy thành công gần nhất (mỗi 3s) để người dùng thấy
+    /// app cân đang lấy được hệ số xơ mới nhất. Không lấy được → chữ cam + dải cảnh báo + popup báo lỗi ngay.
+    /// </summary>
+    private void RefreshFibreUi()
+    {
+        var fibreText = FibreDisplay(_numFibre.Value);
+        var loadedClock = PortalScaleRules.LoadedAt?.ToString("HH:mm:ss");
+        _btnFibre.Text = "ⓘ  " + (loadedClock is null
+            ? Loc.T("ccs.ux_fibre_btn", fibreText)
+            : Loc.T("ccs.ux_fibre_btn_at", fibreText, loadedClock));
+        _btnFibre.AutoSize = true;
+        _btnFibre.ForeColor = _rulesLive && _numFibre.Value > 0 ? AgrisTheme.Success : AgrisTheme.Warning;
+
+        var loadedAt = PortalScaleRules.LoadedAt?.ToString("dd/MM HH:mm:ss") ?? "—";
+        var error = PortalScaleRules.LastError ?? "—";
+        _lblRulesWarning.Text = PortalScaleRules.IsLoaded
+            ? Loc.T("ccs.ux_rules_stale", error, fibreText, loadedAt)
+            : Loc.T("ccs.ux_rules_stale_never", error);
+        _lblRulesWarning.Visible = !_rulesLive;
+    }
+
+    /// <summary>
+    /// Vừa mất kết nối lấy hệ số xơ (lần trước lấy được, lần này không) → popup báo lỗi ngay một lần.
+    /// Lấy lại được → ghi dòng trạng thái "đã lấy lại". Gọi sau mỗi lượt làm mới 3s.
+    /// </summary>
+    private void NotifyFibreTransition()
+    {
+        var live = _rulesLive;
+        var was = _fibreWasLive;
+        _fibreWasLive = live;
+        if (was == live) return;
+
+        if (!live && was is not false)
+        {
+            var friendly = Helpers.DigiScaleErrors.Describe(PortalScaleRules.LastError ?? Loc.T("ccs.ux_fibre_empty"));
+            _lblStatus.Text = "⚠ " + Loc.T("ccs.ux_fibre_lost_title");
+            _lblStatus.ForeColor = AgrisTheme.Danger;
+            Helpers.DigiScalePopup.ShowAlert(this, Helpers.AlertKind.Error, Loc.T("ccs.ux_fibre_lost_title"),
+                Loc.T("ccs.ux_fibre_lost_reason", friendly.Reason,
+                    PortalScaleRules.LoadedAt?.ToString("dd/MM/yyyy HH:mm:ss") ?? "—"),
+                Loc.T("ccs.ux_fibre_lost_action"));
+        }
+        else if (live && was == false)
+        {
+            _lblStatus.Text = "✓ " + Loc.T("ccs.ux_fibre_back");
+            _lblStatus.ForeColor = AgrisTheme.Success;
+        }
+    }
+
+    /// <summary>Xem hệ số xơ — chỉ đọc. Muốn đổi phải sửa trên DigiScale Portal.</summary>
+    private async Task ShowFibreInfoAsync()
+    {
+        // Xem số Fibre cần quyền quản lý: tài khoản quản lý xem ngay, người khác phải nhờ quản lý xác thực.
+        if (!IsLoggedInManager()
+            && ApprovalDialog.Request(this, ApprovalLevel.Manager, Loc.T("ccs.ux_fibre_view_approval")) is null)
+            return;
+
+        await ApplyPortalRulesAsync();
+        var fibreText = FibreDisplay(_numFibre.Value, reveal: true);
+        Helpers.AppMessageBox.Show(this,
+            Loc.T("ccs.ux_fibre_info_msg", fibreText, PortalScaleRules.LoadedAt?.ToString("dd/MM/yyyy HH:mm:ss") ?? "—"),
+            Loc.T("ccs.ux_fibre_info_title"), MessageBoxButtons.OK,
+            _rulesLive ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+    }
+
+    /// <summary>
+    /// Ngay trước khi ghi: lấy lại Fibre mới nhất. Portal vừa đổi → CCS đã tính lại, dừng để người dùng xem lại.
+    /// Không lấy được → cảnh báo, chỉ ghi khi người dùng xác nhận dùng số cũ. Trả true nếu được ghi tiếp.
+    /// </summary>
+    private async Task<bool> EnsureLatestFibreAsync()
+    {
+        if (_chkCcsPending.Checked) return true; // chờ kết quả: không tính CCS
+
+        var oldFibre = await ApplyPortalRulesAsync();
+        if (oldFibre is { } before)
+        {
+            Helpers.AppMessageBox.Show(this,
+                Loc.T("ccs.ux_fibre_changed_before_record", FibreDisplay(before), FibreDisplay(_numFibre.Value),
+                    _numCcs.Value > 0 ? _numCcs.Value.ToString("N2") : "—"),
+                Loc.T("ccs.ux_fibre_info_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        if (_rulesLive) return true;
+        return Helpers.AppMessageBox.Show(this,
+            Loc.T("ccs.ux_stale_confirm_msg", FibreDisplay(_numFibre.Value),
+                PortalScaleRules.LoadedAt?.ToString("dd/MM/yyyy HH:mm") ?? "—"),
+            Loc.T("ccs.ux_stale_confirm_title"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    }
+
+    /// <summary>Làm mới định kỳ: Fibre từ DigiScale + danh sách xe ra trong ngày (không chạy khi đang ghi).</summary>
+    private async Task LiveRefreshAsync()
+    {
+        if (_recording || _liveBusy || IsDisposed) return;
+        _liveBusy = true; // khoá chạy chồng
+        try
+        {
+            // Fibre đã làm mới mỗi 3s ở _fibreTimer — ở đây chỉ tải lại danh sách xe.
+            if (!_recording) await LoadAllCcsAsync();
+        }
+        catch (OperationCanceledException) { }
+        finally { _liveBusy = false; }
+    }
+
+    /// <summary>
+    /// Lấy Fibre từ DigiScale mỗi <see cref="FIBRE_REFRESH_MS"/>: Portal đổi là màn hình đổi theo (CCS tính lại).
+    /// Bỏ qua khi lần trước chưa xong hoặc đang ghi CCS (lúc ghi đã tự lấy lại Fibre mới nhất).
+    /// </summary>
+    private async Task RefreshFibreTickAsync()
+    {
+        if (_fibreBusy || _recording || IsDisposed) return;
+        _fibreBusy = true;
+        try { await ApplyPortalRulesAsync(); }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
+        finally { _fibreBusy = false; }
+    }
+
+    private void OnTripChangedFromOtherForm(object? sender, TripChangedEventArgs e)
+    {
+        if (e.SourceForm == "CcsForm" || IsDisposed || !IsHandleCreated) return;
+        try { BeginInvoke(async () => { if (!_recording) await LoadAllCcsAsync(); }); }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
     }
 
     /// <summary>
@@ -1033,21 +1414,21 @@ public sealed class CcsForm : Form
 
         if (_numFibre.Value <= 0)
         {
-            MessageBox.Show(this, Loc.T("ccs.fibre_not_configured_msg"), Loc.T("ccs.fibre_not_configured_title"),
+            Helpers.AppMessageBox.Show(this, Loc.T("ccs.fibre_not_configured_msg"), Loc.T("ccs.fibre_not_configured_title"),
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
 
         if (settings.CcsMin is null && settings.CcsMax is null)
         {
-            return MessageBox.Show(this, Loc.T("ccs.threshold_not_configured_msg", ccs.ToString("N2")),
+            return Helpers.AppMessageBox.Show(this, Loc.T("ccs.threshold_not_configured_msg", ccs.ToString("N2")),
                 Loc.T("ccs.threshold_not_configured_title"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning)
                 == DialogResult.Yes;
         }
 
         if ((settings.CcsMin is { } min && ccs < min) || (settings.CcsMax is { } max && ccs > max))
         {
-            return MessageBox.Show(this,
+            return Helpers.AppMessageBox.Show(this,
                 Loc.T("ccs.out_of_threshold_msg", ccs.ToString("N2"),
                     settings.CcsMin?.ToString("N2") ?? "—", settings.CcsMax?.ToString("N2") ?? "—"),
                 Loc.T("ccs.out_of_threshold_title"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
@@ -1060,10 +1441,10 @@ public sealed class CcsForm : Form
     private void ResetForm()
     {
         _currentTripId = null;
+        _ccsRecorded = false;
         _currentFrmLenhDonId = null;
         _currentFrmMaLenhDon = null;
         _currentFrmLenhDonBu = null;
-        _txtBarcode.Clear();
         _txtTripNo.Clear();
         _txtPlate.Clear();
         _txtOwner.Clear();
@@ -1081,7 +1462,7 @@ public sealed class CcsForm : Form
         SetFieldsReadOnly(false);
         SetTripLoaded(false);
         AutoCalcCcs();
-        _txtBarcode.Focus();
+        ShowBatchSelection(); // về chế độ đo chung cho các xe đã chọn
     }
 
     /// <summary>
@@ -1129,80 +1510,6 @@ public sealed class CcsForm : Form
          : fore == AgrisTheme.Success || fore == AgrisTheme.BrandGreen ? AgrisTheme.SuccessSoft
          : AgrisTheme.SurfaceMuted;
 
-    // ═══════════════════════════════════════════════════════════
-    //  Trip dropdown — chọn xe đang trong nhà máy
-    // ═══════════════════════════════════════════════════════════
-
-    private Panel BuildBarcodeWithDropdown()
-    {
-        var panel = new Panel { Dock = DockStyle.Fill, Height = 36 };
-        _txtBarcode.Dock = DockStyle.Fill;
-        _btnTripDropdown.FlatAppearance.BorderSize = 1;
-        panel.Controls.Add(_txtBarcode);
-        panel.Controls.Add(_btnTripDropdown);
-
-        _btnTripDropdown.Click += async (_, _) => await ShowTripDropdownAsync();
-        _lstTripPopup.Click += (_, _) => SelectTripFromPopup();
-        _lstTripPopup.KeyDown += (_, e) =>
-        {
-            if (e.KeyCode == Keys.Enter) { e.Handled = true; SelectTripFromPopup(); }
-            else if (e.KeyCode == Keys.Escape) { _lstTripPopup.Visible = false; _txtBarcode.Focus(); }
-        };
-
-        return panel;
-    }
-
-    private async Task ShowTripDropdownAsync()
-    {
-        try
-        {
-            // Xe đăng tài trong ngày nhập CCS — cả xe còn trong nhà máy lẫn đã ra (CCS có thể về sau khi xe ra).
-            var (from, to) = SelectedDayRange();
-            var trips = new List<TripRegistrationRow>();
-            foreach (var tab in new[] { TripGridTab.InFactory, TripGridTab.Exited })
-                trips.AddRange(await _tripRegistrationQueries.ListAsync(_siteContext.CurrentSiteId,
-                    new TripRegistrationFilter
-                    {
-                        Tab = tab, FromUtc = from, ToUtc = to,
-                        Category = TTC.Weighing.Application.Queries.TripCategory.Sugarcane // CCS chỉ cho xe mía
-                    }, _cts.Token));
-            _popupTrips = trips.DistinctBy(t => t.TripId).OrderBy(t => t.TripNo).ToArray();
-
-            if (_popupTrips.Length == 0) { _lstTripPopup.Visible = false; return; }
-
-            _lstTripPopup.Items.Clear();
-            foreach (var t in _popupTrips)
-                _lstTripPopup.Items.Add($"{t.Plate ?? "?",-15} | {t.TripNo,-25} | {t.CustomerOrSupplier ?? ""}");
-
-            var screenPos = _txtBarcode.PointToScreen(new Point(0, _txtBarcode.Height));
-            var formPos = FindForm()!.PointToClient(screenPos);
-            _lstTripPopup.Location = formPos;
-            _lstTripPopup.Width = Math.Max(_txtBarcode.Width + _btnTripDropdown.Width, 500);
-            _lstTripPopup.Height = Math.Min(_popupTrips.Length * 20 + 4, 300);
-
-            if (_lstTripPopup.Parent != FindForm())
-            {
-                FindForm()!.Controls.Add(_lstTripPopup);
-                _lstTripPopup.BringToFront();
-            }
-            _lstTripPopup.Visible = true;
-            _lstTripPopup.Focus();
-        }
-        catch { _lstTripPopup.Visible = false; }
-    }
-
-    private void SelectTripFromPopup()
-    {
-        var idx = _lstTripPopup.SelectedIndex;
-        _lstTripPopup.Visible = false;
-        if (idx < 0 || idx >= _popupTrips.Length) return;
-
-        var trip = _popupTrips[idx];
-        _txtBarcode.Text = trip.TripNo;
-        _lastQrContent = trip.TripNo;
-        _ = ScanAndLoadTripAsync(trip.TripNo);
-    }
-
     private async Task ScanAndLoadTripAsync(string content)
     {
         try
@@ -1227,15 +1534,6 @@ public sealed class CcsForm : Form
             {
                 _lblStatus.Text = "❌ " + Loc.T("ccs.ux_material_trip", result.TripNo ?? content);
                 _lblStatus.ForeColor = AgrisTheme.Danger;
-                SetTripLoaded(false);
-                return;
-            }
-
-            // CCS nhập theo ngày: xe đăng tài ngày khác → hỏi chuyển sang ngày của xe, không thì bỏ.
-            if (!await EnsureTripOnSelectedDayAsync(result.TripId!.Value, result.TripNo ?? content))
-            {
-                _lblStatus.Text = Loc.T("ccs.ux_start");
-                _lblStatus.ForeColor = AgrisTheme.BrandGreen;
                 SetTripLoaded(false);
                 return;
             }
@@ -1266,35 +1564,8 @@ public sealed class CcsForm : Form
     }
 
     /// <summary>
-    /// Xe quét được phải thuộc ngày nhập CCS. Khác ngày → hỏi chuyển sang ngày của xe (giữ lượt đang quét).
-    /// Trả false nếu người dùng không chuyển.
-    /// </summary>
-    private async Task<bool> EnsureTripOnSelectedDayAsync(Guid tripId, string tripNo)
-    {
-        var createdAt = await _db.Trips.AsNoTracking()
-            .Where(t => t.Id == tripId)
-            .Select(t => (DateTimeOffset?)t.CreatedAt)
-            .FirstOrDefaultAsync(_cts.Token);
-        if (createdAt is not { } created) return true;
-
-        var tripDay = created.ToLocalTime().Date;
-        if (tripDay == _dtpCcsDate.Value.Date) return true;
-
-        var answer = MessageBox.Show(this,
-            Loc.T("ccs.ux_other_day_msg", tripNo, tripDay.ToString("dd/MM/yyyy"), _dtpCcsDate.Value.ToString("dd/MM/yyyy")),
-            Loc.T("ccs.ux_other_day_title"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-        if (answer != DialogResult.Yes) return false;
-
-        _suppressDateChange = true;
-        try { _dtpCcsDate.Value = tripDay; }
-        finally { _suppressDateChange = false; }
-        await LoadAllCcsAsync();
-        return true;
-    }
-
-    /// <summary>
-    /// Danh sách xe mía đăng tài trong ngày nhập CCS (không tính phiếu hủy / đã xoá) kèm CCS hiệu lực của từng xe.
-    /// Xe chưa có CCS xếp trên. Tiêu đề hiện tổng số xe / đã có / chưa có.
+    /// Danh sách xe mía RA trong ngày đã chọn (đã cân ra — giờ ra = lượt cân hiệu lực cuối cùng; không tính phiếu
+    /// hủy / đã xoá) kèm CCS hiệu lực của từng xe. Xe chưa có CCS xếp trên, mặc định được chọn để đo CCS chung.
     /// </summary>
     private async Task LoadAllCcsAsync()
     {
@@ -1306,19 +1577,24 @@ public sealed class CcsForm : Form
 
             var rows = await _db.Trips.AsNoTracking()
                 .Where(t => t.SiteId == siteId && t.DeletedAt == null
-                            && t.Lifecycle != TTC.Weighing.Domain.Enums.TripLifecycle.Cancelled
-                            && t.SourceSystem != "ERP"
-                            && t.CreatedAt >= from && t.CreatedAt < to)
+                            && t.Lifecycle == TTC.Weighing.Domain.Enums.TripLifecycle.Closed
+                            && t.SourceSystem != "ERP")
                 .Select(t => new
                 {
+                    t.Id,
                     t.TripNo,
                     t.TractorPlate,
+                    LenhDon = t.ReferenceTripNo, // mã lệnh đốn của chuyến mía
+                    ExitAt = _db.WeighEvents
+                        .Where(w => w.TripId == t.Id && w.IsEffective)
+                        .Max(w => (DateTimeOffset?)w.MeasuredAt),
                     Sample = _db.QualitySamples
                         .Where(s => s.TripId == t.Id && s.Type == ccsType && s.IsEffective)
                         .OrderByDescending(s => s.Revision)
                         .Select(s => new { s.CcsValue, s.Status, s.ReceivedAt })
                         .FirstOrDefault()
                 })
+                .Where(x => x.ExitAt >= from && x.ExitAt < to)
                 .ToListAsync(_cts.Token);
 
             var done = rows.Count(r => r.Sample?.CcsValue is not null);
@@ -1332,6 +1608,7 @@ public sealed class CcsForm : Form
 
             _grid.SuspendLayout();
             _grid.Rows.Clear();
+            _missingTrips = [];
             foreach (var r in visible)
             {
                 var hasCcs = r.Sample?.CcsValue is not null;
@@ -1341,19 +1618,25 @@ public sealed class CcsForm : Form
                     : pending ? "⏳ " + Loc.T("ccs.ux_status_pending")
                     : "● " + Loc.T("ccs.ux_status_missing");
 
+                if (!hasCcs) _missingTrips.Add((r.Id, r.TripNo, r.TractorPlate));
                 var idx = _grid.Rows.Add(
+                    !hasCcs && !_uncheckedTrips.Contains(r.Id),
                     r.TripNo,
+                    r.LenhDon ?? "—",
                     r.TractorPlate,
                     r.Sample?.CcsValue is { } v ? v.ToString("N2") : "—",
                     status,
-                    r.Sample?.ReceivedAt?.ToLocalTime().ToString("HH:mm") ?? "");
+                    r.Sample?.ReceivedAt?.ToVnTime().ToString("HH:mm") ?? "");
                 var row = _grid.Rows[idx];
-                row.Tag = hasCcs;
+                row.Tag = new CcsRowTag(r.Id, hasCcs);
+                if (hasCcs) row.Cells["Select"].ReadOnly = true;
                 row.Cells["Status"].Style.ForeColor = hasCcs ? AgrisTheme.Success
                     : pending ? AgrisTheme.Info : AgrisTheme.Warning;
                 row.Cells["Status"].Style.Font = AgrisTheme.Body(9F, FontStyle.Bold);
             }
             _grid.ResumeLayout();
+            SyncSelectAllBox();
+            if (_currentTripId is null) ShowBatchSelection(onlyIfChanged: true);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -1362,18 +1645,76 @@ public sealed class CcsForm : Form
         }
     }
 
-    /// <summary>Click dòng grid CCS → load thông tin chuyến + số liệu CCS lên form để xem/in lại.</summary>
+    private sealed record CcsRowTag(Guid TripId, bool HasCcs);
+
+    /// <summary>Xe chưa có CCS đang được chọn để đo chung.</summary>
+    private List<(Guid TripId, string TripNo, string? Plate)> SelectedTrips()
+        => _missingTrips.Where(t => !_uncheckedTrips.Contains(t.TripId)).ToList();
+
+    /// <summary>
+    /// Bấm lưới: xe đã có CCS → xem / in lại; xe chưa có → bật/tắt chọn (đo CCS chung cho các xe đã chọn).
+    /// </summary>
     private async void OnCcsGridCellClick(object? sender, DataGridViewCellEventArgs e)
     {
         if (e.RowIndex < 0) return;
         var row = _grid.Rows[e.RowIndex];
+        if (row.Tag is not CcsRowTag tag) return;
         var tripNo = row.Cells["TripNo"].Value as string;
         if (string.IsNullOrWhiteSpace(tripNo)) return;
 
-        // Load chuyến — đã có CCS thì ScanAndLoadTripAsync tự chuyển sang chế độ xem.
-        _txtBarcode.Text = tripNo;
-        _lastQrContent = tripNo;
-        await ScanAndLoadTripAsync(tripNo);
+        if (tag.HasCcs)
+        {
+            _lastQrContent = tripNo;
+            await ScanAndLoadTripAsync(tripNo);
+            return;
+        }
+
+        // Đang xem một xe đã ghi → quay về chế độ đo chung trước khi chọn.
+        if (_currentTripId is not null) ResetForm();
+
+        var check = !(row.Cells["Select"].Value is true);
+        row.Cells["Select"].Value = check;
+        if (check) _uncheckedTrips.Remove(tag.TripId); else _uncheckedTrips.Add(tag.TripId);
+        SyncSelectAllBox();
+        ShowBatchSelection();
+    }
+
+    /// <summary>"Chọn tất cả" phản ánh đúng trạng thái các dòng chưa có CCS.</summary>
+    private void SyncSelectAllBox()
+    {
+        _settingSelectAll = true;
+        try { _chkSelectAll.Checked = _missingTrips.Count > 0 && _missingTrips.All(t => !_uncheckedTrips.Contains(t.TripId)); }
+        finally { _settingSelectAll = false; }
+    }
+
+    private void OnSelectAllChanged()
+    {
+        if (_settingSelectAll) return;
+        if (_currentTripId is not null) ResetForm();
+        foreach (var t in _missingTrips)
+            if (_chkSelectAll.Checked) _uncheckedTrips.Remove(t.TripId); else _uncheckedTrips.Add(t.TripId);
+        foreach (DataGridViewRow row in _grid.Rows)
+            if (row.Tag is CcsRowTag { HasCcs: false }) row.Cells["Select"].Value = _chkSelectAll.Checked;
+        ShowBatchSelection();
+    }
+
+    /// <summary>Chế độ đo chung: chip + dải trạng thái hiện số xe đã chọn; bật nút đo khi có ít nhất 1 xe.</summary>
+    private int _lastBatchCount = -1;
+
+    private void ShowBatchSelection(bool onlyIfChanged = false)
+    {
+        if (_currentTripId is not null) return;
+        var count = SelectedTrips().Count;
+        _chipTrip.Text = Loc.T("ccs.ux_batch_chip", count);
+        _chipTrip.Visible = count > 0;
+        // Làm mới định kỳ không đè thông báo đang hiện (đọc máy đo, Fibre đổi...) nếu số xe chọn không đổi.
+        if (count != _lastBatchCount || !onlyIfChanged)
+        {
+            _lblStatus.Text = count > 0 ? Loc.T("ccs.ux_batch_ready", count) : Loc.T("ccs.ux_start");
+            _lblStatus.ForeColor = count > 0 ? AgrisTheme.Success : AgrisTheme.BrandGreen;
+        }
+        _lastBatchCount = count;
+        RefreshReadingUi();
     }
 
     /// <summary>
@@ -1389,6 +1730,7 @@ public sealed class CcsForm : Form
             .Select(s => new { s.CcsValue, s.BrixValue, s.PolValue, s.PolCorrected, s.Reason })
             .FirstOrDefaultAsync(_cts.Token);
 
+        _ccsRecorded = sample?.CcsValue is not null;
         if (sample?.CcsValue is { } ccs)
         {
             _chkCcsPending.Checked = false;
@@ -1440,7 +1782,7 @@ public sealed class CcsForm : Form
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show("Chọn chuyến trước khi đẩy lại.", "Thiếu thông tin",
+            Helpers.AppMessageBox.Show("Chọn chuyến trước khi đẩy lại.", "Thiếu thông tin",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -1455,13 +1797,13 @@ public sealed class CcsForm : Form
         // Không bao giờ đẩy phiếu CCS toàn số 0 — DigiScale sẽ ghi đè kết quả đúng đã đẩy trước đó.
         if (brix <= 0 || pol <= 0 || ccs <= 0)
         {
-            MessageBox.Show(Loc.T("ccs.ux_retry_no_values", tripNo), Loc.T("ccs.ux_retry_blocked_title"),
+            Helpers.AppMessageBox.Show(Loc.T("ccs.ux_retry_no_values", tripNo), Loc.T("ccs.ux_retry_blocked_title"),
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         _btnRetryDigi.Enabled = false;
-        _lblStatus.Text = "⏳ Đang đẩy lại CCS lên DigiScale...";
+        _lblStatus.Text = "⏳ Đang đẩy lại CCS lên FRM...";
         _lblStatus.ForeColor = AgrisTheme.Info;
 
         try
@@ -1470,11 +1812,11 @@ public sealed class CcsForm : Form
             var pushResult = await _presenter.PushCcsAsync(
                 _currentFrmLenhDonId ?? ld?.SourceKey ?? tripNo,
                 _currentFrmMaLenhDon ?? ld?.MaLD ?? tripNo,
-                "0", "1", DateTime.Now,
-                brix.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                ccs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                pol.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                polDoc.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+                "0", "1", VnTime.Now,
+                Num.S2(brix),
+                Num.S2(ccs),
+                Num.S2(pol),
+                Num.S2(polDoc),
                 "1",
                 Program.LoggedInUserName,
                 _currentFrmLenhDonBu ?? ld?.BusinessUnit,
@@ -1482,7 +1824,7 @@ public sealed class CcsForm : Form
 
             if (pushResult.IsSuccess)
             {
-                _lblStatus.Text = $"✅ Đẩy DigiScale thành công cho {tripNo}";
+                _lblStatus.Text = $"✅ Đã đẩy lên FRM cho {tripNo}";
                 _lblStatus.ForeColor = AgrisTheme.Success;
                 Helpers.DigiScalePopup.Show(this,
                     "ĐẨY LẠI THÀNH CÔNG",
@@ -1503,7 +1845,7 @@ public sealed class CcsForm : Form
         {
             _lblStatus.Text = $"❌ Lỗi: {ex.Message}";
             _lblStatus.ForeColor = AgrisTheme.Danger;
-            MessageBox.Show($"Lỗi đẩy lại DigiScale:\n{ex.Message}", "Lỗi",
+            Helpers.AppMessageBox.Show($"Lỗi đẩy lại FRM:\n{ex.Message}", "Lỗi",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
@@ -1518,16 +1860,24 @@ public sealed class CcsForm : Form
         decimal Brix, decimal Pol, decimal PolDoc, decimal? Ccs, bool Pending,
         decimal? ActualImpurity, decimal? PaidCcs, decimal? PaidImpurity, string? Policy,
         DateTime PrintedAt,
-        string? Factory = null, string? Owner = null, string? CaneForm = null);
+        string? Factory = null, string? Owner = null, string? CaneForm = null, bool IsReprint = false);
 
-    private void PrintCcsTicket()
+    /// <summary>CCS của chuyến đang mở đã ghi (có số hiệu lực trong DB).</summary>
+    private bool _ccsRecorded;
+
+    /// <summary>Chuyến vừa ghi CCS mà phiếu chưa hiện lần nào — lần in đầu không phải bản in lại.</summary>
+    private readonly HashSet<Guid> _unprintedCcsTrips = [];
+
+    /// <param name="isReprint">true = in nhãn "BẢN IN LẠI" trên phiếu và tiêu đề cửa sổ.</param>
+    private void PrintCcsTicket(bool isReprint)
     {
         if (_currentTripId is null)
         {
-            MessageBox.Show(Loc.T("ccs.print_no_trip"),
+            Helpers.AppMessageBox.Show(Loc.T("ccs.print_no_trip"),
                 Loc.T("quality.no_trip_title"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+        _unprintedCcsTrips.Remove(_currentTripId.Value); // từ giờ in nữa là bản in lại
 
         var ldPrint = _presenter.FindLenhDonForTrip(_currentFrmLenhDonId, _txtPlate.Text);
         var data = new CcsTicketData(
@@ -1535,14 +1885,15 @@ public sealed class CcsForm : Form
             _numBrix.Value, _numPol.Value, _numPolDoc.Value,
             _chkCcsPending.Checked ? null : _numCcs.Value, _chkCcsPending.Checked,
             _actualImpurity, _paidCcs, _paidImpurity, _paidPolicy,
-            DateTime.Now,
+            VnTime.Now,
             Factory: ldPrint?.TenNhaMay ?? _siteContext.CurrentSiteName,
-            Owner: string.IsNullOrWhiteSpace(_txtOwner.Text) ? ldPrint?.KHName : _txtOwner.Text.Trim(),
-            CaneForm: Printing.PrintText.CaneForm(ldPrint));
+            Owner: string.IsNullOrWhiteSpace(_txtOwner.Text) || _txtOwner.Text.Trim() == "—" ? ldPrint?.OwnerName : _txtOwner.Text.Trim(),
+            CaneForm: Printing.PrintText.CaneForm(ldPrint),
+            IsReprint: isReprint);
 
         using var previewForm = new Form
         {
-            Text = Loc.T("ccs.print_form_title", data.TripNo),
+            Text = WeighTicketPreviewForm.ReprintTitle(Loc.T("ccs.print_form_title", data.TripNo), isReprint),
             ClientSize = new Size(720, 960),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
@@ -1566,15 +1917,17 @@ public sealed class CcsForm : Form
             try
             {
                 using var printDoc = new System.Drawing.Printing.PrintDocument();
+                if (Printing.ThermalPrint.TryPrint(previewForm, (g, area) => DrawCcsTicket(g, area, data),
+                        Printing.ThermalPrint.LIST_DESIGN_WIDTH)) return;
                 printDoc.DocumentName = Loc.T("ccs.print_form_title", data.TripNo);
                 // In đúng mẫu đang xem trước (cùng hàm vẽ), co vào lề trang.
-                printDoc.PrintPage += (_, pe) => DrawCcsTicket(pe.Graphics!, pe.MarginBounds, data);
-                using var dialog = new PrintDialog { Document = printDoc, UseEXDialog = true };
-                if (dialog.ShowDialog(previewForm) == DialogResult.OK) printDoc.Print();
+                printDoc.PrintPage += (_, pe) => Printing.PrintPaper.RenderFitted(pe.Graphics!, pe.MarginBounds,
+                    (g, area) => DrawCcsTicket(g, area, data));
+                Printing.PrintPrinter.ShowDialogAndPrint(printDoc, previewForm);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(Loc.T("ccs.print_error", ex.Message), Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Helpers.AppMessageBox.Show(Loc.T("ccs.print_error", ex.Message), Loc.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         };
         btnClose.Click += (_, _) => previewForm.Close();
@@ -1587,6 +1940,7 @@ public sealed class CcsForm : Form
         };
         toolbar.Controls.Add(btnClose);
         toolbar.Controls.Add(btnPrint);
+        toolbar.Controls.Add(Printing.PrintPaper.CreatePicker());
 
         previewForm.Controls.Add(pnlPreview);
         previewForm.Controls.Add(toolbar);
@@ -1609,8 +1963,11 @@ public sealed class CcsForm : Form
         var width = right - left;
         var y = area.Top + m;
 
+        // Giấy cuộn máy in nhiệt: không viền khung, giá trị dài tự xuống dòng, ngày in ngay dưới nội dung.
+        var thermal = Printing.ThermalPrint.Active;
+        if (thermal) y = area.Top + 4;
         using var borderPen = new Pen(AgrisTheme.BrandGreenDark, 2f);
-        g.DrawRectangle(borderPen, area.Left + 2, area.Top + 2, area.Width - 4, area.Height - 4);
+        if (!thermal) g.DrawRectangle(borderPen, area.Left + 2, area.Top + 2, area.Width - 4, area.Height - 4);
 
         // Font Latin cố định; chữ Khmer/Lào được PrintText đổi font theo đoạn. Nhãn song ngữ theo BU.
         const string family = "Segoe UI";
@@ -1618,7 +1975,15 @@ public sealed class CcsForm : Form
         using var titleFont = new Font(family, 18F, FontStyle.Bold);
         using var titleBrush = new SolidBrush(AgrisTheme.BrandGreenDark);
         y += (int)Printing.PrintText.DrawCentered(g, Printing.PrintText.V(d.Factory), companyFont, Brushes.Black, left, width, y) + 6;
-        y += (int)Printing.PrintText.DrawCentered(g, Printing.PrintText.L("ccs.print_title"), titleFont, titleBrush, left, width, y) + 12;
+        y += (int)Printing.PrintText.DrawCentered(g, Printing.PrintText.L("ccs.print_title"), titleFont, titleBrush, left, width, y)
+             + (d.IsReprint ? 4 : 12);
+        if (d.IsReprint)
+        {
+            using var reprintFont = new Font(family, 12F, FontStyle.Bold);
+            using var reprintBrush = new SolidBrush(AgrisTheme.Danger);
+            y += (int)Printing.PrintText.DrawCentered(g, Printing.PrintText.L("receipt.reprint_label"), reprintFont, reprintBrush,
+                left, width, y) + 10;
+        }
 
         using var lbl = new Font(family, 11F);
         using var val = new Font(family, 11F, FontStyle.Bold);
@@ -1647,6 +2012,12 @@ public sealed class CcsForm : Form
 
         void Row(string label, string? value, Font font, Brush brush, int height)
         {
+            if (thermal)
+            {
+                var h = (int)Math.Ceiling(Printing.PrintText.FieldWrapped(g, label, value, lbl, font, brush, left, vx, right, y));
+                y += Math.Max(height, h + 6);
+                return;
+            }
             Printing.PrintText.Field(g, label, value, lbl, font, brush, left, vx, y);
             y += Math.Max(height, lh);
         }
@@ -1686,23 +2057,33 @@ public sealed class CcsForm : Form
 
         if (!string.IsNullOrWhiteSpace(d.TripNo))
         {
+            // Mã QR số đăng tài (thay mã vạch) — quét ở màn Cân / Đo tạp chất để mở chuyến.
             y += 8;
-            Printing.Code128Renderer.Draw(g, d.TripNo, left, y, 320, 50);
-            y += 54;
-            using var bcFont = new Font(AgrisTheme.MonoFamily, 10F);
-            g.DrawString(d.TripNo, bcFont, Brushes.Black, left, y);
+            const int qrSize = 96;
+            Printing.QrCodeRenderer.Draw(g, d.TripNo, left, y, qrSize);
+            using var bcFont = new Font(AgrisTheme.MonoFamily, 10F, FontStyle.Bold);
+            g.DrawString(d.TripNo, bcFont, Brushes.Black, left + qrSize + 10, y + qrSize / 2f - 8);
+            y += qrSize;
         }
 
         var printLabel = Printing.PrintText.L("print.field_printed_at") + ": " + (d.PrintedAt.ToString("dd/MM/yyyy HH:mm"));
         using var tsFont = new Font(family, 9.5F, FontStyle.Italic);
         using var tsBrush = new SolidBrush(AgrisTheme.TextMuted);
         var tsSz = Printing.PrintText.Measure(g, printLabel, tsFont);
-        Printing.PrintText.DrawRight(g, printLabel, tsFont, tsBrush, right, area.Bottom - m - tsSz.Height);
+        Printing.PrintText.DrawRight(g, printLabel, tsFont, tsBrush, right, thermal ? y + 8 : area.Bottom - m - tsSz.Height);
     }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _cts.Dispose();
+        if (disposing)
+        {
+            _liveTimer.Stop();
+            _liveTimer.Dispose();
+            _fibreTimer.Stop();
+            _fibreTimer.Dispose();
+            _eventBus.TripChanged -= OnTripChangedFromOtherForm;
+            _cts.Dispose();
+        }
         base.Dispose(disposing);
     }
 }

@@ -216,8 +216,10 @@ private async void btnCommitWeight_Click(object sender, EventArgs e)
     catch (IntegrationException ex)
     {
         _logger.LogError(ex, "Weight commit failed. TripId={TripId}", _currentTripId);
-        MessageBox.Show($"Lỗi kết nối dịch vụ: {ex.Message}\nThao tác chưa được ghi nhận.", 
-                        "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        // KHÔNG dùng MessageBox — dùng khuôn thông báo chung (xem mục "Thông báo / Popup")
+        DigiScalePopup.ShowError(this, Loc.T("weigh.commit_failed_title"),
+            DigiScaleErrors.Describe(ex),
+            [(Loc.T("alert.fact_trip"), _txtRegNo.Text), (Loc.T("alert.fact_plate"), _txtPlate.Text)]);
     }
     finally
     {
@@ -225,6 +227,54 @@ private async void btnCommitWeight_Click(object sender, EventArgs e)
     }
 }
 ```
+
+---
+
+## Thông báo / Popup — BẮT BUỘC dùng template chung
+
+Mọi hộp thông báo cho người dùng phải cùng một format: **dải tiêu đề màu + biểu tượng → Thông tin → Lý do → Cách xử lý → nút lớn**. Format này do `Helpers/DigiScalePopup.cs` vẽ.
+
+### Không được dùng
+
+- ❌ `MessageBox.Show(...)` của Windows. Ngoại lệ duy nhất là `Program.cs` (lỗi khởi tạo app, lỗi làm sập app), vì lúc đó giao diện có thể chưa dựng xong.
+- ❌ Tự tạo `Form` thông báo riêng, hoặc tự vẽ hộp lỗi / xác nhận.
+- ❌ Hiện JSON thô, HTTP status, stack trace hay mã kỹ thuật (`INTEGRATION.RULE.DT_06...`) cho người vận hành. Phải dịch qua `DigiScaleErrors.Describe(...)`. Nội dung gốc đã có trong Nhật ký API.
+- ❌ Emoji trong tiêu đề hoặc nội dung popup (GDI vẽ thành ô vuông). `DigiScalePopup` có tự lọc, nhưng đừng cố tình đưa vào.
+
+### Chọn hàm theo tình huống
+
+| Tình huống | Hàm | Màu |
+|---|---|---|
+| Thao tác có đẩy DigiScale (thành công / lỗi) | `DigiScalePopup.Show(owner, title, details, digiOk, digiStatus)` | Xanh lá / đỏ |
+| Lỗi đã dịch (bị gì + cần làm gì) | `DigiScalePopup.ShowError(owner, title, DigiScaleErrors.Describe(x), facts)` | Đỏ |
+| Chặn nghiệp vụ (không đăng tài / không lưu được...) | `DigiScalePopup.ShowWarning(owner, title, reason)` | Đỏ |
+| Thông báo đầy đủ tự chọn mức độ | `DigiScalePopup.ShowAlert(owner, AlertKind.X, title, reason, action, facts, message)` | Theo `AlertKind` |
+| Hỏi Có / Không | `DigiScalePopup.ShowConfirm(owner, title, yesText, noText, facts, message, highlights, defaultNo)` | Xanh teal |
+| Thông báo ngắn kiểu MessageBox (code cũ, việc nhỏ) | `Helpers.AppMessageBox.Show(...)` — cùng chữ ký và kết quả trả về như `MessageBox.Show` | Theo icon |
+
+`AlertKind`: `Success` (xanh lá ✓), `Info` (xanh dương i), `Warning` (cam !), `Error` (đỏ ✕), `Question` (teal ?).
+
+`AppMessageBox` ánh xạ icon như sau: `Error` → đỏ, nội dung vào "Lý do"; `Warning` → cam, vào "Lý do"; `Information`/không icon → xanh dương; `YesNo` → hộp xác nhận (`MessageBoxDefaultButton.Button2` = mặc định Không). Code mới nên gọi thẳng `DigiScalePopup` để có đủ Thông tin / Lý do / Cách xử lý.
+
+### Quy tắc nội dung
+
+- **Tiêu đề**: ngắn, nói kết quả, ví dụ "XE ĐÃ ĐĂNG TÀI", "GHI CCS THÀNH CÔNG", "Chuyến đã cân". Không để trống.
+- **Thông tin (`facts`)**: định danh để người vận hành đối chiếu, gồm Số đăng tài, Biển số, Lệnh đốn, Trọng lượng... Dùng nhãn có sẵn `alert.fact_*`.
+- **Lý do (`reason`)**: bị gì, chỉ đúng đối tượng lỗi, ví dụ "Thẻ xe T260000121 chưa duyệt", không viết "Lỗi không xác định".
+- **Cách xử lý (`action`)**: người dùng cần làm gì tiếp, ví dụ "Hủy phiếu cũ trên DigiScale Portal rồi đăng tài lại". Không viết chung chung "Xử lý theo lý do trên rồi thử lại" khi đã biết cách xử lý cụ thể.
+- **Đa ngôn ngữ**: mọi chuỗi (tiêu đề, lý do, cách xử lý, nhãn nút) lấy qua `Loc.T(...)`, có đủ `vi`, `en`, `lo`, `km`. Không viết thẳng tiếng Việt trong code.
+- **Xác nhận thao tác rủi ro** (ghi đè, bỏ qua cảnh báo, dùng số không mới nhất, xóa/hủy): `defaultNo: true`, để Enter = Không.
+- **Lỗi DigiScale mới** (mã `DT-xx`, `CR-xx`...): thêm bản dịch Lý do + Cách xử lý vào `DigiScaleErrors`, không xử lý chuỗi lỗi rải rác trong form.
+- Popup chỉ dùng cho việc cần người dùng chú ý / quyết định. Trạng thái tiến trình ("Đang đẩy...", "Đã đọc máy đo") ghi lên dải trạng thái / khung thông báo của màn hình, không bật popup.
+
+### Checklist khi thêm thông báo
+
+- [ ] Không có `MessageBox.Show` mới (trừ `Program.cs`)
+- [ ] Dùng đúng hàm `DigiScalePopup` theo bảng trên
+- [ ] Có tiêu đề, Lý do cụ thể, Cách xử lý (với lỗi / chặn)
+- [ ] Có `facts` định danh chuyến khi thông báo gắn với một chuyến
+- [ ] Mọi chuỗi qua `Loc.T`, đủ 4 ngôn ngữ
+- [ ] Không lộ JSON / mã kỹ thuật / stack trace
 
 ---
 
@@ -267,6 +317,7 @@ Các quy tắc này trích từ specs — vi phạm sẽ dẫn đến sai số n
 - [ ] Lỗi/exception được log với đủ context (trip_id, actor, correlation_id)
 - [ ] Quyền kiểm tra ở server, không chỉ ẩn UI
 - [ ] Mọi chuỗi hiển thị dùng resource, có đủ 4 ngôn ngữ (vi, en, lo, km) — không hardcode
+- [ ] Thông báo dùng template `DigiScalePopup` / `AppMessageBox` — không `MessageBox.Show` (trừ `Program.cs`)
 
 ---
 
@@ -358,3 +409,85 @@ Hệ thống cân hoạt động **offline-first**: mọi dữ liệu (đăng t�
   }
 }
 ```
+
+
+---
+
+## Đóng gói & cập nhật bản cài (Installer) — BẮT BUỘC
+
+Bộ cài một file `.exe` (Inno Setup 6) nằm trong `installer\`. Người dùng nhà máy chỉ chọn thư mục cài rồi Next. App, PostgreSQL 16 và VC++ runtime đều đóng gói sẵn.
+
+### Build
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1 -Version 1.0.0
+```
+
+- Kết quả: `installer\out\TTC-Weighing-Setup-<Version>.exe`.
+- **LUÔN build lại bộ cài sau mỗi thay đổi.** Trong lượt làm việc, nếu có sửa bất kỳ tệp nào dưới `src/`, `db/`, `installer/` hoặc `appsettings*.json`, thì trước khi báo xong phải:
+  1. Chạy `build-installer.ps1 -Version 1.0.0` và kiểm tra build thành công (dòng `== Done`, không có lỗi).
+  2. Báo lại đường dẫn file `.exe` mới cho người dùng.
+  - Build lỗi thì sửa cho tới khi build được. Không được báo xong khi file `.exe` vẫn là bản cũ.
+  - Chỉ sửa tài liệu (`docs/`, `.kiro/`, `*.md`) thì không cần build lại.
+- **Giữ version `1.0.0`** cho tới khi người dùng yêu cầu nâng version. Không tự tăng.
+- Sửa `installer\TTCWeighing.iss` thì giữ mã hóa **UTF-8 có BOM**, nếu không tiếng Việt trong bộ cài bị lỗi font.
+- `installer\bundle-settings.json` chứa tài khoản FRM và URL API, được đóng vào bộ cài và ghi thành `appsettings.Local.json` trên máy trạm. **Không commit** (đã gitignore). Muốn đổi UAT → production thì sửa tệp này rồi build lại.
+
+### Cài đè = cập nhật, KHÔNG được mất dữ liệu
+
+Cài bản mới đè lên bản cũ phải chạy được mà không cần gỡ cài đặt. Mọi thay đổi ở bộ cài phải giữ các điều sau:
+
+- `AppId` trong `.iss` **không được đổi**. Đổi là Windows coi như app khác và cài thành thư mục mới.
+- **Không xóa hoặc ghi đè** các mục sau:
+  - `<thư mục cài>\data\` (pgdata, `db-secrets.json`, backups, logs);
+  - `appsettings.Local.json`;
+  - `evidence\`, `outbox\`.
+- **Không nạp lại** `schema.sql`/`seed.sql` khi cơ sở dữ liệu đã có bảng.
+- Gỡ cài đặt chỉ xóa app và dịch vụ `TTCWeighingDB`. Thư mục `data` được giữ lại.
+- Bản build đầu tiên để dữ liệu ở `C:\ProgramData\TTCWeighing`. `configure.ps1` phải tiếp tục nhận diện vị trí cũ này.
+
+### Thay đổi schema cơ sở dữ liệu
+
+Mọi thay đổi bảng hoặc cột đều phải làm đủ **cả hai** việc, nếu không máy đã cài sẽ lỗi khi cập nhật:
+
+1. Thêm script `db/upgrades/YYYYMMDD_NN_mo_ta.sql`. Bộ cài chạy mỗi script đúng một lần theo thứ tự tên, ghi nhận vào bảng `installer_schema_upgrades`, và tự `pg_dump` sao lưu trước khi chạy.
+2. Cập nhật `db/schema.sql` cho máy cài mới (xem `docs/SETUP_MAY_MOI.md`).
+
+Quy tắc cho script nâng cấp (chi tiết ở `db/upgrades/README.md`):
+- Không làm mất dữ liệu. Dùng `ADD COLUMN ... NULL`, `CREATE TABLE IF NOT EXISTS`... và ghi cách quay lui trong chú thích đầu tệp.
+- Không sửa hoặc đổi tên script đã phát hành.
+- Tên tệp chỉ gồm chữ, số và `_ . -`.
+
+### Giao diện trên máy khác (màn hình nhỏ / Scale 125–150%)
+
+- App chạy ở `ApplicationHighDpiMode=DpiUnawareGdiScaled` (csproj). Windows phóng cả cửa sổ nên bố cục pixel giữ đúng tỉ lệ. **Không đổi** sang SystemAware/PerMonitor nếu chưa chuyển toàn bộ form sang `AutoScaleMode.Dpi`.
+- Popup và cửa sổ phụ tính kích thước theo `Screen.WorkingArea` (tối đa ~92% chiều cao), không đặt cứng chiều cao lớn.
+
+#### Thu phóng toàn bộ giao diện theo màn hình (`Theme/UiScale.cs`) — BẮT BUỘC
+
+Giao diện được **thiết kế ở 1920x1080**. Máy có màn hình nhỏ hơn thấy đúng bố cục đó, chỉ nhỏ hơn: chữ, logo, kích thước, khoảng cách, lưới, menu, tab đều co **cùng một tỉ lệ**.
+
+- **Hệ số** = min(vùng làm việc / 1920x1080), trong khoảng 0.5..1, không bao giờ phóng to. Cấu hình `App:UiScale` = `auto` (mặc định) hoặc số cố định; `1` = tắt.
+- **Cơ chế** (giống WinForms tự scale theo DPI):
+  1. Form được dựng trong `UiScale.DesignScope()`. Trong scope, `UiScale.Current` = 1, nên font `AgrisTheme` và `UiScale.Px()` ra cỡ thiết kế, khớp với số px viết trong code.
+  2. `UiScale.Apply(form)` co cả cây control một lần: dùng `Control.Scale` cho vị trí, kích thước, Padding/Margin, MinimumSize và cột TableLayoutPanel; thêm font riêng từng control, lưới (cột, dòng, tiêu đề), `TabControl.ItemSize` và chiều cao các ô theo font.
+  3. Ngoài scope, `Current` = hệ số, nên chữ vẽ lúc chạy và control tạo thêm sau đó cũng ra đúng tỉ lệ.
+- **Điểm vào đã nối sẵn, không làm khác:**
+  - Splash, Login, MainForm: tạo bằng `UiScale.Create(() => new XxxForm())` trong `Program.cs`.
+  - Tab nghiệp vụ: mở qua `MainForm.CreateAndHost` (`OpenTab` / `ReopenTabByType` / `OpenScreenForDocs` đều đi qua đây).
+  - Form / màn hình mới phải đi qua một trong các đường này. Không `new` form rồi `Show` thẳng.
+- **Quy tắc khi viết UI mới:**
+  - Font chỉ lấy qua `AgrisTheme.Body/Heading/Mono/Display/Caption/Ui/Icon`. Không `new Font(...)` với cỡ cố định trong code chạy lúc vẽ / lúc chạy.
+  - Số px dùng **lúc chạy** (OnPaint, Resize/Layout handler, đổi trạng thái, control tạo sau khi form đã hiện) phải qua `UiScale.Px(n)`. Hằng số px của control tự vẽ khai báo `static int X => Theme.UiScale.Px(n);`, không dùng `const int`.
+  - Số px đặt trong constructor (Size, Height, Padding...) viết bình thường theo cỡ thiết kế: `Apply` tự co.
+  - Hàng nút / ô cạnh nhau dùng `TableLayoutPanel` chia %, không dùng `FlowLayoutPanel` với nút rộng cố định.
+  - Không đặt `MinimumSize` của `MainForm` lớn hơn 1024x600 (cỡ thiết kế).
+- **Kiểm tra bố cục trước khi phát hành:**
+  - Chạy `TTC.Weighing.WinForms.exe --layout` với `TTC_WEIGHING_App__UiScale` = `1`, `0.71` (1366x768), `0.65` (1280x720) và `0.5`. Vùng kiểm tra tự nhân theo hệ số.
+  - Kết quả ở mọi hệ số phải giống ở hệ số `1` (không phát sinh FAIL mới).
+
+### Logo / icon
+
+- Icon app là `src/TTC.Weighing.WinForms/Assets/logo.ico`, dùng cho `.exe`, shortcut, taskbar, thanh tiêu đề và file Setup.
+- Đổi `logo.png` thì chạy lại `installer\scripts\make-icon.ps1`.
+- Form chính mới đặt `Icon = LogoHelper.GetAppIcon()`.

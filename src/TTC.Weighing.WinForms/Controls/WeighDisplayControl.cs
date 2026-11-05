@@ -25,38 +25,48 @@ public sealed class WeighDisplayControl : UserControl
     public WeighDisplayControl()
     {
         BackColor = AgrisTheme.ScaleDisplayBack;
-        Padding = new Padding(18, 12, 18, 12);
-        MinimumSize = new Size(420, 190);
+        // Bố cục lưới, không xếp chồng nhãn cao cố định (dễ mất chữ khi khung thấp / thu phóng):
+        //   [ trạng thái tín hiệu ][            số cân ][ tấn ]   ← dòng chính, co giãn
+        //   [ ổn định: x.x s / y.y s                           ]   ← dòng phụ
+        //   [ ======== thanh ổn định ========================= ]
+        // Số cân vẫn ≥ 36pt (UI-03). Đơn vị đứng cạnh số nên không bị cắt.
+        Padding = new Padding(16, 6, 16, 8);
+        MinimumSize = new Size(420, 120);
 
         _lblWeight = new Label
         {
             Text = "---",
-            Font = new Font(AgrisTheme.MonoFamily, 46F, FontStyle.Bold),
+            Font = AgrisTheme.Mono(40F, FontStyle.Bold),
             ForeColor = AgrisTheme.ScaleDisplayIdle,
+            BackColor = AgrisTheme.ScaleDisplayBack,
             TextAlign = ContentAlignment.MiddleRight,
-            Dock = DockStyle.Top,
-            Height = 82,
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
             AccessibleName = Loc.T("control.scale_accessible_weight")
         };
 
         _lblUom = new Label
         {
             Text = Loc.T("weigh.unit_ton"),
-            Font = AgrisTheme.Body(11F),
+            Font = AgrisTheme.Body(14F, FontStyle.Bold),
             ForeColor = AgrisTheme.ScaleDisplayCaption,
-            TextAlign = ContentAlignment.MiddleRight,
-            Dock = DockStyle.Top,
-            Height = 24
+            BackColor = AgrisTheme.ScaleDisplayBack,
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(6, 0, 0, 0)
         };
 
         _lblSignalState = new Label
         {
-            Text = Loc.T("control.scale_signal_lost"),
+            Text = Loc.T("control.scale_no_data"),
             Font = AgrisTheme.Body(11F, FontStyle.Bold),
-            ForeColor = AgrisTheme.Danger,
+            ForeColor = AgrisTheme.ScaleDisplayCaption,
+            BackColor = AgrisTheme.ScaleDisplayBack,
             TextAlign = ContentAlignment.MiddleLeft,
-            Dock = DockStyle.Top,
-            Height = 30,
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            AutoEllipsis = true,
             AccessibleName = Loc.T("control.scale_accessible_signal")
         };
 
@@ -65,23 +75,45 @@ public sealed class WeighDisplayControl : UserControl
             Text = Loc.T("control.scale_stability_na"),
             Font = AgrisTheme.Body(9.5F),
             ForeColor = AgrisTheme.ScaleDisplayCaption,
+            BackColor = AgrisTheme.ScaleDisplayBack,
             TextAlign = ContentAlignment.MiddleLeft,
-            Dock = DockStyle.Top,
-            Height = 24
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            AutoEllipsis = true
         };
 
         _stabilityBar = new StabilityBar
         {
-            Dock = DockStyle.Top,
-            Height = 12,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 2, 0, 0),
             AccessibleName = Loc.T("control.scale_accessible_stability")
         };
 
-        Controls.Add(_stabilityBar);
-        Controls.Add(_lblStability);
-        Controls.Add(_lblSignalState);
-        Controls.Add(_lblUom);
-        Controls.Add(_lblWeight);
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 3,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = AgrisTheme.ScaleDisplayBack
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));  // trạng thái tín hiệu
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));  // số cân
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));     // đơn vị
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));       // dòng chính
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));       // ổn định
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));       // thanh ổn định
+
+        layout.Controls.Add(_lblSignalState, 0, 0);
+        layout.Controls.Add(_lblWeight, 1, 0);
+        layout.Controls.Add(_lblUom, 2, 0);
+        layout.Controls.Add(_lblStability, 0, 1);
+        layout.SetColumnSpan(_lblStability, 3);
+        layout.Controls.Add(_stabilityBar, 0, 2);
+        layout.SetColumnSpan(_stabilityBar, 3);
+
+        Controls.Add(layout);
     }
 
     /// <summary>Cập nhật hiển thị. An toàn khi gọi từ thread khác.</summary>
@@ -105,10 +137,14 @@ public sealed class WeighDisplayControl : UserControl
             _lblWeight.Text = "---";
             _lblWeight.ForeColor = AgrisTheme.ScaleDisplayIdle;
 
-            _lblSignalState.Text = deviceStatus == ScaleDeviceStatus.Ok
-                ? Loc.T("control.scale_signal_stale")
-                : Loc.T("control.scale_fault", deviceStatus);
-            _lblSignalState.ForeColor = AgrisTheme.Danger;
+            // Chưa có số cân (chưa có xe / chưa nhập tay) → trạng thái trung tính, không báo lỗi.
+            var noData = normalizedKg is null && deviceStatus == ScaleDeviceStatus.Unknown;
+            _lblSignalState.Text = noData
+                ? Loc.T("control.scale_no_data")
+                : deviceStatus == ScaleDeviceStatus.Ok
+                    ? Loc.T("control.scale_signal_stale")
+                    : Loc.T("control.scale_fault", deviceStatus);
+            _lblSignalState.ForeColor = noData ? AgrisTheme.ScaleDisplayCaption : AgrisTheme.Danger;
 
             _stabilityBar.SetProgress(0);
             _lblStability.Text = Loc.T("control.scale_stability_na");

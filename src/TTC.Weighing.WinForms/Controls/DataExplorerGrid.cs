@@ -2,6 +2,7 @@ using System.Drawing.Drawing2D;
 using System.Globalization;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Controls;
 
@@ -38,7 +39,7 @@ public sealed record ExplorerColumn<T>(
 /// </summary>
 public sealed class DataExplorerGrid<T> : Card
 {
-    private const int HeaderGlyphWidth = 22;
+    private static int HeaderGlyphWidth => Theme.UiScale.Px(22);
 
     private readonly ExplorerColumn<T>[] _columns;
     private readonly Label _header;
@@ -75,6 +76,7 @@ public sealed class DataExplorerGrid<T> : Card
             Margin = new Padding(0, 6, 0, 0),
             AccessibleName = searchPlaceholder ?? Loc.T("explorer.search_placeholder")
         };
+        Helpers.SearchText.Prepare(_txtSearch); // tắt bộ gõ → lọc ngay khi gõ, không đợi Space
         _txtSearch.TextChanged += (_, _) => { _searchDebounce.Stop(); _searchDebounce.Start(); };
         _txtSearch.KeyDown += (_, e) =>
         {
@@ -187,7 +189,7 @@ public sealed class DataExplorerGrid<T> : Card
             case null: return "";
             case string s when def.Kind == ExplorerColumnKind.Date:
                 return TryParseDate(s) is { } d ? d.ToString("dd/MM/yyyy HH:mm") : s;
-            case DateTimeOffset dto: return dto.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+            case DateTimeOffset dto: return dto.ToVnTime().ToString("dd/MM/yyyy HH:mm");
             case DateTime dt: return dt.ToString("dd/MM/yyyy HH:mm");
             case decimal or double or float or int or long when def.Kind == ExplorerColumnKind.Number:
                 return Convert.ToDecimal(value, CultureInfo.InvariantCulture).ToString("N0");
@@ -196,11 +198,9 @@ public sealed class DataExplorerGrid<T> : Card
         }
     }
 
+    /// <summary>Chuỗi ngày từ DigiScale (FRM / ERP) — giữ nguyên giờ API trả, không cộng múi giờ.</summary>
     private static DateTime? TryParseDate(string s)
-        => DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var d)
-            ? d.ToLocalTime().DateTime
-            : DateTime.TryParseExact(s, ["dd/MM/yyyy", "dd/MM/yyyy HH:mm", "dd/MM/yyyy HH:mm:ss"],
-                CultureInfo.InvariantCulture, DateTimeStyles.None, out var p) ? p : null;
+        => TTC.Weighing.Infrastructure.Adapters.DigiScaleDate.Parse(s);
 
     /// <summary>Khóa sắp xếp: số theo giá trị, ngày theo thời gian, còn lại theo chữ.</summary>
     private IComparable SortKey(T item, int col)
@@ -232,11 +232,10 @@ public sealed class DataExplorerGrid<T> : Card
         if (terms.Length > 0)
         {
             // Mọi từ khóa phải xuất hiện ở ít nhất một cột (tìm "59A mật" ra xe 59A chở mật rỉ).
+            // Không dấu, bỏ qua "-" "." trong mã / biển số (xem SearchText).
             query = query.Where(item =>
-            {
-                var row = string.Join('\u001F', Enumerable.Range(0, _columns.Length).Select(c => DisplayText(item, c)));
-                return terms.All(t => row.Contains(t, StringComparison.OrdinalIgnoreCase));
-            });
+                new Helpers.SearchText.Row(string.Join('\u001F',
+                    Enumerable.Range(0, _columns.Length).Select(c => DisplayText(item, c)))).ContainsAll(terms));
         }
 
         foreach (var (col, allowed) in _columnFilters)
@@ -388,10 +387,12 @@ public sealed class DataExplorerGrid<T> : Card
         var pill = new Rectangle(e.CellBounds.Left + 8, e.CellBounds.Top + (e.CellBounds.Height - 22) / 2,
             Math.Min(size.Width + 18, maxWidth), 22);
 
+        var oldMode = e.Graphics.SmoothingMode;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using (var path = Shapes.RoundedRect(pill, 11))
         using (var brush = new SolidBrush(back))
             e.Graphics.FillPath(brush, path);
+        e.Graphics.SmoothingMode = oldMode; // không để đường kẻ ô vẽ sau bị nhòe
 
         TextRenderer.DrawText(e.Graphics, text, font, pill, fore,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
@@ -409,6 +410,7 @@ public sealed class DataExplorerGrid<T> : Card
             new(cx + 1.2f, cy + 4.5f), new(cx - 1.2f, cy + 3.2f), new(cx - 1.2f, cy + 0.5f)
         ];
 
+        var oldMode = g.SmoothingMode;
         g.SmoothingMode = SmoothingMode.AntiAlias;
         if (active)
         {
@@ -420,6 +422,7 @@ public sealed class DataExplorerGrid<T> : Card
             using var pen = new Pen(AgrisTheme.TextMuted, 1.2f);
             g.DrawPolygon(pen, funnel);
         }
+        g.SmoothingMode = oldMode;
     }
 
     private static (Color Fore, Color Back) ToneColors(BadgeTone tone) => tone switch

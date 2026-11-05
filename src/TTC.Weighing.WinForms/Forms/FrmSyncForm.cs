@@ -2,6 +2,7 @@
 using TTC.Weighing.WinForms.Controls;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -25,6 +26,7 @@ public sealed class FrmSyncForm : Form
 
     private readonly Button _btnRefresh = GridBuilder.PrimaryButton(Loc.T("frm.btn_pull"), new Size(280, 40));
     private readonly Button _btnAutoSync = GridBuilder.SecondaryButton(Loc.T("frm.btn_auto_on"), new Size(160, 40));
+    private readonly Button _btnPauseSync = GridBuilder.SecondaryButton(Loc.T("sync.btn_pause"), new Size(150, 40));
     private readonly NumericUpDown _numInterval = new()
     {
         Minimum = 1, Maximum = 120, Value = 5, Width = 60,
@@ -32,6 +34,14 @@ public sealed class FrmSyncForm : Form
     };
     private readonly System.Windows.Forms.Timer _autoTimer = new();
     private bool _autoEnabled;
+    /// <summary>Trạng thái kéo tự động nền (luôn bật sau đăng nhập) — cập nhật mỗi giây.</summary>
+    private readonly Label _lblAutoSync = new()
+    {
+        AutoSize = true, Margin = new Padding(12, 11, 0, 0),
+        Font = AgrisTheme.Body(9.5F, FontStyle.Bold), ForeColor = AgrisTheme.Success
+    };
+    private readonly System.Windows.Forms.Timer _autoStatusTimer = new() { Interval = 1000 };
+    private IDisposable? _syncLogSubscription;
     private readonly TextBox _txtEntities = new()
     {
         Font = AgrisTheme.Mono(9F),
@@ -90,6 +100,39 @@ public sealed class FrmSyncForm : Form
 
         // Reload data khi form load (có thể cache đã update từ background)
         Load += (_, _) => ReloadFromCache();
+
+        // Trạng thái kéo tự động + giờ kéo cuối cập nhật mỗi giây (kể cả khi dữ liệu không đổi).
+        _autoStatusTimer.Tick += (_, _) => UpdateAutoSyncStatus();
+        Load += (_, _) => { UpdateAutoSyncStatus(); _autoStatusTimer.Start(); };
+        Disposed += (_, _) => { _autoStatusTimer.Stop(); _autoStatusTimer.Dispose(); };
+
+        // Lần kéo chạy nền (khởi động / màn khác) xong → lưới cập nhật theo.
+        _cache.Refreshed += OnCacheRefreshed;
+        Disposed += (_, _) => _cache.Refreshed -= OnCacheRefreshed;
+
+        // Nhật ký kéo nền từ lúc khởi động app (kéo chạy ngay sau đăng nhập, không cần mở màn này).
+        Load += (_, _) =>
+        {
+            _syncLogSubscription = Services.BackgroundDataSync.AttachLog(
+                Services.BackgroundDataSync.SyncSource.Frm, e => AppendLog(e.Text, e.At), out var history);
+            if (history.Count > 0)
+            {
+                _rtbLog.AppendText(string.Concat(history.Select(e => $"{e.At:HH:mm:ss}  {e.Text}{Environment.NewLine}")));
+                _rtbLog.ScrollToCaret();
+            }
+        };
+        Disposed += (_, _) => _syncLogSubscription?.Dispose();
+    }
+
+    private void OnCacheRefreshed()
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        try
+        {
+            // Nhật ký "kéo được gì / đổi gì" do BackgroundDataSync ghi (AttachLog) — ở đây chỉ nạp lại lưới.
+            BeginInvoke(ReloadFromCache);
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
     }
 
     /// <summary>Reload dữ liệu từ cache vào grid (gọi khi form load hoặc cache đã refresh).</summary>
@@ -164,10 +207,17 @@ public sealed class FrmSyncForm : Form
         var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
         btnPanel.Controls.Add(_btnRefresh);
         btnPanel.Controls.Add(new Label { Text = "  ", AutoSize = true, Margin = new Padding(4, 12, 0, 0) });
-        btnPanel.Controls.Add(_btnAutoSync);
-        btnPanel.Controls.Add(new Label { Text = Loc.T("frm.every"), AutoSize = true, Margin = new Padding(8, 12, 4, 0), Font = AgrisTheme.Body(9F) });
-        btnPanel.Controls.Add(_numInterval);
-        btnPanel.Controls.Add(new Label { Text = Loc.T("frm.minutes"), AutoSize = true, Margin = new Padding(4, 12, 0, 0), Font = AgrisTheme.Body(9F) });
+        // Tự động kéo luôn bật (BackgroundDataSync, mỗi vài giây) — chỉ hiển thị trạng thái, không bật/tắt tay.
+        btnPanel.Controls.Add(_lblAutoSync);
+        // Nút tắt / bật kéo tự động FRM (ERP vẫn chạy riêng).
+        _btnPauseSync.Margin = new Padding(12, 0, 0, 0);
+        _btnPauseSync.Click += (_, _) =>
+        {
+            var src = Services.BackgroundDataSync.SyncSource.Frm;
+            Services.BackgroundDataSync.SetPaused(src, !Services.BackgroundDataSync.IsPaused(src));
+            UpdateAutoSyncStatus();
+        };
+        btnPanel.Controls.Add(_btnPauseSync);
         root.Controls.Add(btnPanel, 0, 2);
 
         // Bảng Lệnh đốn (tiêu đề + tìm kiếm + lọc cột + phân trang)
@@ -186,12 +236,37 @@ public sealed class FrmSyncForm : Form
         Controls.Add(root);
     }
 
+    /// <summary>Đang chạy → "⏸ Tắt sync" (viền cam); đang tắt → "▶ Bật sync" (nền xanh).</summary>
+    internal static void PauseButtonStyle(Button btn, bool paused)
+    {
+        var text = paused ? "▶  " + Loc.T("sync.btn_resume") : "⏸  " + Loc.T("sync.btn_pause");
+        if (btn.Text == text) return;
+        btn.Text = text;
+        btn.FlatStyle = FlatStyle.Flat;
+        btn.FlatAppearance.BorderSize = 1;
+        btn.FlatAppearance.BorderColor = paused ? AgrisTheme.BrandGreen : AgrisTheme.Warning;
+        btn.BackColor = paused ? AgrisTheme.BrandGreen : AgrisTheme.Surface;
+        btn.ForeColor = paused ? Color.White : AgrisTheme.Warning;
+        btn.Font = AgrisTheme.Body(9.5F, FontStyle.Bold);
+    }
+
+    private void UpdateAutoSyncStatus()
+    {
+        if (IsDisposed) return;
+        var paused = Services.BackgroundDataSync.IsPaused(Services.BackgroundDataSync.SyncSource.Frm);
+        var (text, ok) = Services.BackgroundDataSync.StatusLine(s => s.LastFrmAt, Services.BackgroundDataSync.SyncSource.Frm);
+        _lblAutoSync.Text = (paused ? "⏸ " : "⟳ ") + text;
+        _lblAutoSync.ForeColor = ok ? AgrisTheme.Success : AgrisTheme.Warning;
+        PauseButtonStyle(_btnPauseSync, paused);
+        UpdateStatus(); // "Lần cuối" + số lượng theo bộ nhớ đệm mới nhất
+    }
+
     private void UpdateStatus()
     {
         var loading = _cache.IsLoading ? "⏳ Đang tải..." : "✅ Sẵn sàng";
         var refreshed = _cache.LastRefreshedAt == DateTimeOffset.MinValue
             ? "Chưa tải lần nào"
-            : $"Lần cuối: {_cache.LastRefreshedAt.ToLocalTime():dd/MM/yyyy HH:mm:ss}";
+            : $"Lần cuối: {_cache.LastRefreshedAt.ToVnTime():dd/MM/yyyy HH:mm:ss}";
 
         var allVehicles = _cache.AllVehicles;
         var withCard = allVehicles.Count(v => v.MaThe is not null);
@@ -217,7 +292,14 @@ public sealed class FrmSyncForm : Form
             RebuildCardIndex();
             _explorer.SetData(_allData);
 
-            AppendLog($"✅ Cache xe: Trước: {before}, Sau: {after} records. LenhDon: {_allData.Count}.");
+            var errors = _cache.LastRefreshErrors;
+            if (errors.Count == 0)
+                AppendLog($"✅ Cache xe: Trước: {before}, Sau: {after} records. LenhDon: {_allData.Count}.");
+            else
+            {
+                AppendLog($"⚠ Kéo chưa đủ — Cache xe: {after}, LenhDon: {_allData.Count}. Lỗi:");
+                foreach (var err in errors) AppendLog($"  ❌ {err}");
+            }
 
             // Kiểm tra từng entity + từng BU (đọc từ textbox — có thể chỉnh sửa trên giao diện)
             var entities = _txtEntities.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -279,7 +361,7 @@ public sealed class FrmSyncForm : Form
         new(() => Loc.T("frm.col_transport_contract"), TransportContract, 170, ExplorerColumnKind.Code),
         new(() => Loc.T("frm.col_transporter"), ld => CardOf(ld)?.DoiTacVanChuyenName, 200),
         new(() => Loc.T("field.plate"), ld => ld.BienSoXe, 120),
-        new(() => Loc.T("field.sugarcane_owner"), ld => ld.KHName, 230),
+        new(() => Loc.T("field.sugarcane_owner"), ld => ld.OwnerName, 230),
         new(() => Loc.T("field.sugarcane_type"), ld => ld.LoaiMiaName, 115),
         new(() => Loc.T("field.sugarcane_variety"), ld => ld.GiongMiaName, 115),
         new(() => Loc.T("frm.col_tram"), ld => ld.TramName, 150),
@@ -305,11 +387,20 @@ public sealed class FrmSyncForm : Form
     private void RebuildCardIndex()
     {
         var index = new Dictionary<string, FrmVehicleInfo>(StringComparer.OrdinalIgnoreCase);
+        var byId = new Dictionary<string, FrmVehicleInfo>(StringComparer.OrdinalIgnoreCase);
         foreach (var v in _cache.AllVehicles)
+        {
             if (!string.IsNullOrWhiteSpace(v.MaThe))
                 index.TryAdd(v.MaThe.Trim(), v);
+            if (!string.IsNullOrWhiteSpace(v.TheXeSourceKey))
+                byId.TryAdd(v.TheXeSourceKey.Trim(), v);
+        }
         _cardsByCode = index;
+        _cardsById = byId;
     }
+
+    /// <summary>Thẻ xe FRM theo ID thẻ (the-xe sourceKey).</summary>
+    private Dictionary<string, FrmVehicleInfo> _cardsById = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Thẻ xe của lệnh đốn. Tên thẻ trên lệnh đốn dạng "{HĐ vận chuyển}-{xe}-{mã thẻ}"
@@ -317,12 +408,19 @@ public sealed class FrmSyncForm : Form
     /// </summary>
     private FrmVehicleInfo? CardOf(FrmLenhDonInfo ld)
     {
+        // Ưu tiên ID thẻ (TheXe) — tên thẻ trên lệnh đốn có thể không chứa mã thẻ.
+        if (ld.TheXeId is { } id && _cardsById.TryGetValue(id, out var byId)) return byId;
+
         var name = ld.Thexename?.Trim();
         if (string.IsNullOrEmpty(name)) return null;
         if (_cardsByCode.TryGetValue(name, out var exact)) return exact;
         var last = name[(name.LastIndexOf('-') + 1)..];
         return _cardsByCode.TryGetValue(last, out var byCode) ? byCode : null;
     }
+
+    /// <summary>Tình trạng thẻ: theo danh mục thẻ, không có thì lấy StatusCodeTheXeName DigiScale trả kèm lệnh đốn.</summary>
+    private static string? CardStatusOf(FrmVehicleInfo? card, FrmLenhDonInfo ld)
+        => Blank(card?.StatusName) ?? Blank(ld.TheXeStatusName);
 
     /// <summary>Hợp đồng vận chuyển: theo thẻ FRM; chưa có thẻ thì lấy mã HĐ ở đầu tên thẻ lệnh đốn.</summary>
     private string? TransportContract(FrmLenhDonInfo ld)
@@ -337,7 +435,7 @@ public sealed class FrmSyncForm : Form
     {
         if (ld.IsTemporaryCard) return Loc.T("frm.card_temp");
         if (string.IsNullOrWhiteSpace(ld.Thexename)) return null;
-        return Blank(CardOf(ld)?.StatusName) ?? Loc.T("frm.card_missing");
+        return CardStatusOf(CardOf(ld), ld) ?? Loc.T("frm.card_missing");
     }
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -362,9 +460,9 @@ public sealed class FrmSyncForm : Form
         if (ld.IsTemporaryCard) return Loc.T("frm.ready_temp");
         if (string.IsNullOrWhiteSpace(ld.Thexename)) return Loc.T("frm.ready_ok");
 
-        var card = CardOf(ld);
-        if (card is null) return Loc.T("frm.ready_card_missing");
-        return CardStatusTone(card.StatusName ?? "") == BadgeTone.Danger
+        var status = CardStatusOf(CardOf(ld), ld);
+        if (status is null) return Loc.T("frm.ready_card_missing");
+        return CardStatusTone(status) == BadgeTone.Danger
             ? Loc.T("frm.ready_card_cancelled")
             : Loc.T("frm.ready_ok");
     }
@@ -372,7 +470,7 @@ public sealed class FrmSyncForm : Form
     private static BadgeTone ReadinessTone(string value)
         => value == Loc.T("frm.ready_ok") ? BadgeTone.Success
             : value == Loc.T("frm.ready_not_approved") ? BadgeTone.Neutral
-            : value == Loc.T("frm.ready_temp") ? BadgeTone.Info
+            : value == Loc.T("frm.ready_temp") ? BadgeTone.Success // thẻ tạm vẫn đăng tài được
             : BadgeTone.Danger;
 
     /// <summary>Trạng thái lệnh đốn: Đã duyệt xanh, Nháp vàng, Hủy đỏ, đã tính tiền / khác xanh dương.</summary>
@@ -397,17 +495,18 @@ public sealed class FrmSyncForm : Form
         null => null
     };
 
-    private void AppendLog(string message)
+    private void AppendLog(string message, DateTime? at = null)
     {
         // Kéo dữ liệu / timer tự động có thể xong sau khi tab đã đóng → log đã dispose, bỏ qua.
         if (IsDisposed || _rtbLog.IsDisposed) return;
+        var time = at ?? VnTime.Now;
         if (_rtbLog.InvokeRequired)
         {
-            try { _rtbLog.BeginInvoke(() => AppendLog(message)); }
+            try { _rtbLog.BeginInvoke(() => AppendLog(message, time)); }
             catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { }
             return;
         }
-        _rtbLog.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
+        _rtbLog.AppendText($"{time:HH:mm:ss}  {message}{Environment.NewLine}");
         _rtbLog.ScrollToCaret();
     }
 }

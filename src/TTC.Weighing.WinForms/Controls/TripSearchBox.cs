@@ -34,6 +34,7 @@ public sealed class TripSearchBox : UserControl
         Height = 30;
         Dock = DockStyle.Fill;
 
+        Helpers.SearchText.Prepare(_txtSearch); // tắt bộ gõ → gợi ý ngay khi gõ, không đợi Space
         _txtSearch.TextChanged += OnTextChanged;
         _txtSearch.KeyDown += OnKeyDown;
         _txtSearch.Leave += OnLeave;
@@ -70,18 +71,14 @@ public sealed class TripSearchBox : UserControl
     private void OnTextChanged(object? sender, EventArgs e)
     {
         var text = _txtSearch.Text.Trim();
-        if (text.Length < 2 || _trips.Count == 0)
+        if (text.Length == 0 || _trips.Count == 0)
         {
             _lstPopup.Visible = false;
             return;
         }
 
-        var search = text.ToUpperInvariant();
         var matched = _trips
-            .Where(t =>
-                (t.TripNo?.ToUpperInvariant().Contains(search) == true) ||
-                (t.Plate?.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant()
-                    .Contains(search.Replace(" ", "").Replace("-", "").Replace(".", "")) == true))
+            .Where(t => Helpers.SearchText.Matches(t.TripNo, text) || Helpers.SearchText.Matches(t.Plate, text))
             .Take(20)
             .Select(t => $"{t.TripNo}  |  {t.Plate}")
             .ToArray();

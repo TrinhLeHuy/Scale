@@ -9,8 +9,8 @@ namespace TTC.Weighing.WinForms.Controls;
 /// </summary>
 public sealed class DocumentTabControl : TabControl
 {
-    private const int CloseGlyphSize = 14;
-    private const int CloseGlyphPadding = 9;
+    private static int CloseGlyphSize => Theme.UiScale.Px(14);
+    private static int CloseGlyphPadding => Theme.UiScale.Px(9);
 
     private int _hoveredCloseIndex = -1;
     private int _hoveredTabIndex = -1;

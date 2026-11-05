@@ -1,0 +1,16 @@
+{
+  "scalecfg.btn_probe": ["Tự dò", "Auto-detect", "ຊອກຫາອັດຕະໂນມັດ", "ស្វែងរកស្វ័យប្រវត្តិ"],
+  "scalecfg.probe_caption": ["Tìm cổng + thông số", "Find port + settings", "ຊອກພອດ + ຄ່າ", "រកច្រក + ការកំណត់"],
+  "scalecfg.st_probing": ["ĐANG DÒ ĐẦU CÂN", "DETECTING INDICATOR", "ກຳລັງຊອກຫົວຊິງ", "កំពុងស្វែងរកក្បាលជញ្ជីង"],
+  "scalecfg.probe_hint": ["Đang thử từng cổng COM với các tốc độ thông dụng (chỉ nghe, không gửi lệnh). Mỗi cổng mất khoảng 20 giây.", "Trying each COM port with common baud rates (listen only, no commands sent). About 20 seconds per port.", "ກຳລັງລອງແຕ່ລະພອດ COM ກັບຄວາມໄວທີ່ໃຊ້ທົ່ວໄປ (ຟັງຢ່າງດຽວ, ບໍ່ສົ່ງຄຳສັ່ງ). ປະມານ 20 ວິນາທີຕໍ່ພອດ.", "កំពុងសាកច្រក COM នីមួយៗជាមួយល្បឿនទូទៅ (ស្តាប់តែប៉ុណ្ណោះ មិនផ្ញើបញ្ជា)។ ប្រហែល 20 វិនាទីក្នុងមួយច្រក។"],
+  "scalecfg.probe_no_ports_title": ["Không có cổng COM để dò", "No COM port to scan", "ບໍ່ມີພອດ COM ໃຫ້ຊອກ", "គ្មានច្រក COM ដើម្បីស្វែងរក"],
+  "scalecfg.probe_no_ports_reason": ["Máy này không thấy cổng COM nào còn trống.", "This computer has no free COM port.", "ເຄື່ອງນີ້ບໍ່ພົບພອດ COM ທີ່ຫວ່າງ.", "ម៉ាស៊ីននេះរកមិនឃើញច្រក COM ទំនេរ។"],
+  "scalecfg.probe_no_ports_action": ["Cắm cáp đầu cân (RS-232 hoặc USB-COM), kiểm tra Device Manager > Ports (COM & LPT) có cổng mới, rồi bấm Tự dò lại.", "Plug in the indicator cable (RS-232 or USB-COM), check Device Manager > Ports (COM & LPT) shows the port, then auto-detect again.", "ສຽບສາຍຫົວຊິງ (RS-232 ຫຼື USB-COM), ກວດ Device Manager > Ports (COM & LPT) ວ່າມີພອດ, ແລ້ວຊອກອີກຄັ້ງ.", "ដោតខ្សែក្បាលជញ្ជីង (RS-232 ឬ USB-COM) ពិនិត្យ Device Manager > Ports (COM & LPT) ថាមានច្រក រួចស្វែងរកម្តងទៀត។"],
+  "scalecfg.probe_not_found_title": ["Không tìm thấy đầu cân", "Indicator not found", "ບໍ່ພົບຫົວຊິງ", "រកមិនឃើញក្បាលជញ្ជីង"],
+  "scalecfg.probe_not_found_reason": ["Đã thử các cổng {0} nhưng không nhận được chuỗi số cân.", "Tried ports {0} but received no weight data.", "ລອງພອດ {0} ແລ້ວ ແຕ່ບໍ່ໄດ້ຮັບຂໍ້ມູນນ້ຳໜັກ.", "បានសាកច្រក {0} ប៉ុន្តែមិនទទួលបានទិន្នន័យទម្ងន់។"],
+  "scalecfg.probe_not_found_action": ["Tắt phần mềm cân cũ đang mở cổng; kiểm tra cáp; đặt đầu cân ở chế độ xuất liên tục (stream) trong cài đặt chức năng của đầu cân; rồi bấm Tự dò lại.", "Close the old weighing software holding the port, check the cable, set the indicator to continuous (stream) output in its function settings, then auto-detect again.", "ປິດໂປຣແກຣມຊິງເກົ່າທີ່ເປີດພອດ, ກວດສາຍ, ຕັ້ງຫົວຊິງໃຫ້ສົ່ງຂໍ້ມູນຕໍ່ເນື່ອງ (stream) ໃນການຕັ້ງຄ່າ, ແລ້ວຊອກອີກຄັ້ງ.", "បិទកម្មវិធីជញ្ជីងចាស់ដែលបើកច្រក ពិនិត្យខ្សែ កំណត់ក្បាលជញ្ជីងឱ្យបញ្ជូនជាប់ៗ (stream) ក្នុងការកំណត់មុខងារ រួចស្វែងរកម្តងទៀត។"],
+  "scalecfg.probe_failed_title": ["Tự dò bị lỗi", "Auto-detect failed", "ການຊອກຜິດພາດ", "ការស្វែងរកមានបញ្ហា"],
+  "scalecfg.probe_found_title": ["ĐÃ TÌM THẤY ĐẦU CÂN", "INDICATOR FOUND", "ພົບຫົວຊິງແລ້ວ", "រកឃើញក្បាលជញ្ជីង"],
+  "scalecfg.probe_sample": ["Dữ liệu mẫu", "Sample data", "ຂໍ້ມູນຕົວຢ່າງ", "ទិន្នន័យគំរូ"],
+  "scalecfg.probe_found_action": ["Đối chiếu dữ liệu mẫu với số trên màn hình đầu cân, rồi xác nhận Lưu và kết nối để áp dụng vào màn Cân.", "Compare the sample with the indicator display, then confirm Save and connect to apply it to weighing.", "ທຽບຂໍ້ມູນຕົວຢ່າງກັບໜ້າຈໍຫົວຊິງ, ແລ້ວຢືນຢັນ ບັນທຶກ ແລະ ເຊື່ອມຕໍ່ ເພື່ອນຳໃຊ້ກັບໜ້າຊັ່ງ.", "ផ្ទៀងទិន្នន័យគំរូជាមួយអេក្រង់ក្បាលជញ្ជីង រួចបញ្ជាក់ រក្សាទុក និងតភ្ជាប់ ដើម្បីអនុវត្តលើអេក្រង់ថ្លឹង។"]
+}

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using TTC.Weighing.WinForms.Localization;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Helpers;
 
@@ -40,7 +41,7 @@ public static class ExportHelper
 
         if (rows.Count == 0)
         {
-            MessageBox.Show(owner, Loc.T("export.no_data"), caption,
+            Helpers.AppMessageBox.Show(owner, Loc.T("export.no_data"), caption,
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return false;
         }
@@ -52,7 +53,7 @@ public static class ExportHelper
             DefaultExt = "xlsx",
             AddExtension = true,
             OverwritePrompt = true,
-            FileName = $"{request.FileBaseName}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
+            FileName = $"{request.FileBaseName}_{VnTime.Now:yyyyMMdd_HHmm}.xlsx"
         };
 
         if (dialog.ShowDialog(owner) != DialogResult.OK) return false;
@@ -71,13 +72,13 @@ public static class ExportHelper
         catch (IOException ex)
         {
             // Thường gặp nhất: file cùng tên đang mở trong Excel.
-            MessageBox.Show(owner, Loc.T("export.file_locked", path) + Environment.NewLine + ex.Message,
+            Helpers.AppMessageBox.Show(owner, Loc.T("export.file_locked", path) + Environment.NewLine + ex.Message,
                 caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
         {
-            MessageBox.Show(owner, Loc.T("export.access_denied", path) + Environment.NewLine + ex.Message,
+            Helpers.AppMessageBox.Show(owner, Loc.T("export.access_denied", path) + Environment.NewLine + ex.Message,
                 caption, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return false;
         }
@@ -87,7 +88,7 @@ public static class ExportHelper
             if (busyControl is not null) busyControl.Enabled = true;
         }
 
-        var open = MessageBox.Show(owner,
+        var open = Helpers.AppMessageBox.Show(owner,
             Loc.T("export.success", rows.Count.ToString("N0"), path),
             caption, MessageBoxButtons.YesNo, MessageBoxIcon.Information);
 
@@ -99,7 +100,7 @@ public static class ExportHelper
             }
             catch (Exception ex)
             {
-                MessageBox.Show(owner, Loc.T("export.open_failed") + Environment.NewLine + ex.Message,
+                Helpers.AppMessageBox.Show(owner, Loc.T("export.open_failed") + Environment.NewLine + ex.Message,
                     caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
@@ -144,7 +145,7 @@ public static class ExportHelper
         var subtitles = new List<string>();
         if (request.Filters is { Count: > 0 } filters)
             subtitles.AddRange(filters);
-        subtitles.Add(Loc.T("export.generated_at", DateTime.Now.ToString("dd/MM/yyyy HH:mm"), rows.Count.ToString("N0")));
+        subtitles.Add(Loc.T("export.generated_at", VnTime.Now.ToString("dd/MM/yyyy HH:mm"), rows.Count.ToString("N0")));
 
         return new XlsxSheet
         {

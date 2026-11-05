@@ -6,6 +6,7 @@ using TTC.Weighing.Application.UseCases.Weighing;
 using TTC.Weighing.Domain.Enums;
 using TTC.Weighing.Infrastructure.Adapters;
 using TTC.Weighing.WinForms.Forms;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Presenters;
 
@@ -37,6 +38,15 @@ public sealed record DigiScaleWeighContext(
 
     /// <summary>Mã bàn cân của lượt cân lần 2 (gửi kèm phiếu khi đẩy lại từ màn khác).</summary>
     public string? SecondBridgeCode { get; init; }
+
+    /// <summary>
+    /// Mã phiếu cân (PC + niên vụ + số tăng dần) — gửi DigiScale làm SoPhieuCan. Cân vào / ra cùng một mã.
+    /// Context đọc để đẩy DigiScale luôn có mã (sinh nếu chưa có); chưa sinh được → số đăng tài.
+    /// </summary>
+    public string? TicketNo { get; init; }
+
+    /// <summary>Số phiếu gửi DigiScale.</summary>
+    public string SoPhieuCan => string.IsNullOrWhiteSpace(TicketNo) ? TripNo : TicketNo;
 }
 
 /// <summary>
@@ -246,8 +256,8 @@ public sealed class WeighOperationPresenter(
         string loaiCan, string lanCan, string nvCan, string? userNameNvCan, string lenhDonId, string maLenhDon,
         string trongLuong, DateTime thoiGian, string soPhieuCan, string? maBanCan,
         string tlThanhToan, string tcThanhToan, string ccsThanhToan, string? lenhDonBu = null, CancellationToken ct = default, bool isQuetCS = false,
-        string? tapChatCs = null, string? ccsChinhSach = null)
-        => digiScaleTickets.PushPhieuCanAsync(loaiCan, lanCan, nvCan, userNameNvCan, lenhDonId, maLenhDon, trongLuong, thoiGian, soPhieuCan, maBanCan, tlThanhToan, tcThanhToan, ccsThanhToan, lenhDonBu, ct, isQuetCS, tapChatCs, ccsChinhSach);
+        string? tapChatCs = null, string? ccsChinhSach = null, string? ghiChu = null)
+        => digiScaleTickets.PushPhieuCanAsync(loaiCan, lanCan, nvCan, userNameNvCan, lenhDonId, maLenhDon, trongLuong, thoiGian, soPhieuCan, maBanCan, tlThanhToan, tcThanhToan, ccsThanhToan, lenhDonBu, ct, isQuetCS, tapChatCs, ccsChinhSach, ghiChu);
 
     /// <summary>Push phiếu cân vật tư lên ERP (oracle-tickets).</summary>
     public Task<TicketResult> PushOracleTicketAsync(
@@ -260,28 +270,34 @@ public sealed class WeighOperationPresenter(
         string? transporter = null, string? plateNumber = null, string? driverName = null, string? truckOwner = null,
         string? vendorName = null, string? vendorNumber = null, string? vendorSiteCode = null,
         CancellationToken ct = default,
-        string? organizationName = null)
+        string? organizationName = null,
+        string? note = null)
         => digiScaleTickets.PushOracleTicketAsync(
             transactionTypeName, transactionTypeCode, actionCode,
             tripNumber, shipmentNumber, weightIn, weightOut, netWeight,
             weightNumber, organizationCode, businessUnit, interfaceReference,
             itemNumber, itemDescription, quantity,
             transporter, plateNumber, driverName, truckOwner,
-            vendorName, vendorNumber, vendorSiteCode, ct, organizationName);
+            vendorName, vendorNumber, vendorSiteCode, ct, organizationName, note);
 
     /// <summary>Tra cứu ERP order-line theo shipment number — dùng để lấy TransactionType + OrgCode.</summary>
     public async Task<TTC.Weighing.Infrastructure.Adapters.ErpOrderLine?> LookupErpOrderAsync(string bu, string shipmentNumber)
     {
-        // 1. Tìm trong DB local trước
-        var dbItem = await erpOrderLines.FindInDbAsync(shipmentNumber);
-        if (dbItem is not null) return dbItem;
-
-        // 2. Fallback: gọi API
-        var from = DateTime.Today.AddDays(-90);
-        var to = DateTime.Today.AddDays(1);
+        // 1. API trước — bản mới nhất trên DigiScale, lưu đè DB local.
+        var from = VnTime.Today.AddDays(-90);
+        var to = VnTime.Today.AddDays(1);
         var response = await erpOrderLines.GetOrderLinesAsync(bu, from, to,
             shipmentNumber: shipmentNumber, pageSize: 1);
-        return response?.Items?.FirstOrDefault();
+        var item = response?.Items?.FirstOrDefault();
+        if (item is not null)
+        {
+            if (string.IsNullOrWhiteSpace(item.BusinessUnit)) item.BusinessUnit = item.BusinessUnitName ?? bu;
+            await erpOrderLines.SaveToDbAsync([item]);
+            return item;
+        }
+
+        // 2. Không có trên API trong 90 ngày / mất kết nối → DB local (đã kéo trước đó).
+        return await erpOrderLines.FindInDbAsync(shipmentNumber);
     }
 
     /// <summary>
@@ -369,8 +385,23 @@ public sealed class WeighOperationPresenter(
     /// với timer của form). Lần 1/lần 2 xác định theo thời điểm cân, không theo vai trò.
     /// Null nếu không đọc được.
     /// </summary>
-    public Task<DigiScaleWeighContext?> GetDigiScaleContextAsync(Guid tripId, CancellationToken ct = default)
-        => DigiScaleWeighContextReader.ReadAsync(frmCache.ConnectionString, tripId, ct);
+    public Task<DigiScaleWeighContext?> GetDigiScaleContextAsync(Guid tripId, CancellationToken ct = default,
+        bool ensureTicket = false)
+        => DigiScaleWeighContextReader.ReadAsync(frmCache.ConnectionString, tripId, ct, ensureTicket);
+
+    /// <summary>Mã phiếu cân của chuyến (sinh nếu chưa có). Gọi sau khi chốt cân lần 1 / trước khi đẩy.</summary>
+    public Task<string?> EnsureTicketNumberAsync(Guid tripId, CancellationToken ct = default)
+        => TTC.Weighing.Infrastructure.Repositories.WeighTicketNumberGenerator.EnsureAsync(frmCache.ConnectionString, tripId, ct);
+
+    /// <summary>Chính sách đã lưu: theo mã phiếu cân (mới), không có thì theo số đăng tài (dữ liệu cũ).</summary>
+    public async Task<TTC.Weighing.Infrastructure.Integration.TripPolicy?> GetStoredPolicyForTripAsync(
+        Guid tripId, string tripNo, CancellationToken ct = default)
+    {
+        var ctx = await GetDigiScaleContextAsync(tripId, ct);
+        if (ctx?.TicketNo is { } ticket && await digiScaleTickets.GetStoredPolicyAsync(ticket, ct) is { } byTicket)
+            return byTicket;
+        return await digiScaleTickets.GetStoredPolicyAsync(tripNo, ct);
+    }
 
     /// <summary>Chính sách đã bắt được của chuyến (lưu sau mỗi lần bắt chính sách) — null nếu chưa có.</summary>
     public Task<TTC.Weighing.Infrastructure.Integration.TripPolicy?> GetStoredPolicyAsync(string tripNo, CancellationToken ct = default)
@@ -385,9 +416,9 @@ public sealed class WeighOperationPresenter(
     public async Task<FrmPolicyResult?> PreviewPolicyAsync(Guid tripId, decimal currentKg, string? maBanCan,
         string? userName, string? displayName, CancellationToken ct = default)
     {
-        var ctx = await GetDigiScaleContextAsync(tripId, ct);
+        var ctx = await GetDigiScaleContextAsync(tripId, ct, ensureTicket: true);
         if (ctx is null || !ctx.HasLenhDon || currentKg <= 0) return null;
-        return await digiScaleTickets.PreviewPolicyAsync(ctx.LenhDonBu ?? DefaultBusinessUnit, ctx.TripNo,
+        return await digiScaleTickets.PreviewPolicyAsync(ctx.LenhDonBu ?? DefaultBusinessUnit, ctx.SoPhieuCan,
             ctx.LenhDonId!, ctx.MaLenhDon!, maBanCan, currentKg / 1000m, userName, displayName, ct);
     }
 

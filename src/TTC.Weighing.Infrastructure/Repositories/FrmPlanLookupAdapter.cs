@@ -56,12 +56,10 @@ public sealed class FrmPlanLookupAdapter(
             .Where(v =>
             {
                 // Lọc theo ngày vận hành: thẻ phải hiệu lực tại thời điểm tra cứu
-                if (v.NgayApDungDen is not null && DateTimeOffset.TryParse(v.NgayApDungDen, out var den)
-                    && den < operatingDate)
+                if (DigiScaleDate.ParseOffset(v.NgayApDungDen) is { } den && den < operatingDate)
                     return false; // Thẻ đã hết hạn
 
-                if (v.NgayApDungTu is not null && DateTimeOffset.TryParse(v.NgayApDungTu, out var tu)
-                    && tu > operatingDate)
+                if (DigiScaleDate.ParseOffset(v.NgayApDungTu) is { } tu && tu > operatingDate)
                     return false; // Thẻ chưa bắt đầu
 
                 return true;
@@ -113,11 +111,8 @@ public sealed class FrmPlanLookupAdapter(
 
     private static PlanEntry MapToPlanEntry(FrmVehicleInfo v)
     {
-        DateTimeOffset? validFrom = null, validTo = null;
-        if (v.NgayApDungTu is not null && DateTimeOffset.TryParse(v.NgayApDungTu, out var from))
-            validFrom = from;
-        if (v.NgayApDungDen is not null && DateTimeOffset.TryParse(v.NgayApDungDen, out var to))
-            validTo = to;
+        var validFrom = DigiScaleDate.ParseOffset(v.NgayApDungTu);
+        var validTo = DigiScaleDate.ParseOffset(v.NgayApDungDen);
 
         return new PlanEntry(
             Source: "FRM",

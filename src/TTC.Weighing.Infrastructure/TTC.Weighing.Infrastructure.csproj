@@ -13,6 +13,10 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.2" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <!-- Đọc đầu cân qua cổng COM (RS-232C). -->
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <!-- Mã hóa mật khẩu camera lưu theo máy trạm (DPAPI). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
   <PropertyGroup>

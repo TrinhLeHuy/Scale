@@ -2,6 +2,7 @@
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Printing;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Forms;
 
@@ -17,19 +18,23 @@ public sealed class WeighTicketPreviewForm : Form
 
     private readonly Action<Graphics, Rectangle> _render;
 
-    /// <summary>Phiếu cân mía.</summary>
-    public WeighTicketPreviewForm(PhieuCanData data)
-        : this(Loc.T("print.weigh_form_title", data.SoDangTai ?? ""),
-            (g, b) => new PhieuCanGdiRenderer(data).Render(g, b))
+    /// <summary>Phiếu cân mía. <paramref name="isReprint"/> = bấm nút In phiếu → in nhãn "BẢN IN LẠI" như Đăng tài.</summary>
+    public WeighTicketPreviewForm(PhieuCanData data, bool isReprint = false)
+        : this(ReprintTitle(Loc.T("print.weigh_form_title", data.SoDangTai ?? ""), isReprint),
+            (g, b) => new PhieuCanGdiRenderer(data, isReprint).Render(g, b))
     {
     }
 
-    /// <summary>Phiếu cân vật tư.</summary>
-    public WeighTicketPreviewForm(PhieuCanVatTuData data)
-        : this(Loc.T("print.mat_form_title", data.SoDangTai ?? ""),
-            (g, b) => new PhieuCanVatTuGdiRenderer(data).Render(g, b))
+    /// <summary>Phiếu cân vật tư. <paramref name="isReprint"/> = bấm nút In phiếu → in nhãn "BẢN IN LẠI".</summary>
+    public WeighTicketPreviewForm(PhieuCanVatTuData data, bool isReprint = false)
+        : this(ReprintTitle(Loc.T("print.mat_form_title", data.SoDangTai ?? ""), isReprint),
+            (g, b) => new PhieuCanVatTuGdiRenderer(data, isReprint).Render(g, b))
     {
     }
+
+    /// <summary>Tiêu đề cửa sổ xem trước: bản in lại thêm "— BẢN IN LẠI" (như phiếu Đăng tài).</summary>
+    internal static string ReprintTitle(string title, bool isReprint)
+        => isReprint ? $"{title} — {Loc.T("receipt.reprint_label")}" : title;
 
     private WeighTicketPreviewForm(string title, Action<Graphics, Rectangle> render)
     {
@@ -72,6 +77,7 @@ public sealed class WeighTicketPreviewForm : Form
         btnPrint.Margin = new Padding(0, 0, 10, 0);
         bar.Controls.Add(btnClose);
         bar.Controls.Add(btnPrint);
+        bar.Controls.Add(PrintPaper.CreatePicker());
 
         Controls.Add(desk);
         Controls.Add(bar);
@@ -84,14 +90,15 @@ public sealed class WeighTicketPreviewForm : Form
     {
         try
         {
+            if (ThermalPrint.TryPrint(this, _render, ThermalPrint.TICKET_DESIGN_WIDTH)) return;
+
             using var doc = new System.Drawing.Printing.PrintDocument();
-            doc.PrintPage += (_, pe) => _render(pe.Graphics!, pe.MarginBounds);
-            using var dlg = new PrintDialog { Document = doc };
-            if (dlg.ShowDialog(this) == DialogResult.OK) doc.Print();
+            doc.PrintPage += (_, pe) => PrintPaper.RenderFitted(pe.Graphics!, pe.MarginBounds, _render);
+            PrintPrinter.ShowDialogAndPrint(doc, this);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(Loc.T("quality.print_error", ex.Message), Loc.T("common.error"),
+            Helpers.AppMessageBox.Show(Loc.T("quality.print_error", ex.Message), Loc.T("common.error"),
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -144,6 +151,15 @@ internal sealed class TicketCanvas : IDisposable
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
+        // Giấy cuộn máy in nhiệt: lề hẹp, không viền khung (chiều dài phiếu tự co theo nội dung).
+        if (ThermalPrint.Active)
+        {
+            Left = bounds.Left + 6;
+            Right = bounds.Right - 6;
+            Y = bounds.Top + 4;
+            return;
+        }
+
         // Lề trong tỉ lệ với khổ (xem trước 900px ≈ 36px; khổ in nhỏ hơn thì lề nhỏ hơn).
         var margin = Math.Clamp(bounds.Width * 0.04f, 18f, 40f);
         Left = bounds.Left + margin;
@@ -177,7 +193,14 @@ internal sealed class TicketCanvas : IDisposable
     /// </summary>
     public void Rows(IReadOnlyList<TicketRow> rows)
     {
-        var colWidth = LeftColRight - Left;
+        // Giấy cuộn hẹp: mỗi ô một dòng toàn chiều rộng (một cột) thay cho hai cột.
+        if (ThermalPrint.Active)
+            rows = rows.SelectMany(r => r.Right is { } right
+                    ? new[] { new TicketRow(r.Left, Wide: true), new TicketRow(right, Wide: true) }
+                    : new[] { r with { Wide = true } })
+                .ToList();
+
+        var colWidth = ThermalPrint.Active ? Width : LeftColRight - Left;
         var leftLabelW = LabelColumn(colWidth, rows.Select(r => r.Left.Label));
         var rightLabelW = LabelColumn(colWidth, rows.Where(r => r.Right is not null).Select(r => r.Right!.Value.Label));
 
@@ -228,22 +251,28 @@ internal sealed class TicketCanvas : IDisposable
         Y = box.Bottom + 8;
     }
 
-    /// <summary>Mã vạch bên trái + "Ngày in" bên phải.</summary>
+    /// <summary>Cạnh mã QR trên phiếu (pixel, ~2,4 cm ở 100 dpi in).</summary>
+    private const int QR_SIZE = 96;
+
+    /// <summary>
+    /// Mã QR (số đăng tài) bên trái + chữ số đăng tài cạnh QR + "Ngày in" bên phải.
+    /// Quét QR ở màn Cân / Đo tạp chất / Đo CCS để mở đúng chuyến.
+    /// </summary>
     public void BarcodeAndPrintedAt(string? barcode)
     {
         var top = Y;
-        PrintText.DrawRight(G, PrintText.L("print.field_printed_at") + ": " + DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+        PrintText.DrawRight(G, PrintText.L("print.field_printed_at") + ": " + VnTime.Now.ToString("dd/MM/yyyy HH:mm"),
             SmallItalic, Brushes.Gray, Right, top);
         if (string.IsNullOrWhiteSpace(barcode)) { Y += 20; return; }
 
-        if (!Code128Renderer.Draw(G, barcode, (int)Left, (int)top, 300, 48))
+        if (!QrCodeRenderer.Draw(G, barcode, (int)Left, (int)top, QR_SIZE))
         {
             using var fallback = new Font("Consolas", 11, FontStyle.Bold);
             G.DrawString(barcode, fallback, Brushes.Black, Left, top);
         }
-        using var font = new Font("Consolas", 9);
-        G.DrawString(barcode, font, Brushes.Black, Left, top + 51);
-        Y = top + 70;
+        using var font = new Font("Consolas", 10, FontStyle.Bold);
+        G.DrawString(barcode, font, Brushes.Black, Left + QR_SIZE + 10, top + QR_SIZE / 2f - 8);
+        Y = top + QR_SIZE + 8;
     }
 
     /// <summary>Khối chữ ký: các cột chia đều, tiêu đề tự xuống dòng trong cột của nó, chừa chỗ ký.</summary>
@@ -281,19 +310,24 @@ internal sealed record TicketRow(TicketCell Left, TicketCell? Right = null, bool
 /// Phiếu cân mía — mẫu nhà máy Campuchia. Nhãn song ngữ theo BU của tài khoản (ví dụ KSK: Khmer/Việt),
 /// ô trống in "Không có".
 /// </summary>
-internal sealed class PhieuCanGdiRenderer(PhieuCanData d)
+internal sealed class PhieuCanGdiRenderer(PhieuCanData d, bool isReprint = false)
 {
     public void Render(Graphics g, Rectangle b)
     {
         using var c = new TicketCanvas(g, b);
         var ton = PrintText.L("print.unit_ton");
-        string? Ton(decimal? v) => v.HasValue ? $"{v:N3} {ton}" : null;
+        string? Ton(decimal? v) => v.HasValue ? $"{Num.R2(v.Value):N2} {ton}" : null; // phiếu in làm tròn 2 số lẻ
         string? Time(DateTime? t) => t?.ToString("dd/MM/yyyy HH:mm");
 
         c.Centered(PrintText.V(d.CompanyName), c.Company, 2);
         if (!string.IsNullOrWhiteSpace(d.CompanyAddress)) c.Centered(d.CompanyAddress, c.Address, 2);
         c.Y += 6;
-        c.Centered(PrintText.L("print.weigh_title"), c.Title, 12);
+        c.Centered(PrintText.L("print.weigh_title"), c.Title, isReprint ? 2 : 12);
+        if (isReprint)
+        {
+            using var reprintBrush = new SolidBrush(AgrisTheme.Danger);
+            c.Centered(PrintText.L("receipt.reprint_label"), c.Subtitle, 10, reprintBrush);
+        }
 
         // ── Thông tin chuyến ──
         c.Rows(
@@ -303,7 +337,7 @@ internal sealed class PhieuCanGdiRenderer(PhieuCanData d)
             new(new(PrintText.L("print.dangtai_so_dangtai"), d.SoDangTai),
                 new(PrintText.L("print.field_so_xe_short"), d.SoXe)),
             new(new(PrintText.L("print.field_chu_mia"), d.TenChuMia), Wide: true),
-            new(new(PrintText.L("print.field_hop_dong"), d.HopDongSo),
+            new(new(PrintText.L("print.field_hop_dong"), PrintText.ContractNo(d.HopDongSo)),
                 new(PrintText.L("print.dangtai_lenh_don"), d.LenhDon)),
             new(new(PrintText.L("print.field_cong_thu_hoach"), d.CongThuHoach),
                 new(PrintText.L("print.field_cong_boc_xep"), d.CongBocXep)),
@@ -321,16 +355,16 @@ internal sealed class PhieuCanGdiRenderer(PhieuCanData d)
                 new(PrintText.L("print.weigh_gross_time"), Time(d.ThoiGianCanXi))),
             new(new(PrintText.L("print.weigh_tare"), Ton(d.TrongLuongBi), c.Big),
                 new(PrintText.L("print.weigh_tare_time"), Time(d.ThoiGianCanBi))),
-            new(new(PrintText.L("print.weigh_tc_paid"), d.TapChatThanhToan.HasValue ? $"{d.TapChatThanhToan:N2} %" : null),
+            new(new(PrintText.L("print.weigh_tc_paid"), d.TapChatThanhToan.HasValue ? $"{Num.R2(d.TapChatThanhToan.Value):N2} %" : null),
                 // CCS thanh toán: FRM chưa có kết quả CCS → "Không có", không in 0.
-                new(PrintText.L("print.weigh_ccs_paid"), d.CcsThanhToan is > 0m ? $"{d.CcsThanhToan:N2}" : null)),
+                new(PrintText.L("print.weigh_ccs_paid"), d.CcsThanhToan is > 0m ? $"{Num.R2(d.CcsThanhToan.Value):N2}" : null)),
             new(new(PrintText.L("print.field_ghi_chu"), d.GhiChu), Wide: true)
         ]);
 
         c.Y += 4;
+        // Không in tên chính sách dưới trọng lượng thanh toán (chỉ in con số).
         c.HighlightBox(PrintText.L("print.weigh_paid_weight"),
-            d.TrongLuongThanhToan.HasValue ? $"{d.TrongLuongThanhToan:N3} {ton}" : PrintText.L("print.weigh_waiting_policy"),
-            d.ChinhSachThuMia);
+            Ton(d.TrongLuongThanhToan) ?? PrintText.L("print.weigh_waiting_policy"));
 
         c.Separator(4, 10);
 
@@ -364,19 +398,24 @@ internal sealed class PhieuCanGdiRenderer(PhieuCanData d)
 /// Phiếu cân vật tư (luồng ERP / WMS): chứng từ ERP (Shipment, TRIP, hướng nhập/xuất), khách hàng/NCC,
 /// hàng hóa, kho, vận chuyển và số cân kg. Không in mục chỉ dành cho mía (chủ mía, lệnh đốn, tạp chất, CCS…).
 /// </summary>
-internal sealed class PhieuCanVatTuGdiRenderer(PhieuCanVatTuData d)
+internal sealed class PhieuCanVatTuGdiRenderer(PhieuCanVatTuData d, bool isReprint = false)
 {
     public void Render(Graphics g, Rectangle b)
     {
         using var c = new TicketCanvas(g, b);
         var kg = PrintText.L("print.unit_kg");
-        string? Kg(decimal? v) => v.HasValue ? $"{v:N3} {kg}" : null; // số cân kg thống nhất N3
+        string? Kg(decimal? v) => v.HasValue ? $"{Num.R2(v.Value):N2} {kg}" : null; // phiếu in làm tròn 2 số lẻ
         string? Time(DateTime? t) => t?.ToString("dd/MM/yyyy HH:mm");
 
         c.Centered(PrintText.V(d.CompanyName), c.Company, 2);
         if (!string.IsNullOrWhiteSpace(d.CompanyAddress)) c.Centered(d.CompanyAddress, c.Address, 2);
         c.Y += 6;
         c.Centered(PrintText.L("print.mat_title"), c.Title, 2);
+        if (isReprint)
+        {
+            using var reprintBrush = new SolidBrush(AgrisTheme.Danger);
+            c.Centered(PrintText.L("receipt.reprint_label"), c.Subtitle, 2, reprintBrush);
+        }
         if (!string.IsNullOrWhiteSpace(d.Huong))
             c.Centered("— " + d.Huong.ToUpperInvariant() + " —", c.Subtitle, 4);
         c.Y += 8;

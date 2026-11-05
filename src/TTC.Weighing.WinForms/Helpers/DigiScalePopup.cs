@@ -6,7 +6,7 @@ using TTC.Weighing.WinForms.Theme;
 
 namespace TTC.Weighing.WinForms.Helpers;
 
-public enum AlertKind { Success, Warning, Error, Question }
+public enum AlertKind { Success, Warning, Error, Question, Info }
 
 /// <summary>
 /// Hộp thông báo dùng chung cho luồng nghiệp vụ (đăng tài, cân, tạp chất, CCS, đẩy DigiScale).
@@ -34,10 +34,10 @@ public static class DigiScalePopup
     /// </summary>
     public static bool ShowConfirm(IWin32Window owner, string title, string yesText, string noText,
         IEnumerable<(string Label, string? Value)>? facts = null, string? message = null,
-        IEnumerable<(string Caption, string Text)>? highlights = null)
+        IEnumerable<(string Caption, string Text)>? highlights = null, bool defaultNo = false)
     {
         using var dialog = new AlertForm(AlertKind.Question, title, message, facts, null, null,
-            highlights, yesText, noText);
+            highlights, yesText, noText, defaultNo);
         return dialog.ShowDialog(owner) == DialogResult.Yes;
     }
 
@@ -97,13 +97,14 @@ public static class DigiScalePopup
         public AlertForm(AlertKind kind, string title, string? message,
             IEnumerable<(string Label, string? Value)>? facts, string? reason, string? action,
             IEnumerable<(string Caption, string Text)>? highlights = null,
-            string? yesText = null, string? noText = null)
+            string? yesText = null, string? noText = null, bool defaultNo = false)
         {
             var (accent, soft, glyph) = kind switch
             {
                 AlertKind.Success => (AgrisTheme.Success, AgrisTheme.SuccessSoft, "✓"),
                 AlertKind.Warning => (AgrisTheme.Warning, AgrisTheme.WarningSoft, "!"),
                 AlertKind.Question => (AgrisTheme.BrandTeal, AgrisTheme.InfoSoft, "?"),
+                AlertKind.Info => (AgrisTheme.Info, AgrisTheme.InfoSoft, "i"),
                 _ => (AgrisTheme.Danger, AgrisTheme.DangerSoft, "✕")
             };
 
@@ -217,14 +218,15 @@ public static class DigiScalePopup
                 buttons.Controls.Add(btnNo);
                 root.Controls.Add(buttons);
                 Controls.Add(root);
-                AcceptButton = btnYes;
+                // Thao tác rủi ro (mặc định Không): Enter = Không, phải bấm chủ động vào Có.
+                AcceptButton = defaultNo ? btnNo : btnYes;
                 CancelButton = btnNo;
-                Shown += (_, _) => btnYes.Focus();
+                Shown += (_, _) => (defaultNo ? btnNo : btnYes).Focus();
                 return;
             }
 
             // ── Nút ──
-            var btnOk = kind == AlertKind.Success
+            var btnOk = kind is AlertKind.Success or AlertKind.Info
                 ? GridBuilder.PrimaryButton(Loc.T("alert.ok"), new Size(200, 52))
                 : GridBuilder.DangerButton(Loc.T("alert.understood"), new Size(200, 52));
             if (kind == AlertKind.Warning) btnOk = GridBuilder.PrimaryButton(Loc.T("alert.understood"), new Size(200, 52));

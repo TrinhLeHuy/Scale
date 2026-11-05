@@ -1,6 +1,7 @@
 using TTC.Weighing.Application.Abstractions;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Controls;
 
@@ -106,7 +107,7 @@ public sealed class CameraAiStatusControl : UserControl
         SetStatus(_lblCargo, cargoText, cargoColor, $"({result.CargoConfidence:P0})");
 
         // ── Timestamp ──
-        _lblTimestamp.Text = $"Model {result.ModelVersion} — {result.AnalyzedAt.ToLocalTime():HH:mm:ss}";
+        _lblTimestamp.Text = $"Model {result.ModelVersion} — {result.AnalyzedAt.ToVnTime():HH:mm:ss}";
     }
 
     private void ShowWaitingState()

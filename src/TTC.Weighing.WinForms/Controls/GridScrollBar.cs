@@ -11,9 +11,9 @@ namespace TTC.Weighing.WinForms.Controls;
 /// </summary>
 public sealed class GridScrollBar : Control
 {
-    public const int BarWidth = 22;
-    private const int ArrowHeight = 26;
-    private const int MinThumbHeight = 48;
+    public static int BarWidth => Theme.UiScale.Px(22);
+    private static int ArrowHeight => Theme.UiScale.Px(26);
+    private static int MinThumbHeight => Theme.UiScale.Px(48);
 
     private readonly DataGridView _grid;
     private readonly System.Windows.Forms.Timer _repeat = new() { Interval = 60 };

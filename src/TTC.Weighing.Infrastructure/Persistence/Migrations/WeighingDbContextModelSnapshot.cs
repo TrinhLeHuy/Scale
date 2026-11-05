@@ -2516,6 +2516,16 @@ namespace TTC.Weighing.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
+                    b.Property<decimal?>("FirstWeightMaxKg")
+                        .HasPrecision(15, 3)
+                        .HasColumnType("numeric(15,3)")
+                        .HasColumnName("first_weight_max_kg");
+
+                    b.Property<decimal?>("FirstWeightMinKg")
+                        .HasPrecision(15, 3)
+                        .HasColumnType("numeric(15,3)")
+                        .HasColumnName("first_weight_min_kg");
+
                     b.Property<bool>("IsOutOfService")
                         .HasColumnType("boolean")
                         .HasColumnName("is_out_of_service");
@@ -2534,6 +2544,16 @@ namespace TTC.Weighing.Infrastructure.Persistence.Migrations
                         .HasPrecision(15, 3)
                         .HasColumnType("numeric(15,3)")
                         .HasColumnName("resolution_kg");
+
+                    b.Property<decimal?>("SecondWeightMaxKg")
+                        .HasPrecision(15, 3)
+                        .HasColumnType("numeric(15,3)")
+                        .HasColumnName("second_weight_max_kg");
+
+                    b.Property<decimal?>("SecondWeightMinKg")
+                        .HasPrecision(15, 3)
+                        .HasColumnType("numeric(15,3)")
+                        .HasColumnName("second_weight_min_kg");
 
                     b.Property<Guid>("SiteId")
                         .HasColumnType("uuid")

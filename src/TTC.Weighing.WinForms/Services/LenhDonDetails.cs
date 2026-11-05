@@ -14,8 +14,7 @@ public static class LenhDonDetails
         if (ld is null) return [];
 
         static string Yn(bool? v) => v switch { true => Loc.T("frm.yes"), false => Loc.T("frm.no"), null => "—" };
-        static string Dt(string? s) => s is not null && DateTimeOffset.TryParse(s, out var d)
-            ? d.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "—";
+        static string Dt(string? s) => DigiScaleDate.Parse(s)?.ToString("dd/MM/yyyy HH:mm") ?? "—";
 
         var burnt = ld.MiaChay == true
             ? $"{Loc.T("frm.yes")}{(string.IsNullOrWhiteSpace(ld.LoaiMiaChayName) ? "" : $" ({ld.LoaiMiaChayName})")}"

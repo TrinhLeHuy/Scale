@@ -24,3 +24,8 @@ coverage*.xml
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+## Installer build output / downloads
+installer/out/
+installer/.cache/
+installer/bundle-settings.json

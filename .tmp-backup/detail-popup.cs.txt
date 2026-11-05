@@ -1,0 +1,128 @@
+    /// <summary>
+    /// Popup "Xem thêm thông tin chuyến" (mía) — CHỈ XEM, không sửa, không có nút Lưu.
+    /// Thông tin chia nhóm: Lệnh đốn → Hợp đồng &amp; chủ mía → Mía &amp; thu hoạch → Vùng trồng → Xe &amp; thẻ xe.
+    /// Mọi ô cùng một kiểu chỉ đọc, cùng cỡ chữ; nút Đóng cố định ở đáy (không cuộn mất).
+    /// </summary>
+    private void ShowDetailPopup()
+    {
+        var work = Screen.FromControl(this).WorkingArea;
+        using var popup = new Form
+        {
+            Text = Loc.T("reg.detail_popup_title"),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ShowInTaskbar = false,
+            BackColor = AgrisTheme.Surface,
+            Font = AgrisTheme.Body(),
+            ClientSize = new Size(Math.Min(780, work.Width - 40), Math.Min(860, (int)(work.Height * 0.92)))
+        };
+
+        var body = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = AgrisTheme.Surface };
+        var table = FormLayout.FieldTable();
+        table.Dock = DockStyle.Top;
+        table.Padding = new Padding(16, 8, 20, 12);
+        // Cột nhãn rộng hơn để nhãn dài ("Hiệu lực (cấp → hết hạn)", "Biển số dùng để đăng tài / cân") không xuống dòng.
+        table.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, 250);
+
+        var ld = CurrentLenhDon(PlateText);
+        var info = LenhDonDetailValues(ld);
+        string? I(string key) => info.TryGetValue(key, out var v) ? v : null;
+        static string? T(TextBox source) => source.Text;
+
+        void Section(string title)
+        {
+            var lbl = new Label
+            {
+                Text = title,
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                TextAlign = ContentAlignment.BottomLeft,
+                Font = AgrisTheme.Body(11F, FontStyle.Bold),
+                ForeColor = AgrisTheme.BrandGreen,
+                Padding = new Padding(0, 0, 0, 4),
+                Margin = new Padding(0, 8, 0, 2)
+            };
+            lbl.Paint += (_, e) =>
+            {
+                using var pen = new Pen(AgrisTheme.Border, 1f);
+                e.Graphics.DrawLine(pen, 0, lbl.Height - 1, lbl.Width, lbl.Height - 1);
+            };
+            FormLayout.AddFullWidth(table, lbl, 40);
+        }
+        void Row(string label, string? value) => FormLayout.AddField(table, label, ReadOnlyInfo(value));
+
+        if (ld is not null)
+        {
+            Section(Loc.T("reg.detail_sec_lenhdon"));
+            Row(Loc.T("reg.detail_ma_ld"), I("ma_ld"));
+            Row(Loc.T("reg.detail_status"), I("status"));
+            Row(Loc.T("reg.detail_validity"), I("validity"));
+            Row(Loc.T("reg.detail_priority"), I("priority"));
+        }
+
+        Section(Loc.T("reg.detail_sec_contract"));
+        if (ld is not null)
+        {
+            Row(Loc.T("reg.detail_contract_type"), I("contract_type"));
+            Row(Loc.T("reg.detail_contract"), I("contract"));
+        }
+        Row(Loc.T("field.sugarcane_owner"), T(_txtSugarcaneOwner));
+        if (ld is not null) Row(Loc.T("reg.detail_customer_company"), I("customer_company"));
+
+        Section(Loc.T("reg.detail_sec_cane"));
+        Row(Loc.T("field.sugarcane_type"), T(_txtSugarcaneType));
+        Row(Loc.T("field.sugarcane_variety"), T(_txtSugarcaneVariety));
+        if (ld is not null)
+        {
+            Row(Loc.T("reg.detail_burnt"), I("burnt"));
+            Row(Loc.T("reg.detail_harvest"), I("harvest"));
+            Row(Loc.T("reg.detail_cane_form"), I("cane_form"));
+            Row(Loc.T("reg.detail_harvest_partner"), I("harvest_partner"));
+        }
+
+        Section(Loc.T("reg.detail_sec_area"));
+        if (ld is not null) Row(Loc.T("reg.detail_plot"), I("plot"));
+        Row(Loc.T("field.station"), T(_txtStation));
+        Row(Loc.T("reg.field_crop_investment"), T(_txtCropSeason));
+
+        Section(Loc.T("reg.detail_sec_vehicle"));
+        Row(Loc.T("field.vehicle_type"), T(_txtVehicleType));
+        Row(Loc.T("reg.field_capacity") + " (T)", T(_txtTaiTrong));
+        Row(Loc.T("reg.field_card_code"), T(_txtMaThe));
+        if (ld is not null)
+        {
+            Row(Loc.T("reg.detail_temp_card"), I("temp_card"));
+            if (ld.IsTemporaryCard)
+            {
+                Row(Loc.T("reg.detail_temp_plate"), I("temp_plate"));
+                Row(Loc.T("reg.detail_original_plate"), I("original_plate"));
+            }
+            Row(Loc.T("reg.detail_used_plate"), I("used_plate"));
+        }
+
+        if (ld is null)
+            FormLayout.AddFullWidth(table, GridBuilder.Notice(Loc.T("reg.detail_no_lenhdon")), 44);
+        else if (ld.IsTemporaryCard)
+            FormLayout.AddFullWidth(table,
+                GridBuilder.Notice(Loc.T("reg.detail_temp_flow_note", ld.VehiclePlate ?? "—")), 56);
+
+        // Thanh nút cố định ở đáy: chỉ có Đóng (thông tin lấy từ FRM, không sửa trên app cân).
+        var btnClose = GridBuilder.SecondaryButton(Loc.T("common.close"), new Size(130, 40));
+        btnClose.DialogResult = DialogResult.Cancel;
+        var bar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom, Height = 58, FlowDirection = FlowDirection.RightToLeft,
+            Padding = new Padding(16, 9, 16, 8), BackColor = AgrisTheme.SurfaceMuted
+        };
+        bar.Controls.Add(btnClose);
+
+        body.Controls.Add(table);
+        popup.Controls.Add(body);
+        popup.Controls.Add(bar);
+        popup.AcceptButton = btnClose;
+        popup.CancelButton = btnClose;
+        popup.ShowDialog(this);
+    }
+

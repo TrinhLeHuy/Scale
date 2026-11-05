@@ -61,10 +61,29 @@ public interface ITripRepository
     Task<string?> FindActiveByReferenceAsync(string sourceSystem, string referenceTripNo, CancellationToken ct = default);
 
     /// <summary>
+    /// Phiếu đăng tài mía đã HỦY (chưa xóa) của lệnh đốn — theo ID lệnh đốn hoặc mã lệnh đốn.
+    /// Lệnh đốn có phiếu đã hủy không được đăng tài lại (phải lập lệnh đốn mới); phiếu đã XÓA thì được.
+    /// Trả TripNo nếu tìm thấy.
+    /// </summary>
+    Task<string?> FindCancelledByLenhDonAsync(string? lenhDonId, string? maLenhDon, CancellationToken ct = default);
+
+    /// <summary>
     /// Chuyến đã có lượt cân nào chưa (mọi WeighEvent, kể cả bản đã bị thay thế khi cân lại).
     /// Dùng để chặn hủy / xóa đăng tài khi xe đã cân.
     /// </summary>
     Task<bool> HasWeighEventsAsync(Guid tripId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Nạp lại chuyến từ DB (bỏ giá trị cũ đang giữ trong bộ nhớ). Dùng trước khi sửa + lưu ở màn hình mở lâu,
+    /// tránh ghi đè trạng thái mới do màn khác cập nhật (ví dụ đã cân xong → Closed).
+    /// </summary>
+    Task ReloadAsync(TTC.Weighing.Domain.Entities.Trip trip, CancellationToken ct = default);
+
+    /// <summary>
+    /// Số đăng tài của chuyến cùng biển số mà xe CHƯA CÂN RA (chưa hủy / đóng / xóa, chưa có lượt cân ra hiệu lực).
+    /// Null = xe được đăng tài lệnh đốn mới.
+    /// </summary>
+    Task<string?> FindNotWeighedOutByPlateAsync(string plate, Guid siteId, CancellationToken ct = default);
 }
 
 public interface IQrTokenRepository

@@ -59,7 +59,7 @@ public sealed class GridToolbar : Panel
         Controls.Add(RightItems);
     }
 
-    private const int SingleRowHeight = 56;
+    private static int SingleRowHeight => Theme.UiScale.Px(56);
     private bool _adjustingHeight;
 
     /// <summary>Chiều cao theo số hàng thực tế của dãy bên trái (tối thiểu một hàng).</summary>

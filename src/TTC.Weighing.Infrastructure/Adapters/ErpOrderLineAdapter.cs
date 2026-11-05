@@ -216,7 +216,29 @@ public sealed class ErpOrderLineAdapter
         }
     }
 
-    private static ErpOrderLine ReadOrderLine(Npgsql.NpgsqlDataReader reader) => new()
+    private static readonly JsonSerializerOptions RawJsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>Có JSON gốc → đọc y như lúc kéo API; dòng cũ chưa có → đọc theo cột.</summary>
+    private static ErpOrderLine ReadOrderLine(Npgsql.NpgsqlDataReader reader)
+    {
+        var raw = ReadOptional(reader, "raw_json");
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            try
+            {
+                var line = JsonSerializer.Deserialize<ErpOrderLine>(raw, RawJsonOptions);
+                if (line is not null)
+                {
+                    line.BusinessUnit ??= reader["business_unit"] as string;
+                    return line;
+                }
+            }
+            catch (JsonException) { /* JSON hỏng → đọc theo cột */ }
+        }
+        return ReadOrderLineColumns(reader);
+    }
+
+    private static ErpOrderLine ReadOrderLineColumns(Npgsql.NpgsqlDataReader reader) => new()
     {
         Id = ReadOptional(reader, "api_id"),
         Type = ReadOptional(reader, "record_type"),
@@ -312,7 +334,7 @@ VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now(), 1)
 
             // Đảm bảo cột mới tồn tại (idempotent)
             foreach (var col in new[] { "reference_number", "action_code", "source_system", "created_by", "truck_owner", "vendor_number", "vendor_site_code", "organization_name", "sub_inventory_code",
-                         "api_id", "record_type", "shipment_line_number", "storage_key" })
+                         "api_id", "record_type", "shipment_line_number", "storage_key", "raw_json" })
             {
                 await using var alter = new Npgsql.NpgsqlCommand(
                     $"ALTER TABLE erp_order_lines ADD COLUMN IF NOT EXISTS {col} text", conn);
@@ -354,8 +376,8 @@ INSERT INTO erp_order_lines (shipment_number,trip_number,plate_number,transactio
   item_number,item_description,organization_code,vendor_name,customer_name,transporter,driver_name,
   total_quantity,remaining_quantity,gross_weight,transaction_date,business_unit,
   reference_number,action_code,source_system,created_by,truck_owner,vendor_number,vendor_site_code,organization_name,sub_inventory_code,
-  api_id,record_type,shipment_line_number,storage_key,synced_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,now())
+  api_id,record_type,shipment_line_number,storage_key,raw_json,synced_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,now())
 ON CONFLICT (storage_key) WHERE storage_key IS NOT NULL
 DO UPDATE SET
   shipment_number=$1, trip_number=$2, plate_number=$3, transaction_type_name=$4, transaction_type_code=$5,
@@ -364,7 +386,7 @@ DO UPDATE SET
   transaction_date=$16, business_unit=$17, reference_number=$18, action_code=$19, source_system=$20, created_by=$21,
   truck_owner=$22, vendor_number=$23, vendor_site_code=$24,
   organization_name=$25, sub_inventory_code=$26,
-  api_id=$27, record_type=$28, shipment_line_number=$29, synced_at=now()
+  api_id=$27, record_type=$28, shipment_line_number=$29, raw_json=$31, synced_at=now()
 ", conn);
                 cmd.Parameters.AddWithValue((object?)item.ShipmentNumber ?? DBNull.Value);
                 cmd.Parameters.AddWithValue((object?)item.TripNumber ?? DBNull.Value);
@@ -396,6 +418,8 @@ DO UPDATE SET
                 cmd.Parameters.AddWithValue((object?)item.Type ?? DBNull.Value);
                 cmd.Parameters.AddWithValue((object?)item.ShipmentLineNumber?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? DBNull.Value);
                 cmd.Parameters.AddWithValue(item.StorageKey);
+                // JSON gốc: đọc lại đủ mọi trường (Uom, ItemName, kho, số lượng...) — các cột riêng không có hết.
+                cmd.Parameters.AddWithValue(JsonSerializer.Serialize(item));
                 await cmd.ExecuteNonQueryAsync();
             }
 

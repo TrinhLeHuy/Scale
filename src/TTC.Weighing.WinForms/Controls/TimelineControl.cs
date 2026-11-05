@@ -2,6 +2,7 @@ using TTC.Weighing.Application.Queries;
 using TTC.Weighing.Domain.Enums;
 using TTC.Weighing.WinForms.Localization;
 using TTC.Weighing.WinForms.Theme;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.WinForms.Controls;
 
@@ -15,12 +16,12 @@ public sealed class TimelineControl : UserControl
     private IReadOnlyList<CheckpointRow> _checkpoints = [];
 
     // Kích thước vẽ
-    private const int CircleRadius = 14;
-    private const int CircleDiameter = CircleRadius * 2;
-    private const int LineThickness = 3;
-    private const int TopPadding = 12;
-    private const int LabelGap = 8;
-    private const int TimeGap = 4;
+    private static int CircleRadius => Theme.UiScale.Px(14);
+    private static int CircleDiameter => CircleRadius * 2;
+    private static int LineThickness => Theme.UiScale.Px(3);
+    private static int TopPadding => Theme.UiScale.Px(12);
+    private static int LabelGap => Theme.UiScale.Px(8);
+    private static int TimeGap => Theme.UiScale.Px(4);
 
     public TimelineControl()
     {
@@ -142,7 +143,7 @@ public sealed class TimelineControl : UserControl
         // Vẽ thời gian bên dưới label (nếu có).
         if (item.Time is not null)
         {
-            var timeText = item.Time.Value.LocalDateTime.ToString("HH:mm dd/MM");
+            var timeText = item.Time.Value.ToVnTime().DateTime.ToString("HH:mm dd/MM");
             var timeY = labelY + labelSize.Height + TimeGap;
 
             TextRenderer.DrawText(g, timeText, timeFont,

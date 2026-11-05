@@ -1,10 +1,11 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using TTC.Weighing.Domain.Common;
 
 namespace TTC.Weighing.Infrastructure.Adapters;
 
@@ -32,7 +33,9 @@ public sealed record FrmVehicleInfo(
     string? VuDauTuName,          // Vụ mùa
     string? MaHopDong,            // Mã hợp đồng VC
     // Ngày tạo record (sourceCreatedDate) — dùng để lọc theo khung ngày đăng tài
-    string? SourceCreatedDate);
+    string? SourceCreatedDate,
+    // ID thẻ xe FRM (the-xe sourceKey) — lệnh đốn trỏ tới thẻ qua field "TheXe"
+    string? TheXeSourceKey = null);
 
 /// <summary>
 /// Dữ liệu lệnh đốn (harvest-orders) chuẩn hóa từ FRM.
@@ -69,10 +72,19 @@ public sealed record FrmLenhDonInfo(
     string? LoaiHopDongName = null,    // LoaiHopDongName: HĐ đầu tư mía, HĐ mua bán mía ngoài...
     string? DoiTacBocXepName = null,   // DoiTacBocXepCNName ?? DoiTacBocXepDNName: công bốc xếp
     string? DoiTacThuHoachDNName = null, // DoiTacThuHoachDNName: đối tác thu hoạch doanh nghiệp
-    string? TenNhaMay = null)          // TenNhaMay: tên nhà máy của lệnh đốn
+    string? TenNhaMay = null,          // TenNhaMay: tên nhà máy của lệnh đốn
+    string? TheXeId = null,            // TheXe: ID thẻ xe (= the-xe sourceKey)
+    string? TheXeStatusName = null,    // StatusCodeTheXeName: tình trạng thẻ xe trên DigiScale (Đã ký HĐ...)
+    string? DigiId = null)             // id bản ghi lệnh đốn trên DigiScale (item.id, vd 01a18362-…) — dùng cho lệnh hủy / xóa
 {
     /// <summary>Công thu hoạch: cá nhân, không có thì doanh nghiệp.</summary>
     public string? HarvestPartner => DoiTacThuHoachName.NullIfBlank() ?? DoiTacThuHoachDNName.NullIfBlank();
+
+    /// <summary>
+    /// Tên chủ mía hiển thị / in phiếu: chủ mía cá nhân (KHName), không có thì khách hàng doanh nghiệp (KHDNName).
+    /// Ví dụ lệnh đốn của công ty "Cty KSK-NT01-1" chỉ có KHDN.
+    /// </summary>
+    public string? OwnerName => KHName.NullIfBlank() ?? KHDNName.NullIfBlank();
 
     /// <summary>
     /// Biển số dùng để tra cứu/đăng tài/cân:
@@ -95,6 +107,18 @@ public sealed record FrmLenhDonInfo(
     public (bool IsMiaChay, bool IsMiaCay, bool IsMiaKhuc) SugarcaneForm =>
         (MiaChay == true, ThuHoachMay != true, ThuHoachMay == true);
 }
+
+public enum FrmChangeKind { Added, Updated, Removed }
+
+/// <summary>Một bản ghi FRM mới / đổi / mất so với lần kéo trước (Entity: LenhDon, the-xe, xe-van-chuyen, hop-dong-van-chuyen).</summary>
+public sealed record FrmPullChange(string Entity, FrmChangeKind Kind, string Code);
+
+/// <summary>Tóm tắt một lần kéo FRM cho nhật ký đồng bộ.</summary>
+public sealed record FrmPullSummary(
+    DateTimeOffset At,
+    IReadOnlyDictionary<string, int> Counts,
+    IReadOnlyList<FrmPullChange> Changes,
+    bool IsFirstPull);
 
 internal static class FrmStringExtensions
 {
@@ -151,6 +175,77 @@ public sealed class FrmMasterDataCache
     private DateTimeOffset _lastRefreshedAt = DateTimeOffset.MinValue;
     private bool _isLoading;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
+    private readonly List<string> _lastRefreshErrors = [];
+
+    /// <summary>Dấu vân tay của lần kéo đủ gần nhất — giống nhau = DigiScale không có gì mới.</summary>
+    private string? _lastFingerprint;
+
+    /// <summary>Kết quả lần kéo gần nhất: số bản ghi theo loại + bản ghi mới / đổi / mất so với lần kéo trước.</summary>
+    public FrmPullSummary? LastPull { get; private set; }
+
+    /// <summary>Băm từng bản ghi của lần kéo trước, theo "loại|id".</summary>
+    private Dictionary<string, (string Hash, string Code)>? _itemHashes;
+
+    private FrmPullSummary BuildPullSummary(
+        params (string Entity, IEnumerable<FrmEntityItem> Items, Func<FrmEntityItem, string?> Code)[] groups)
+    {
+        var current = new Dictionary<string, (string Hash, string Code)>();
+        var counts = new Dictionary<string, int>();
+        foreach (var (entity, items, codeOf) in groups)
+        {
+            var n = 0;
+            foreach (var it in items)
+            {
+                n++;
+                var key = $"{entity}|{it.Id ?? it.SourceKey}";
+                var hash = $"{it.SourceModifiedDate}|{it.UpdatedAtUtc}|{it.Fields?.GetRawText()}";
+                current[key] = (hash, codeOf(it) ?? it.SourceKey ?? it.Id ?? "?");
+            }
+            counts[entity] = n;
+        }
+
+        var previous = _itemHashes;
+        var changes = new List<FrmPullChange>();
+        if (previous is not null)
+        {
+            foreach (var (key, (hash, code)) in current)
+            {
+                var entity = key[..key.IndexOf('|')];
+                if (!previous.TryGetValue(key, out var old)) changes.Add(new(entity, FrmChangeKind.Added, code));
+                else if (old.Hash != hash) changes.Add(new(entity, FrmChangeKind.Updated, code));
+            }
+            // Kéo lỗi → không kết luận bản ghi bị mất.
+            if (_lastRefreshErrors.Count == 0)
+                foreach (var (key, (_, code)) in previous)
+                    if (!current.ContainsKey(key))
+                        changes.Add(new(key[..key.IndexOf('|')], FrmChangeKind.Removed, code));
+        }
+
+        if (_lastRefreshErrors.Count == 0) _itemHashes = current;
+        return new FrmPullSummary(VnTime.NowOffset, counts, changes, IsFirstPull: previous is null);
+    }
+
+    /// <summary>Băm mọi bản ghi (id + các mốc sửa/đồng bộ + nội dung fields). Đổi bất kỳ trường nào → khác.</summary>
+    private static string Fingerprint(params IEnumerable<FrmEntityItem>[] groups)
+    {
+        using var sha = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+        foreach (var group in groups)
+        {
+            foreach (var it in group)
+            {
+                var line = $"{it.Id}|{it.SourceKey}|{it.SourceModifiedDate}|{it.LastSyncedAtUtc}|{it.UpdatedAtUtc}|{it.Fields?.GetRawText()}\n";
+                sha.AppendData(Encoding.UTF8.GetBytes(line));
+            }
+            sha.AppendData("#"u8);
+        }
+        return Convert.ToHexString(sha.GetHashAndReset());
+    }
+
+    /// <summary>Phát sau mỗi lần kéo xong (dữ liệu trong bộ nhớ đã thay). Gọi từ luồng nền.</summary>
+    public event Action? Refreshed;
+
+    /// <summary>Lỗi của lần kéo gần nhất (HTTP lỗi, timeout, dừng giữa chừng). Rỗng = kéo đủ.</summary>
+    public IReadOnlyList<string> LastRefreshErrors => _lastRefreshErrors.ToArray();
 
     /// <summary>BU hiện tại (lấy từ account login, fallback config).</summary>
     public string? ActiveBusinessUnit { get; set; }
@@ -201,15 +296,14 @@ public sealed class FrmMasterDataCache
     /// </summary>
     public async Task RefreshAsync(CancellationToken ct = default)
     {
-        if (!await _loadLock.WaitAsync(0, ct))
-        {
-            _logger.LogDebug("FrmCache: refresh already in progress, skipping");
-            return;
-        }
+        // Đang có lần kéo khác (khởi động / hẹn giờ) → CHỜ xong rồi kéo lại, không bỏ qua im lặng:
+        // lần kéo kia có thể bắt đầu trước khi DigiScale cập nhật bản ghi người dùng vừa sửa.
+        await _loadLock.WaitAsync(ct);
 
         try
         {
             _isLoading = true;
+            _lastRefreshErrors.Clear();
             _logger.LogInformation("FrmCache: starting refresh from FRM API...");
 
             // Chưa nạp danh mục đã lưu (refresh chạy trước khi load DB) → nạp trước để có cơ sở gộp ở bước 6.
@@ -250,12 +344,37 @@ public sealed class FrmMasterDataCache
                 catch (Exception buEx)
                 {
                     _logger.LogWarning(buEx, "FrmCache: error fetching BU {BU}", bu);
+                    _lastRefreshErrors.Add($"BU {bu}: {buEx.Message}");
                 }
             }
+
+            // Lệnh đốn cấp lại trên FRM giữ nguyên ID nhưng đổi mã (vd LD2526-00014604 → LD2526-000146041);
+            // DigiScale có thể trả cả bản cũ lẫn bản mới cùng ID → chỉ giữ bản sửa mới nhất mỗi ID FRM,
+            // để danh sách không hiện bản cũ (đã hết hạn) như một lệnh đốn khác.
+            allLenhDonItems = allLenhDonItems
+                .GroupBy(x => (x.BU, Id: FrmFieldsReader.GetString(x.Item.Fields, "ID") ?? x.Item.SourceKey ?? x.Item.Id ?? Guid.NewGuid().ToString()))
+                .Select(g => g.OrderByDescending(x => ModifiedAt(x.Item)).First())
+                .ToList();
 
             var xeVanChuyenItems = allXeVanChuyen;
             var theXeItems = allTheXe;
             var hdvcItems = allHdvc;
+
+            // Tóm tắt "kéo được gì / đổi gì" cho nhật ký đồng bộ (màn Dữ liệu FRM).
+            LastPull = BuildPullSummary(
+                ("LenhDon", allLenhDonItems.Select(x => x.Item), it => FrmFieldsReader.GetString(it.Fields, "MaLD")),
+                ("the-xe", allTheXe, it => FrmFieldsReader.GetString(it.Fields, "MaThe") ?? FrmFieldsReader.GetString(it.Fields, "XeVanChuyenName")),
+                ("xe-van-chuyen", allXeVanChuyen, it => FrmFieldsReader.GetString(it.Fields, "BienSo")),
+                ("hop-dong-van-chuyen", allHdvc, it => FrmFieldsReader.GetString(it.Fields, "MaHopDong")));
+
+            // Kéo liên tục (vài giây/lần): dữ liệu DigiScale không đổi → bỏ qua dựng lại + ghi DB (chỉ cập nhật giờ kéo).
+            var fingerprint = Fingerprint(allXeVanChuyen, allTheXe, allHdvc, allLenhDonItems.Select(x => x.Item));
+            if (_lastRefreshErrors.Count == 0 && fingerprint == _lastFingerprint && _allVehicles.Count > 0)
+            {
+                _lastRefreshedAt = DateTimeOffset.UtcNow;
+                _logger.LogDebug("FrmCache: no change since last pull — skip rebuild/save");
+                return;
+            }
 
             _logger.LogInformation("FrmCache: total — XVC:{Xvc} TX:{Tx} HDVC:{Hd} LD:{Ld}",
                 xeVanChuyenItems.Count, theXeItems.Count, hdvcItems.Count, allLenhDonItems.Count);
@@ -318,7 +437,8 @@ public sealed class FrmMasterDataCache
                     DoiTacVanChuyenName: hdvcItem is not null ? FrmFieldsReader.GetString(hdvcItem.Fields, "DoiTacVanChuyenName") : null,
                     VuDauTuName: hdvcItem is not null ? FrmFieldsReader.GetString(hdvcItem.Fields, "VuDauTuName") : null,
                     MaHopDong: hdvcItem is not null ? FrmFieldsReader.GetString(hdvcItem.Fields, "MaHopDong") : null,
-                    SourceCreatedDate: theXe.SourceCreatedDate);
+                    SourceCreatedDate: theXe.SourceCreatedDate,
+                    TheXeSourceKey: theXe.SourceKey);
 
                 vehicles.Add(info);
 
@@ -389,14 +509,79 @@ public sealed class FrmMasterDataCache
             _vehicleIndex = newIndex;
             _lastRefreshedAt = DateTimeOffset.UtcNow;
 
-            // 7. Parse LenhDon
+            // 7. Parse LenhDon — giữ JSON gốc để lưu DB: lần khởi động sau đọc lại đủ mọi trường như vừa kéo.
             var lenhDonList = new List<FrmLenhDonInfo>();
+            var rawLenhDon = new Dictionary<(string, string), string>();
             foreach (var (item, itemBu) in allLenhDonItems)
             {
-                var maLD = FrmFieldsReader.GetString(item.Fields, "MaLD");
-                if (string.IsNullOrWhiteSpace(maLD)) continue;
+                var ld = MapLenhDon(item, itemBu);
+                if (ld is null) continue;
+                lenhDonList.Add(ld);
+                rawLenhDon[(ld.MaLD, itemBu)] = JsonSerializer.Serialize(item);
+            }
 
-                lenhDonList.Add(new FrmLenhDonInfo(
+            // Kéo lỗi / dở dang → không được làm mất lệnh đốn đang có: bản API đè lên, bản không trả về giữ nguyên.
+            // Kéo đủ → thay toàn bộ bằng dữ liệu DigiScale (mọi thay đổi trạng thái, biển số, thẻ... đều cập nhật).
+            if (_lastRefreshErrors.Count > 0)
+            {
+                var returned = lenhDonList.Select(l => (l.MaLD, l.BusinessUnit ?? "")).ToHashSet();
+                lenhDonList.AddRange(_allLenhDon.Where(l => !returned.Contains((l.MaLD, l.BusinessUnit ?? ""))));
+            }
+            _allLenhDon = lenhDonList;
+            _rawLenhDon = rawLenhDon;
+            // Kéo lỗi → không thay thẻ/xe trong DB (tránh mất thẻ khi the-xe lỗi mà xe-van-chuyen vẫn về).
+            _apiPlates = _lastRefreshErrors.Count > 0 ? [] : vehicles.Take(vehicles.Count - kept)
+                .Select(v => v.BienSo).Where(b => !string.IsNullOrWhiteSpace(b))
+                .ToHashSet(StringComparer.Ordinal);
+            _logger.LogInformation("FrmCache: parsed {Count} LenhDon records", lenhDonList.Count);
+
+            // Lưu xuống DB local để khởi động nhanh lần sau
+            await SaveToDbAsync();
+            if (_lastRefreshErrors.Count == 0) _lastFingerprint = fingerprint;
+
+            // Báo các màn đang mở (vd Dữ liệu FRM) nạp lại — kể cả khi lần kéo do khởi động / hẹn giờ chạy.
+            try { Refreshed?.Invoke(); }
+            catch (Exception evEx) { _logger.LogWarning(evEx, "FrmCache: Refreshed handler failed"); }
+
+            _logger.LogInformation(
+                "FrmCache: refresh complete. {VehicleCount} vehicles, {PlateCount} unique plates",
+                vehicles.Count, newIndex.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "FrmCache: refresh failed");
+            _lastRefreshErrors.Add(ex.Message);
+        }
+        finally
+        {
+            _isLoading = false;
+            _loadLock.Release();
+        }
+    }
+
+    /// <summary>Thời điểm sửa của bản ghi FRM (sourceModifiedDate, rồi Modifieddate trong fields) — để chọn bản mới nhất.</summary>
+    private static DateTimeOffset ModifiedAt(FrmEntityItem item)
+    {
+        foreach (var s in new[] { item.SourceModifiedDate, FrmFieldsReader.GetString(item.Fields, "Modifieddate") })
+            if (DateTimeOffset.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal, out var at))
+                return at;
+        return DateTimeOffset.MinValue;
+    }
+
+    /// <summary>JSON gốc của lệnh đốn vừa kéo, theo (mã LD, BU) — lưu cột raw_json.</summary>
+    private Dictionary<(string, string), string> _rawLenhDon = [];
+
+    /// <summary>Biển số (nguyên văn) DigiScale trả về ở lần kéo gần nhất — DB thay toàn bộ thẻ/xe của các biển này.</summary>
+    private HashSet<string> _apiPlates = [];
+
+    /// <summary>Lệnh đốn từ một item FRM (dùng cho cả API lẫn JSON gốc lưu DB). Null nếu không có mã LD.</summary>
+    private static FrmLenhDonInfo? MapLenhDon(FrmEntityItem item, string? itemBu)
+    {
+                var maLD = FrmFieldsReader.GetString(item.Fields, "MaLD");
+                if (string.IsNullOrWhiteSpace(maLD)) return null;
+
+                return new FrmLenhDonInfo(
                     MaLD: maLD,
                     SourceKey: FrmFieldsReader.GetString(item.Fields, "ID") ?? item.SourceKey,
                     BienSoXe: FrmFieldsReader.GetString(item.Fields, "BienSoXe"),
@@ -428,27 +613,10 @@ public sealed class FrmMasterDataCache
                     DoiTacBocXepName: FrmFieldsReader.GetString(item.Fields, "DoiTacBocXepCNName").NullIfBlank()
                                       ?? FrmFieldsReader.GetString(item.Fields, "DoiTacBocXepDNName").NullIfBlank(),
                     DoiTacThuHoachDNName: FrmFieldsReader.GetString(item.Fields, "DoiTacThuHoachDNName").NullIfBlank(),
-                    TenNhaMay: FrmFieldsReader.GetString(item.Fields, "TenNhaMay").NullIfBlank()));
-            }
-            _allLenhDon = lenhDonList;
-            _logger.LogInformation("FrmCache: parsed {Count} LenhDon records", lenhDonList.Count);
-
-            // Lưu xuống DB local để khởi động nhanh lần sau
-            await SaveToDbAsync();
-
-            _logger.LogInformation(
-                "FrmCache: refresh complete. {VehicleCount} vehicles, {PlateCount} unique plates",
-                vehicles.Count, newIndex.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "FrmCache: refresh failed");
-        }
-        finally
-        {
-            _isLoading = false;
-            _loadLock.Release();
-        }
+                    TenNhaMay: FrmFieldsReader.GetString(item.Fields, "TenNhaMay").NullIfBlank(),
+                    TheXeId: NullIfEmptyGuid(FrmFieldsReader.GetString(item.Fields, "TheXe")),
+                    TheXeStatusName: FrmFieldsReader.GetString(item.Fields, "StatusCodeTheXeName").NullIfBlank(),
+                    DigiId: item.Id.NullIfBlank());
     }
 
     /// <summary>
@@ -488,6 +656,7 @@ public sealed class FrmMasterDataCache
                         _logger.LogWarning(
                             "FrmCache: HTTP {Status} fetching {Entity} page {Page}",
                             (int)response.StatusCode, entity, page);
+                        _lastRefreshErrors.Add($"{entity} trang {page}: HTTP {(int)response.StatusCode}");
                         return allItems; // Trả về những gì đã có
                     }
 
@@ -506,6 +675,7 @@ public sealed class FrmMasterDataCache
                         _logger.LogError(
                             "FrmCache: giving up {Entity} at page {Page}. Got {Count} items.",
                             entity, page, allItems.Count);
+                        _lastRefreshErrors.Add($"{entity} trang {page}: timeout");
                         return allItems;
                     }
 
@@ -515,6 +685,7 @@ public sealed class FrmMasterDataCache
                 {
                     _logger.LogWarning(ex,
                         "FrmCache: HTTP error {Entity} page {Page}", entity, page);
+                    _lastRefreshErrors.Add($"{entity} trang {page}: {ex.Message}");
                     return allItems;
                 }
             }
@@ -537,6 +708,58 @@ public sealed class FrmMasterDataCache
         }
 
         return allItems;
+    }
+
+    /// <summary>
+    /// Tra ID bản ghi lệnh đốn trên DigiScale NGAY LÚC GỌI (API LenhDon, không dùng bộ nhớ đệm / DB local).
+    /// Khớp theo ID FRM (sourceKey / fields.ID) trước, rồi theo mã lệnh đốn. Lấy bản sửa mới nhất nếu trùng.
+    /// Trả (Id, Error): Id null + Error null = DigiScale trả lời nhưng không có lệnh đốn này;
+    /// Error khác null = không gọi được DigiScale.
+    /// </summary>
+    public async Task<(string? Id, string? Error)> FetchLenhDonDigiIdAsync(
+        string? frmLenhDonId, string? maLenhDon, string businessUnit, CancellationToken ct = default)
+    {
+        for (var page = 1; page <= 200; page++)
+        {
+            var body = new Dictionary<string, object>
+            {
+                ["entities"] = "LenhDon",
+                ["busineesUnit"] = businessUnit,
+                ["Date"] = "1900-01-01 00:00:00",
+                ["page"] = page,
+                ["pageSize"] = 200
+            };
+            FrmApiResponse? res;
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, API_PATH) { Content = JsonContent.Create(body) };
+                SetBasicAuth(req);
+                using var resp = await _httpClient.SendAsync(req, ct);
+                if (!resp.IsSuccessStatusCode) return (null, $"HTTP {(int)resp.StatusCode}");
+                res = JsonSerializer.Deserialize<FrmApiResponse>(await resp.Content.ReadAsStringAsync(ct));
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { return (null, ex.Message); }
+
+            var result = res?.Results?.FirstOrDefault();
+            if (result?.Items is not { Count: > 0 } items) return (null, null);
+
+            var match = items
+                .Where(it =>
+                    (!string.IsNullOrWhiteSpace(frmLenhDonId)
+                     && (string.Equals(it.SourceKey, frmLenhDonId, StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(FrmFieldsReader.GetString(it.Fields, "ID"), frmLenhDonId, StringComparison.OrdinalIgnoreCase)))
+                    || (!string.IsNullOrWhiteSpace(maLenhDon)
+                        && string.Equals(FrmFieldsReader.GetString(it.Fields, "MaLD"), maLenhDon, StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(ModifiedAt)
+                .FirstOrDefault();
+            // ID gửi lệnh Delete = ID lệnh đốn FRM mà DigiScale trả về (fields.ID / sourceKey, dạng 4810C0D4-F1D2-…),
+            // KHÔNG phải id nội bộ DigiScale (01a1…). Viết HOA theo đúng mẫu FRM.
+            var frmId = match is null ? null : (FrmFieldsReader.GetString(match.Fields, "ID") ?? match.SourceKey);
+            if (!string.IsNullOrWhiteSpace(frmId)) return (frmId.Trim().ToUpperInvariant(), null);
+            if (!result.HasNext) return (null, null);
+        }
+        return (null, null);
     }
 
     private void SetBasicAuth(HttpRequestMessage request)
@@ -626,7 +849,8 @@ public sealed class FrmMasterDataCache
                         DoiTacVanChuyenName: reader["doi_tac_van_chuyen_name"] as string,
                         VuDauTuName: reader["vu_dau_tu_name"] as string,
                         MaHopDong: reader["ma_hop_dong"] as string,
-                        SourceCreatedDate: reader["source_created_date"] as string));
+                        SourceCreatedDate: reader["source_created_date"] as string,
+                        TheXeSourceKey: ReadString(reader, "the_xe_id")));
                 }
             }
 
@@ -643,6 +867,19 @@ public sealed class FrmMasterDataCache
             {
                 while (await reader.ReadAsync())
                 {
+                    // Có JSON gốc → đọc y như lúc kéo API (đủ mọi trường). Dòng cũ chưa có → đọc theo cột.
+                    var rawJson = ReadString(reader, "raw_json");
+                    if (!string.IsNullOrWhiteSpace(rawJson))
+                    {
+                        try
+                        {
+                            var item = JsonSerializer.Deserialize<FrmEntityItem>(rawJson);
+                            var mapped = item is null ? null : MapLenhDon(item, reader["business_unit"] as string);
+                            if (mapped is not null) { lenhDon.Add(mapped); continue; }
+                        }
+                        catch (JsonException) { /* JSON hỏng → đọc theo cột */ }
+                    }
+
                     lenhDon.Add(new FrmLenhDonInfo(
                         MaLD: reader["ma_ld"] as string ?? "",
                         SourceKey: reader["source_key"] as string,
@@ -674,7 +911,9 @@ public sealed class FrmMasterDataCache
                         LoaiHopDongName: ReadString(reader, "loai_hop_dong_name"),
                         DoiTacBocXepName: ReadString(reader, "doi_tac_boc_xep_name"),
                         DoiTacThuHoachDNName: ReadString(reader, "doi_tac_thu_hoach_dn_name"),
-                        TenNhaMay: ReadString(reader, "ten_nha_may")));
+                        TenNhaMay: ReadString(reader, "ten_nha_may"),
+                        TheXeId: ReadString(reader, "the_xe_id"),
+                        TheXeStatusName: ReadString(reader, "the_xe_status_name")));
                 }
             }
             }
@@ -735,8 +974,26 @@ ALTER TABLE frm_lenh_don
   ADD COLUMN IF NOT EXISTS loai_hop_dong_name text,
   ADD COLUMN IF NOT EXISTS doi_tac_boc_xep_name text,
   ADD COLUMN IF NOT EXISTS doi_tac_thu_hoach_dn_name text,
-  ADD COLUMN IF NOT EXISTS ten_nha_may text", conn))
+  ADD COLUMN IF NOT EXISTS ten_nha_may text,
+  ADD COLUMN IF NOT EXISTS the_xe_id text,
+  ADD COLUMN IF NOT EXISTS the_xe_status_name text,
+  ADD COLUMN IF NOT EXISTS raw_json text,
+  ADD COLUMN IF NOT EXISTS khdn_name text;
+ALTER TABLE frm_vehicles
+  ADD COLUMN IF NOT EXISTS the_xe_id text", conn))
                 await alter.ExecuteNonQueryAsync();
+
+            // Một transaction: lỗi giữa chừng thì DB giữ nguyên bản cũ, không lưu nửa vời.
+            await using var tx = await conn.BeginTransactionAsync();
+
+            // Biển số DigiScale vừa trả về → thay toàn bộ thẻ/xe của biển đó (thẻ đổi mã, bị gỡ, xe có thẻ mới
+            // đều phản ánh đúng). Biển không trả về giữ nguyên. Bảng cache từ API, không phải chứng từ nghiệp vụ.
+            if (_apiPlates.Count > 0)
+            {
+                await using var del = new Npgsql.NpgsqlCommand("DELETE FROM frm_vehicles WHERE bien_so = ANY($1)", conn);
+                del.Parameters.AddWithValue(_apiPlates.ToArray());
+                await del.ExecuteNonQueryAsync();
+            }
 
             // Upsert vehicles
             foreach (var v in _allVehicles)
@@ -744,13 +1001,13 @@ ALTER TABLE frm_lenh_don
                 await using var cmd = new Npgsql.NpgsqlCommand(@"
 INSERT INTO frm_vehicles (bien_so,ma_xe,loai_xe,loai_xe_name,tai_trong,trong_tai_toi_da,ma_the,tram_name,
   hop_dong_van_chuyen_name,loai_the_xe_name,status_name,thu_hoach_may,ngay_ap_dung_tu,ngay_ap_dung_den,
-  doi_tac_van_chuyen_name,vu_dau_tu_name,ma_hop_dong,source_created_date,synced_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,now())
+  doi_tac_van_chuyen_name,vu_dau_tu_name,ma_hop_dong,source_created_date,the_xe_id,synced_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now())
 ON CONFLICT (bien_so, COALESCE(ma_the, ''))
 DO UPDATE SET ma_xe=$2,loai_xe=$3,loai_xe_name=$4,tai_trong=$5,trong_tai_toi_da=$6,
   tram_name=$8,hop_dong_van_chuyen_name=$9,loai_the_xe_name=$10,status_name=$11,thu_hoach_may=$12,
   ngay_ap_dung_tu=$13,ngay_ap_dung_den=$14,doi_tac_van_chuyen_name=$15,vu_dau_tu_name=$16,
-  ma_hop_dong=$17,source_created_date=$18,synced_at=now()
+  ma_hop_dong=$17,source_created_date=$18,the_xe_id=COALESCE($19,frm_vehicles.the_xe_id),synced_at=now()
 ", conn);
                 cmd.Parameters.AddWithValue(v.BienSo);
                 cmd.Parameters.AddWithValue((object?)v.MaXe ?? DBNull.Value);
@@ -770,6 +1027,7 @@ DO UPDATE SET ma_xe=$2,loai_xe=$3,loai_xe_name=$4,tai_trong=$5,trong_tai_toi_da=
                 cmd.Parameters.AddWithValue((object?)v.VuDauTuName ?? DBNull.Value);
                 cmd.Parameters.AddWithValue((object?)v.MaHopDong ?? DBNull.Value);
                 cmd.Parameters.AddWithValue((object?)v.SourceCreatedDate ?? DBNull.Value);
+                cmd.Parameters.Add(new Npgsql.NpgsqlParameter { Value = (object?)v.TheXeSourceKey ?? DBNull.Value, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Text });
                 await cmd.ExecuteNonQueryAsync();
             }
 
@@ -781,14 +1039,16 @@ INSERT INTO frm_lenh_don (ma_ld,source_key,bien_so_xe,ngay_cap,ngay_het_han,stat
   loai_mia_name,giong_mia_name,tram_name,vu_dau_tu_name,loai_xe_code,loai_xe_name,uu_tien,tai_trong,doi_tac_thu_hoach_name,
   thua_dat_canh_tac_name,the_xe_name,hop_dong_dau_tu_mia_name,source_created_date,business_unit,
   mia_chay,loai_mia_chay_name,thu_hoach_may,the_xe_tam,so_xe_tam,loai_hop_dong_name,
-  doi_tac_boc_xep_name,doi_tac_thu_hoach_dn_name,ten_nha_may,synced_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,now())
+  doi_tac_boc_xep_name,doi_tac_thu_hoach_dn_name,ten_nha_may,the_xe_id,the_xe_status_name,khdn_name,raw_json,synced_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,now())
 ON CONFLICT (ma_ld, COALESCE(business_unit, ''))
 DO UPDATE SET source_key=$2,bien_so_xe=$3,ngay_cap=$4,ngay_het_han=$5,status_code_name=$6,kh_name=$7,
   loai_mia_name=$8,giong_mia_name=$9,tram_name=$10,vu_dau_tu_name=$11,loai_xe_code=$12,loai_xe_name=$13,uu_tien=$14,tai_trong=$15,
   doi_tac_thu_hoach_name=$16,thua_dat_canh_tac_name=$17,the_xe_name=$18,hop_dong_dau_tu_mia_name=$19,
   source_created_date=$20,mia_chay=$22,loai_mia_chay_name=$23,thu_hoach_may=$24,the_xe_tam=$25,
-  so_xe_tam=$26,loai_hop_dong_name=$27,doi_tac_boc_xep_name=$28,doi_tac_thu_hoach_dn_name=$29,ten_nha_may=$30,synced_at=now()
+  so_xe_tam=$26,loai_hop_dong_name=$27,doi_tac_boc_xep_name=$28,doi_tac_thu_hoach_dn_name=$29,ten_nha_may=$30,
+  the_xe_id=$31,the_xe_status_name=$32,khdn_name=$33,
+  raw_json=COALESCE($34,frm_lenh_don.raw_json),synced_at=now()
 ", conn);
                 cmd.Parameters.AddWithValue(ld.MaLD);
                 cmd.Parameters.AddWithValue((object?)ld.SourceKey ?? DBNull.Value);
@@ -820,8 +1080,32 @@ DO UPDATE SET source_key=$2,bien_so_xe=$3,ngay_cap=$4,ngay_het_han=$5,status_cod
                 cmd.Parameters.AddWithValue((object?)ld.DoiTacBocXepName ?? DBNull.Value);
                 cmd.Parameters.AddWithValue((object?)ld.DoiTacThuHoachDNName ?? DBNull.Value);
                 cmd.Parameters.AddWithValue((object?)ld.TenNhaMay ?? DBNull.Value);
+                cmd.Parameters.Add(new Npgsql.NpgsqlParameter { Value = (object?)ld.TheXeId ?? DBNull.Value, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Text });
+                cmd.Parameters.Add(new Npgsql.NpgsqlParameter { Value = (object?)ld.TheXeStatusName ?? DBNull.Value, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Text });
+                cmd.Parameters.Add(new Npgsql.NpgsqlParameter { Value = (object?)ld.KHDNName ?? DBNull.Value, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Text });
+                var raw = _rawLenhDon.TryGetValue((ld.MaLD, ld.BusinessUnit ?? ""), out var r) ? r : null;
+                cmd.Parameters.Add(new Npgsql.NpgsqlParameter { Value = (object?)raw ?? DBNull.Value, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Text });
                 await cmd.ExecuteNonQueryAsync();
             }
+
+            // Bản cũ của lệnh đốn cấp lại (cùng ID FRM, mã khác): frm_lenh_don chỉ là bản sao dữ liệu FRM,
+            // bản cũ đã bị FRM thay thế → bỏ để lần khởi động sau không nạp lại. Chỉ khi kéo đủ (không lỗi).
+            var current = _allLenhDon.Where(l => !string.IsNullOrWhiteSpace(l.SourceKey)).ToList();
+            if (_lastRefreshErrors.Count == 0 && current.Count > 0)
+            {
+                await using var del = new Npgsql.NpgsqlCommand(@"
+DELETE FROM frm_lenh_don f
+USING unnest($1::text[], $2::text[], $3::text[]) AS c(source_key, bu, ma_ld)
+WHERE f.source_key = c.source_key AND COALESCE(f.business_unit,'') = c.bu AND f.ma_ld <> c.ma_ld", conn);
+                del.Parameters.AddWithValue(current.Select(l => l.SourceKey!).ToArray());
+                del.Parameters.AddWithValue(current.Select(l => l.BusinessUnit ?? "").ToArray());
+                del.Parameters.AddWithValue(current.Select(l => l.MaLD).ToArray());
+                var removed = await del.ExecuteNonQueryAsync();
+                if (removed > 0)
+                    _logger.LogInformation("FrmCache: removed {Count} superseded lệnh đốn versions (same FRM ID, old code)", removed);
+            }
+
+            await tx.CommitAsync();
 
             _logger.LogInformation(
                 "FrmCache: upserted to DB — {Vehicles} vehicles, {LenhDon} lệnh đốn",
@@ -848,6 +1132,32 @@ DO UPDATE SET source_key=$2,bien_so_xe=$3,ngay_cap=$4,ngay_het_han=$5,status_cod
         if (value is null) return null;
         if (bool.TryParse(value, out var b)) return b ? "1" : "0";
         return value; // Đã là "1"/"0" hoặc giá trị khác
+    }
+
+    private static string? NullIfEmptyGuid(string? value)
+        => string.IsNullOrWhiteSpace(value) || value.Trim() == "00000000-0000-0000-0000-000000000000"
+            ? null : value.Trim();
+
+    /// <summary>
+    /// Thẻ xe của lệnh đốn: khớp theo ID thẻ (field TheXe = the-xe sourceKey) — chắc chắn nhất;
+    /// không có ID thì theo tên thẻ "{HĐ vận chuyển}-{xe}-{mã thẻ}" (mã thẻ ở cuối).
+    /// Tên thẻ trên lệnh đốn có thể không chứa mã thẻ (vd "2026VC0006-TAI00242" trong khi thẻ là T260000121).
+    /// </summary>
+    public FrmVehicleInfo? FindCardForLenhDon(FrmLenhDonInfo ld)
+    {
+        var cards = _allVehicles;
+        if (ld.TheXeId is { } id)
+        {
+            var byId = cards.FirstOrDefault(v => string.Equals(v.TheXeSourceKey, id, StringComparison.OrdinalIgnoreCase));
+            if (byId is not null) return byId;
+        }
+
+        var name = ld.Thexename?.Trim();
+        if (string.IsNullOrEmpty(name)) return null;
+        return cards.FirstOrDefault(v =>
+            !string.IsNullOrWhiteSpace(v.MaThe)
+            && (string.Equals(v.MaThe.Trim(), name, StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith("-" + v.MaThe.Trim(), StringComparison.OrdinalIgnoreCase)));
     }
 
     private static string? ReadString(System.Data.IDataReader reader, string columnName)

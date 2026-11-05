@@ -85,7 +85,11 @@ public sealed class TripRepository(WeighingDbContext db) : ITripRepository
 
     public Task UpdateAsync(Trip trip, CancellationToken ct = default)
     {
-        db.Trips.Update(trip);
+        var entry = db.Trips.Update(trip);
+        // Mã phiếu cân chỉ do WeighTicketNumberGenerator ghi (SQL riêng). Update() đánh dấu MỌI cột,
+        // bản chuyến đang giữ trong bộ nhớ có thể chưa có mã → không được ghi đè mất mã đã sinh.
+        if (entry.State == EntityState.Modified)
+            entry.Property(t => t.TicketNumber).IsModified = false;
         return Task.CompletedTask;
     }
 
@@ -117,8 +121,52 @@ public sealed class TripRepository(WeighingDbContext db) : ITripRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<string?> FindCancelledByLenhDonAsync(string? lenhDonId, string? maLenhDon, CancellationToken ct = default)
+    {
+        var id = lenhDonId?.Trim();
+        var code = maLenhDon?.Trim();
+        if (string.IsNullOrEmpty(id) && string.IsNullOrEmpty(code)) return null;
+
+        // Xóa phiếu chưa hủy (Xóa = hủy + deleted_at) → không tính (được đăng tài lại).
+        // Phiếu Hủy (chưa xóa) hoặc phiếu ĐÃ HỦY rồi mới xóa (audit TRIP_DELETED_CANCELLED) → vẫn chặn.
+        return await db.Trips.AsNoTracking()
+            .Where(t => t.SourceSystem == "FRM"
+                && (t.DeletedAt == null
+                    || db.AuditLogEntries.Any(a => a.TripId == t.Id && a.ActionType == "TRIP_DELETED_CANCELLED"))
+                && t.Lifecycle == TripLifecycle.Cancelled
+                && ((id != null && id != "" && t.FrmLenhDonId == id)
+                    || (code != null && code != "" && t.ReferenceTripNo == code)))
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => t.TripNo)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public Task<bool> HasWeighEventsAsync(Guid tripId, CancellationToken ct = default)
         => db.WeighEvents.AnyAsync(e => e.TripId == tripId, ct);
+
+    public Task ReloadAsync(Trip trip, CancellationToken ct = default)
+        => db.Entry(trip).ReloadAsync(ct);
+
+    public async Task<string?> FindNotWeighedOutByPlateAsync(string plate, Guid siteId, CancellationToken ct = default)
+    {
+        var normalized = plate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpper();
+
+        // Xe "chưa cân ra" = chuyến chưa hủy / chưa đóng / chưa xóa VÀ chưa có lượt cân ra (phân đoạn ≥ 1) hiệu lực.
+        // Không dựa riêng vào trạng thái chuyến: trạng thái có thể bị ghi lệch, còn lượt cân thì bất biến.
+        return await db.Trips.AsNoTracking()
+            .Where(t => t.SiteId == siteId
+                && t.DeletedAt == null
+                && t.TractorPlate != null
+                && t.Lifecycle != TripLifecycle.Cancelled
+                && t.Lifecycle != TripLifecycle.Closed
+                && t.Lifecycle != TripLifecycle.WeighingCompleted
+                && t.TractorPlate.Replace(" ", "").Replace("-", "").Replace(".", "").ToUpper() == normalized
+                && !db.WeighSessions.Any(s => s.TripId == t.Id && s.SegmentIndex >= 1
+                    && s.Events.Any(e => e.IsEffective)))
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => t.TripNo)
+            .FirstOrDefaultAsync(ct);
+    }
 
     public async Task<string?> FindActiveByReferenceAsync(
         string sourceSystem, string referenceTripNo, CancellationToken ct = default)

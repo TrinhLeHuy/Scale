@@ -10,7 +10,7 @@ namespace TTC.Weighing.Infrastructure.Queries;
 /// Join trips → weigh_sessions → weigh_events (Gross/Tare) → integration_messages (SyncStatus).
 /// Req 1.2, 4.6, 8.6.
 /// </summary>
-public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperationQueries
+public sealed class EfWeighOperationQueries(WeighingDbContext db, Adapters.FrmMasterDataCache frmCache) : IWeighOperationQueries
 {
     public async Task<IReadOnlyList<WeighedTripRow>> ListAsync(
         Guid siteId, Guid weighbridgeId, WeighedTripFilter filter,
@@ -71,6 +71,20 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
                     .OrderByDescending(m => m.CreatedAt)
                     .Select(m => (IntegrationMessageStatus?)m.Status)
                     .FirstOrDefault(),
+                t.FrmLenhDonId,
+                // Tạp chất / CCS thực tế: mẫu hiệu lực mới nhất của chuyến (mía).
+                ImpurityActual = db.QualitySamples
+                    .Where(q => q.TripId == t.Id && q.Type == QualitySampleType.Impurity && q.IsEffective
+                        && q.ImpurityPercent != null)
+                    .OrderByDescending(q => q.ReceivedAt)
+                    .Select(q => q.ImpurityPercent)
+                    .FirstOrDefault(),
+                CcsActual = db.QualitySamples
+                    .Where(q => q.TripId == t.Id && q.Type == QualitySampleType.Ccs && q.IsEffective
+                        && q.CcsValue != null)
+                    .OrderByDescending(q => q.ReceivedAt)
+                    .Select(q => q.CcsValue)
+                    .FirstOrDefault(),
                 // Customer: chủ mía hoặc tổ chức từ chứng từ nguồn
                 Customer = t.SugarcaneOwner ?? db.TripDocumentLines
                     .Where(dl => dl.TripId == t.Id)
@@ -93,10 +107,14 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
             })
             .ToListAsync(ct);
 
+        var paidByTicket = await LoadPaidFiguresAsync(
+            rows.Select(r => r.TicketNumber).Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t!).Distinct().ToArray(), ct);
+
         var result = new List<WeighedTripRow>(rows.Count);
 
         foreach (var r in rows)
         {
+            var paid = r.TicketNumber is { } tk && paidByTicket.TryGetValue(tk, out var p) ? p : default;
             var hasGross = r.Gross is not null;
             var hasTare = r.Tare is not null;
 
@@ -134,12 +152,56 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
                 TimeOut: second?.MeasuredAt,
                 WeightOut: second?.NormalizedKg / 1000m,
                 NetWeight: net / 1000m,
-                Customer: r.Customer,
+                // Mía: chủ mía trống → khách hàng doanh nghiệp của lệnh đốn (dữ liệu FRM đã kéo về).
+                Customer: !string.IsNullOrWhiteSpace(r.Customer) ? r.Customer
+                    : (frmCache.FindLenhDonBySourceKey(r.FrmLenhDonId)
+                       ?? frmCache.FindLenhDonByCode(r.ShipmentNo))?.OwnerName ?? r.Customer,
                 Commodity: r.Commodity,
-                SyncStatus: r.SyncStatus));
+                SyncStatus: r.SyncStatus,
+                ImpurityActual: r.ImpurityActual,
+                ImpurityPaid: paid.Impurity,
+                CcsActual: r.CcsActual,
+                CcsPaid: paid.Ccs));
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Tạp chất / CCS thanh toán theo chính sách FRM đã lưu (bảng trip_policies, theo mã phiếu cân; bỏ bản xem trước).
+    /// CCS = 0 nghĩa là FRM chưa có kết quả CCS → không hiện. Bảng chưa có / lỗi đọc → trống, không chặn lưới.
+    /// </summary>
+    private async Task<Dictionary<string, (decimal? Impurity, decimal? Ccs)>> LoadPaidFiguresAsync(
+        string[] tickets, CancellationToken ct)
+    {
+        var map = new Dictionary<string, (decimal?, decimal?)>(StringComparer.Ordinal);
+        if (tickets.Length == 0) return map;
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            var opened = conn.State != System.Data.ConnectionState.Open;
+            if (opened) await conn.OpenAsync(ct);
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT so_phieu_can, tap_chat_cs, ccs_chinh_sach FROM trip_policies " +
+                                  "WHERE NOT is_preview AND so_phieu_can = ANY(@tickets)";
+                cmd.Parameters.Add(new Npgsql.NpgsqlParameter("tickets", tickets));
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    decimal? tc = reader.IsDBNull(1) ? null : reader.GetDecimal(1);
+                    decimal? ccs = reader.IsDBNull(2) ? null : reader.GetDecimal(2);
+                    map[reader.GetString(0)] = (tc, ccs is 0m ? null : ccs);
+                }
+            }
+            finally
+            {
+                if (opened) await conn.CloseAsync();
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { /* chỉ là số hiển thị */ }
+        return map;
     }
 
     public async Task<IReadOnlyList<WeighedTripRow>> ListPendingAsync(
@@ -175,7 +237,8 @@ public sealed class EfWeighOperationQueries(WeighingDbContext db) : IWeighOperat
                 null,
                 t.SugarcaneOwner,
                 t.SugarcaneType,
-                null))
+                null,
+                null, null, null, null)) // chưa cân → chưa có tạp chất / CCS
             .ToListAsync(ct);
 
         return rows;

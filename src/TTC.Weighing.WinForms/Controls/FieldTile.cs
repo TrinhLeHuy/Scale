@@ -88,6 +88,9 @@ public sealed class FieldTile : Panel
 
         _host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12, 0, 12, 0) };
         _host.Resize += (_, _) => PositionInput();
+        _host.Layout += (_, _) => PositionInput();
+        input.SizeChanged += (_, _) => PositionInput();
+        input.FontChanged += (_, _) => PositionInput();
         _host.Click += (_, _) => FocusInput();
 
         // Khung cắt: ô số được đặt rộng hơn khung đúng bằng bề rộng nút tăng/giảm,
@@ -108,6 +111,7 @@ public sealed class FieldTile : Panel
             case NumericUpDown num:
                 num.BorderStyle = BorderStyle.None;
                 num.TextAlign = HorizontalAlignment.Right;
+                DisableIme(num);
                 break;
             case TextBox txt:
                 txt.BorderStyle = BorderStyle.None;
@@ -133,6 +137,119 @@ public sealed class FieldTile : Panel
         Controls.Add(_caption);
 
         ApplyFill();
+    }
+
+    /// <summary>
+    /// Tắt bộ gõ (Unikey/Telex/VNI của Windows) cho ô số: bộ gõ VNI coi chữ số là dấu thanh nên giữ
+    /// "12" trong khung soạn thảo nổi ở góc dưới trái thay vì đưa vào ô, ô số trống cho đến khi bấm Enter.
+    /// Ô số không bao giờ cần bộ gõ.
+    /// </summary>
+    public static void DisableIme(NumericUpDown num)
+    {
+        num.ImeMode = ImeMode.Disable;
+        foreach (Control child in num.Controls)
+        {
+            child.ImeMode = ImeMode.Disable;
+            // ImeMode chỉ tắt bộ gõ kiểu cũ (IMM). Bàn phím tiếng Việt của Windows 10/11 là TSF → vẫn mở
+            // khung soạn thảo nổi. Báo cho Windows đây là ô nhập SỐ (InputScope) + bỏ ngữ cảnh IME của ô chữ.
+            if (child.IsHandleCreated) AttachImeBlocker(child);
+            child.HandleCreated += (s, _) => AttachImeBlocker((Control)s!);
+        }
+    }
+
+    /// <summary>
+    /// Tắt bộ gõ cho ô tìm mã (số đăng tài, lệnh đốn, biển số): bộ gõ tiếng Việt giữ chữ đang gõ trong khung
+    /// soạn thảo tới khi bấm Space → ô chưa nhận chữ, gợi ý tìm kiếm không hiện. Mã / biển số không cần dấu;
+    /// tìm theo tên đã bỏ dấu khi so khớp (xem <see cref="TripPickerList.NormalizeSearch"/>).
+    /// </summary>
+    public static void DisableIme(TextBox box)
+    {
+        box.ImeMode = ImeMode.Disable;
+        if (box.IsHandleCreated) AttachImeBlocker(box, IS_ALPHANUMERIC_HALFWIDTH);
+        box.HandleCreated += (s, _) => AttachImeBlocker((Control)s!, IS_ALPHANUMERIC_HALFWIDTH);
+    }
+
+    private static void AttachImeBlocker(Control edit, int inputScope = IS_NUMBER)
+    {
+        ApplyInputScope(edit.Handle, inputScope);
+        // Một số bộ gõ (VNI / Telex của Windows, bộ gõ TSF bên thứ ba) vẫn mở khung soạn thảo dù đã tắt ở trên
+        // → chặn ở tầng thông điệp: ẩn khung soạn thảo và chốt ngay từng phím vào ô.
+        var blocker = new ImeBlocker();
+        blocker.AssignHandle(edit.Handle);
+        edit.HandleDestroyed += (_, _) => blocker.ReleaseHandle();
+    }
+
+    /// <summary>
+    /// Bắt thông điệp IME của ô chữ trong NumericUpDown: bỏ cờ hiện khung soạn thảo (WM_IME_SETCONTEXT),
+    /// và chốt ngay chuỗi đang soạn (CPS_COMPLETE) để số đi thẳng vào ô thay vì nằm trong khung nổi.
+    /// </summary>
+    private sealed class ImeBlocker : NativeWindow
+    {
+        private const int WM_SETFOCUS = 0x0007;
+        private const int WM_IME_STARTCOMPOSITION = 0x010D;
+        private const int WM_IME_COMPOSITION = 0x010F;
+        private const int WM_IME_SETCONTEXT = 0x0281;
+        private const long ISC_SHOWUICOMPOSITIONWINDOW = 0x80000000;
+        private const int GCS_COMPSTR = 0x0008;
+        private const int NI_COMPOSITIONSTR = 0x0015;
+        private const int CPS_COMPLETE = 0x0001;
+
+        protected override void WndProc(ref Message m)
+        {
+            switch (m.Msg)
+            {
+                case WM_IME_SETCONTEXT:
+                    m.LParam = (IntPtr)((long)m.LParam & ~ISC_SHOWUICOMPOSITIONWINDOW);
+                    break;
+                case WM_IME_STARTCOMPOSITION:
+                    CompleteComposition(m.HWnd);
+                    return; // không mở khung soạn thảo mặc định
+                case WM_IME_COMPOSITION when ((long)m.LParam & GCS_COMPSTR) != 0:
+                    CompleteComposition(m.HWnd);
+                    break;
+            }
+
+            base.WndProc(ref m);
+
+            if (m.Msg == WM_SETFOCUS)
+                try { ImmAssociateContextEx(m.HWnd, IntPtr.Zero, 0); } catch { /* không có IMM */ }
+        }
+
+        private static void CompleteComposition(IntPtr hwnd)
+        {
+            try
+            {
+                var himc = ImmGetContext(hwnd);
+                if (himc == IntPtr.Zero) return;
+                ImmNotifyIME(himc, NI_COMPOSITIONSTR, CPS_COMPLETE, 0);
+                ImmReleaseContext(hwnd, himc);
+            }
+            catch { /* không có IMM */ }
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("imm32.dll")]
+    private static extern IntPtr ImmGetContext(IntPtr hwnd);
+
+    [System.Runtime.InteropServices.DllImport("imm32.dll")]
+    private static extern bool ImmReleaseContext(IntPtr hwnd, IntPtr himc);
+
+    [System.Runtime.InteropServices.DllImport("imm32.dll")]
+    private static extern bool ImmNotifyIME(IntPtr himc, int action, int index, int value);
+
+    private const int IS_NUMBER = 29;      // InputScope: số (cho phép dấu thập phân)
+    private const int IS_ALPHANUMERIC_HALFWIDTH = 40; // InputScope: chữ + số không dấu (mã, biển số)
+
+    [System.Runtime.InteropServices.DllImport("msctf.dll")]
+    private static extern int SetInputScope(IntPtr hwnd, int inputScope);
+
+    [System.Runtime.InteropServices.DllImport("imm32.dll")]
+    private static extern bool ImmAssociateContextEx(IntPtr hwnd, IntPtr himc, int flags);
+
+    private static void ApplyInputScope(IntPtr hwnd, int inputScope)
+    {
+        try { SetInputScope(hwnd, inputScope); } catch { /* máy không có TSF */ }
+        try { ImmAssociateContextEx(hwnd, IntPtr.Zero, 0); } catch { /* máy không có IMM */ }
     }
 
     /// <summary>Chiều cao gợi ý của ô: nhãn + khung nhập + gợi ý.</summary>
@@ -161,16 +278,36 @@ public sealed class FieldTile : Panel
             _input.Focus();
     }
 
+    private bool _positioning;
+
+    /// <summary>
+    /// Đặt ô nhập giữa khung. Chạy lại mỗi khi khung / ô đổi cỡ hoặc đổi font (Windows phóng to chữ 125%–150%),
+    /// vì NumericUpDown không tự giãn phần chữ bên trong theo → số canh phải bị lệch vào giữa / ra ngoài khung.
+    /// </summary>
     private void PositionInput()
     {
-        var width = Math.Max(20, _host.ClientSize.Width - _host.Padding.Horizontal);
-        var top = Math.Max(0, (_host.ClientSize.Height - _input.Height) / 2);
+        if (_positioning) return;
+        _positioning = true;
+        try
+        {
+            var width = Math.Max(20, _host.ClientSize.Width - _host.Padding.Horizontal);
+            var top = Math.Max(0, (_host.ClientSize.Height - _input.Height) / 2);
 
-        _clip.Bounds = new Rectangle(_host.Padding.Left, top, width, _input.Height);
+            _clip.Bounds = new Rectangle(_host.Padding.Left, top, width, _input.Height);
 
-        // Phần nút tăng/giảm (Controls[0] của NumericUpDown) đẩy ra ngoài mép phải khung cắt.
-        var hiddenSpin = _input is NumericUpDown { Controls.Count: > 0 } num ? num.Controls[0].Width + 2 : 0;
-        _input.Bounds = new Rectangle(0, 0, width + hiddenSpin, _input.Height);
+            if (_input is NumericUpDown { Controls.Count: > 1 } num)
+            {
+                // Phần nút tăng/giảm (Controls[0]) đẩy ra ngoài mép phải khung cắt; NumericUpDown tự giãn
+                // phần chữ theo bề rộng mới → số canh phải nằm sát mép phải khung nhìn thấy.
+                num.Bounds = new Rectangle(0, 0, width + num.Controls[0].Width + 2, num.Height);
+                num.PerformLayout();
+            }
+            else
+            {
+                _input.Bounds = new Rectangle(0, 0, width, _input.Height);
+            }
+        }
+        finally { _positioning = false; }
     }
 
     protected override void OnPaint(PaintEventArgs e)

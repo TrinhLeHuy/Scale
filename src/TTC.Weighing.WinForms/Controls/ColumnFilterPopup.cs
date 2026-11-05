@@ -100,6 +100,7 @@ public sealed class ColumnFilterPopup : Form
                 _checklist.SetItemChecked(i, _chkAll.Checked);
         };
 
+        Helpers.SearchText.Prepare(_txtSearch); // tắt bộ gõ → lọc ngay khi gõ, không đợi Space
         _txtSearch.TextChanged += (_, _) => FilterList();
 
         // Layout
@@ -135,10 +136,10 @@ public sealed class ColumnFilterPopup : Form
 
     private void FilterList()
     {
-        var search = _txtSearch.Text.Trim().ToUpperInvariant();
+        var search = _txtSearch.Text.Trim();
         _displayValues = string.IsNullOrWhiteSpace(search)
             ? _allValues
-            : _allValues.Where(v => v.ToUpperInvariant().Contains(search)).ToArray();
+            : _allValues.Where(v => Helpers.SearchText.Matches(v, search)).ToArray();
 
         _checklist.Items.Clear();
         foreach (var val in _displayValues)

@@ -51,6 +51,8 @@ public sealed class DeleteTripHandler(
             return Fail(DomainText.T("rule.trip_weighed_no_delete",
                 "Chuyến {0} đã cân — không được xóa đăng tài.", trip.TripNo));
 
+        // Phiếu đã HỦY → xóa = gỡ khỏi hệ thống cân (FRM đã nhận lệnh hủy lúc bấm Hủy).
+        // Audit TRIP_DELETED_CANCELLED → lệnh đốn mía vẫn bị chặn đăng tài lại (phải lập lệnh đốn mới).
         var lifecycleBefore = trip.Lifecycle;
 
         // Chưa hủy → hủy trước để thu hồi QR, giải phóng bàn cân và báo FRM như luồng Hủy phiếu.
@@ -74,7 +76,8 @@ public sealed class DeleteTripHandler(
         trip.UpdatedBy = user.UserId;
         trip.Version++;
 
-        await audit.LogAsync("TRIP_DELETED", trip.Id, user.UserId,
+        // TRIP_DELETED_CANCELLED: xóa phiếu đã hủy trước đó → lệnh đốn vẫn không đăng tài lại được.
+        await audit.LogAsync(lifecycleBefore == TripLifecycle.Cancelled ? "TRIP_DELETED_CANCELLED" : "TRIP_DELETED", trip.Id, user.UserId,
             $"{{\"lifecycle\":\"{lifecycleBefore}\",\"tripNo\":\"{trip.TripNo}\",\"reference\":\"{trip.ReferenceTripNo}\"}}",
             $"{{\"deletedAt\":\"{now:O}\",\"confirmUserId\":\"{cmd.ConfirmUserId}\"}}",
             cmd.Reason, cmd.CorrelationId, ct);

@@ -29,7 +29,7 @@ public static class PrintHelper
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
+            Helpers.AppMessageBox.Show(
                 $"Không lấy được danh sách máy in.{Environment.NewLine}{ex.Message}",
                 "Lỗi máy in",
                 MessageBoxButtons.OK,
@@ -39,7 +39,7 @@ public static class PrintHelper
 
         if (printers.Count == 0)
         {
-            MessageBox.Show(
+            Helpers.AppMessageBox.Show(
                 "Không tìm thấy máy in nào. Vui lòng kiểm tra cài đặt máy in.",
                 "Không có máy in",
                 MessageBoxButtons.OK,
@@ -63,7 +63,7 @@ public static class PrintHelper
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
+            Helpers.AppMessageBox.Show(
                 $"Lỗi khi in phiếu cân.{Environment.NewLine}{ex.Message}"
                 + Environment.NewLine + Environment.NewLine
                 + "Dữ liệu cân không bị ảnh hưởng. Bạn có thể in lại sau.",
@@ -78,7 +78,7 @@ public static class PrintHelper
         if (result.IsSuccess)
         {
             var reprintNote = isReprint ? " (BẢN IN LẠI)" : string.Empty;
-            MessageBox.Show(
+            Helpers.AppMessageBox.Show(
                 $"In phiếu thành công.{reprintNote}{Environment.NewLine}Số phiếu: {result.TicketNumber}",
                 "In phiếu cân",
                 MessageBoxButtons.OK,
@@ -86,7 +86,7 @@ public static class PrintHelper
         }
         else
         {
-            MessageBox.Show(
+            Helpers.AppMessageBox.Show(
                 $"In phiếu thất bại: {result.ErrorMessage}"
                 + Environment.NewLine + Environment.NewLine
                 + "Dữ liệu cân không bị ảnh hưởng. Bạn có thể in lại sau.",
@@ -160,13 +160,15 @@ public static class PrintHelper
                 _cboPrinter.Items.Add(display);
             }
 
-            // Chọn máy in sẵn sàng đầu tiên
-            var firstReady = -1;
+            // Chọn máy in phiếu (lần in trước / cấu hình / mặc định Windows, bỏ qua máy in PDF ảo).
+            var preferred = Printing.PrintPrinter.Current;
+            var index = -1;
             for (var i = 0; i < printers.Count; i++)
-            {
-                if (printers[i].IsReady) { firstReady = i; break; }
-            }
-            _cboPrinter.SelectedIndex = firstReady >= 0 ? firstReady : 0;
+                if (string.Equals(printers[i].Name, preferred, StringComparison.OrdinalIgnoreCase)) { index = i; break; }
+            if (index < 0)
+                for (var i = 0; i < printers.Count; i++)
+                    if (printers[i].IsReady && !Printing.PrintPrinter.IsVirtual(printers[i].Name)) { index = i; break; }
+            _cboPrinter.SelectedIndex = index >= 0 ? index : 0;
 
             // ── Copies ──
             _nudCopies.Location = new Point(120, 68);
@@ -240,7 +242,7 @@ public static class PrintHelper
         {
             if (_cboPrinter.SelectedItem is not string printerDisplay)
             {
-                MessageBox.Show("Vui lòng chọn máy in.", "Thiếu thông tin",
+                Helpers.AppMessageBox.Show("Vui lòng chọn máy in.", "Thiếu thông tin",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 DialogResult = DialogResult.None;
                 return;
@@ -249,7 +251,7 @@ public static class PrintHelper
             var templateCode = _cboTemplate.Text.Trim();
             if (string.IsNullOrEmpty(templateCode))
             {
-                MessageBox.Show("Vui lòng nhập mã mẫu phiếu.", "Thiếu thông tin",
+                Helpers.AppMessageBox.Show("Vui lòng nhập mã mẫu phiếu.", "Thiếu thông tin",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 DialogResult = DialogResult.None;
                 return;
@@ -260,6 +262,7 @@ public static class PrintHelper
                 ? printerDisplay[..printerDisplay.IndexOf("  (", StringComparison.Ordinal)]
                 : printerDisplay;
 
+            Printing.PrintPrinter.Remember(printerName);
             SelectedConfig = new PrinterConfig(
                 PrinterName: printerName,
                 Copies: (int)_nudCopies.Value,

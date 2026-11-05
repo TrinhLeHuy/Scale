@@ -87,8 +87,34 @@ public sealed class PreviewTripRepository(PreviewDataStore store) : ITripReposit
         return Task.FromResult(tripNo);
     }
 
+    public Task<string?> FindCancelledByLenhDonAsync(string? lenhDonId, string? maLenhDon, CancellationToken ct = default)
+    {
+        var tripNo = store.Trips
+            .Where(t => t.SourceSystem == "FRM" && t.DeletedAt == null && t.Lifecycle == TripLifecycle.Cancelled
+                && ((!string.IsNullOrWhiteSpace(lenhDonId) && t.FrmLenhDonId == lenhDonId.Trim())
+                    || (!string.IsNullOrWhiteSpace(maLenhDon) && t.ReferenceTripNo == maLenhDon.Trim())))
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => t.TripNo)
+            .FirstOrDefault();
+        return Task.FromResult(tripNo);
+    }
+
     public Task<bool> HasWeighEventsAsync(Guid tripId, CancellationToken ct = default)
         => Task.FromResult(store.WeighEvents.Any(e => e.TripId == tripId));
+
+    public Task ReloadAsync(Trip trip, CancellationToken ct = default) => Task.CompletedTask; // dữ liệu trong bộ nhớ
+
+    public Task<string?> FindNotWeighedOutByPlateAsync(string plate, Guid siteId, CancellationToken ct = default)
+    {
+        static string N(string? p) => (p ?? "").Replace(" ", "").Replace("-", "").Replace(".", "").ToUpperInvariant();
+        var trip = store.Trips
+            .Where(t => t.SiteId == siteId && t.DeletedAt == null && N(t.TractorPlate) == N(plate)
+                && t.Lifecycle is not (TripLifecycle.Cancelled or TripLifecycle.Closed or TripLifecycle.WeighingCompleted)
+                && !store.WeighSessions.Any(s => s.TripId == t.Id && s.SegmentIndex >= 1 && s.Events.Any(e => e.IsEffective)))
+            .OrderByDescending(t => t.CreatedAt)
+            .FirstOrDefault();
+        return Task.FromResult(trip?.TripNo);
+    }
 
     public Task<string?> FindActiveByReferenceAsync(
         string sourceSystem, string referenceTripNo, CancellationToken ct = default)
